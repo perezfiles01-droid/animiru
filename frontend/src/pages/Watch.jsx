@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import VideoPlayer from '../components/VideoPlayer';
-import api from '../services/api';
+import { getAnimeById } from '../services/anilist';
 import '../styles/Pages.css';
 
 export default function Watch() {
@@ -14,8 +14,7 @@ export default function Watch() {
   useEffect(() => {
     const fetchAnime = async () => {
       try {
-        const response = await api.get(`/anime/${id}`);
-        setAnime(response.data);
+        setAnime(await getAnimeById(id));
       } catch (err) {
         setError(err.message);
       } finally {

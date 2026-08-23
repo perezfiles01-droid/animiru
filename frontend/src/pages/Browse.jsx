@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AnimeCard from '../components/AnimeCard';
-import api from '../services/api';
+import { getTrending, searchAnime } from '../services/anilist';
 import '../styles/Pages.css';
 
 export default function Browse() {
@@ -10,6 +10,7 @@ export default function Browse() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
 
   const query = searchParams.get('q') || '';
 
@@ -17,17 +18,18 @@ export default function Browse() {
     const fetchAnime = async () => {
       try {
         setLoading(true);
-        let response;
+        setError(null);
 
-        if (query) {
-          response = await api.get(`/anime/search?q=${query}&page=${page}`);
-          setAnime(response.data.media || []);
-        } else {
-          response = await api.get(`/anime/browse/trending?page=${page}`);
-          setAnime(response.data.media || []);
-        }
+        const result = query
+          ? await searchAnime(query, page)
+          : await getTrending(page);
+
+        setAnime(result.media || []);
+        setHasNextPage(Boolean(result.pageInfo?.hasNextPage));
       } catch (err) {
         setError(err.message);
+        setAnime([]);
+        setHasNextPage(false);
       } finally {
         setLoading(false);
       }
@@ -64,6 +66,7 @@ export default function Browse() {
             <span className="page-info">Page {page}</span>
             <button
               onClick={() => setPage(p => p + 1)}
+              disabled={!hasNextPage}
               className="page-btn"
             >
               Next →
@@ -72,7 +75,10 @@ export default function Browse() {
         </>
       )}
 
-      {!loading && anime.length === 0 && (
+      {/* Suppressed when an error is showing: a failed request already
+          explains the empty grid, and printing both made the failure read
+          like a genuine zero-result search. */}
+      {!loading && !error && anime.length === 0 && (
         <p className="no-results">No anime found. Try another search!</p>
       )}
     </div>

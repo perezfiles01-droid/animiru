@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { getAnimeById } from '../services/anilist';
 import '../styles/Pages.css';
 
 export default function Details() {
@@ -14,8 +15,7 @@ export default function Details() {
   useEffect(() => {
     const fetchAnime = async () => {
       try {
-        const response = await api.get(`/anime/${id}`);
-        setAnime(response.data);
+        setAnime(await getAnimeById(id));
       } catch (err) {
         setError(err.message);
       } finally {
@@ -26,16 +26,23 @@ export default function Details() {
     fetchAnime();
   }, [id]);
 
+  // Unlike browsing, the watchlist is stored server-side, so this still needs
+  // the backend deployed and reachable.
   const handleAddToWatchlist = async () => {
     try {
       await api.post('/watchlist', {
-        animeId: parseInt(id),
+        animeId: parseInt(id, 10),
         status: 'PLANNING'
       });
       setInWatchlist(true);
       alert('Added to watchlist!');
     } catch (err) {
-      alert(`Error: ${err.message}`);
+      const unreachable = !err.response;
+      alert(
+        unreachable
+          ? 'Watchlist needs the Animiru backend, which is not reachable right now. Browsing and search still work.'
+          : `Could not add to watchlist: ${err.message}`
+      );
     }
   };
 

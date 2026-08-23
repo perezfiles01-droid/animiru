@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import AnimeCard from '../components/AnimeCard';
-import api from '../services/api';
+import { getTrending } from '../services/anilist';
 import '../styles/Pages.css';
 
 export default function Home() {
@@ -11,8 +11,8 @@ export default function Home() {
   useEffect(() => {
     const fetchTrending = async () => {
       try {
-        const response = await api.get('/anime/browse/trending?page=1');
-        setTrending(response.data.media || []);
+        const page = await getTrending(1);
+        setTrending(page.media || []);
       } catch (err) {
         setError(err.message);
       } finally {
