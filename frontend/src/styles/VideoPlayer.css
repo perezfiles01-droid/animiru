@@ -1,0 +1,86 @@
+.player {
+  width: 100%;
+}
+
+/* Fixed 16:9 box so the layout does not jump before metadata loads.
+   aspect-ratio is unreliable on the older WebViews this app supports. */
+.player-frame {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%;
+  background: #000;
+  overflow: hidden;
+}
+
+.player-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+.player-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 4px;
+}
+
+.player-title {
+  font-size: 0.95rem;
+  color: #e8e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-quality {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: #b8b8c8;
+  flex-shrink: 0;
+}
+
+.player-quality select {
+  background: var(--accent, #0f3460);
+  color: #fff;
+  border: 1px solid var(--border, #444);
+  padding: 6px 8px;
+  font-size: 0.85rem;
+}
+
+.player-error {
+  padding: 10px 12px;
+  background: rgba(233, 69, 96, 0.12);
+  border: 1px solid var(--highlight, #e94560);
+  color: #ffb3c0;
+  font-size: 0.9rem;
+}
+
+.player--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  background: var(--secondary, #16213e);
+  border: 1px solid var(--border, #444);
+  color: #b8b8c8;
+  text-align: center;
+  padding: 20px;
+}
+
+@media (max-width: 480px) {
+  .player-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .player-title {
+    max-width: 100%;
+  }
+}

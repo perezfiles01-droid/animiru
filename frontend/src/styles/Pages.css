@@ -484,3 +484,155 @@
     font-size: 24px;
   }
 }
+
+/* ---------------------------------------------------------------
+   Library and Settings - media server pages
+   --------------------------------------------------------------- */
+
+.library-page,
+.settings-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.library-page h1,
+.settings-page h1 {
+  margin-bottom: 20px;
+}
+
+.library-search {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.library-search input {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.library-empty {
+  padding: 32px 20px;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  text-align: center;
+}
+
+.library-empty p {
+  margin-bottom: 12px;
+}
+
+.library-overview {
+  margin: 12px 0 20px;
+  color: #c4c4d4;
+  line-height: 1.6;
+}
+
+.card-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 220px;
+  padding: 12px;
+  background: var(--accent);
+  color: #dcdce8;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.settings-section {
+  margin-bottom: 32px;
+  padding: 20px;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+}
+
+.settings-section h2 {
+  margin-bottom: 12px;
+  font-size: 1.2rem;
+}
+
+.settings-help,
+.settings-note {
+  color: #b8b8c8;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+
+.settings-note {
+  margin-top: 14px;
+  margin-bottom: 0;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 460px;
+}
+
+.settings-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: #d0d0dc;
+}
+
+.settings-form input {
+  padding: 10px 12px;
+  background: var(--primary);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.settings-form input:focus {
+  outline: none;
+  border-color: var(--highlight);
+}
+
+.settings-connected p {
+  margin-bottom: 14px;
+  color: #d0d0dc;
+}
+
+.settings-sources {
+  list-style: none;
+}
+
+.settings-sources li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-sources li:last-child {
+  border-bottom: none;
+}
+
+.settings-source-state {
+  font-size: 0.85rem;
+  color: #9aa0b5;
+}
+
+@media (max-width: 480px) {
+  .library-search {
+    flex-direction: column;
+  }
+
+  .settings-sources li {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}
