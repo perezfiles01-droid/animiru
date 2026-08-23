@@ -1,0 +1,122 @@
+name: Build & Deploy Animiru
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install backend dependencies
+        run: cd backend && npm ci
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Run backend tests
+        run: cd backend && npm run test
+
+      - name: Run frontend tests
+        run: cd frontend && npm run test
+
+      - name: Lint backend code
+        run: cd backend && npm run lint
+
+      - name: Lint frontend code
+        run: cd frontend && npm run lint
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --workspaces
+
+      - name: Build frontend
+        run: cd frontend && npm run build
+
+      - name: Build backend
+        run: cd backend && npm run build
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+
+      - name: Build APK
+        run: |
+          cd mobile/android
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: animiru-apk
+          path: mobile/android/app/release/animiru.apk
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download APK
+        uses: actions/download-artifact@v3
+        with:
+          name: animiru-apk
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }}
+          body: |
+            Automated release from GitHub Actions
+
+            📱 APK: animiru.apk (ready to download and install)
+
+            Features:
+            ✓ Browse anime with AniList API
+            ✓ Watch episodes with video player
+            ✓ Manage watchlist
+            ✓ Track viewing history
+            ✓ User authentication
+          draft: false
+          prerelease: false
+
+      - name: Upload APK to Release
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./animiru.apk
+          asset_name: animiru.apk
+          asset_content_type: application/vnd.android.package-archive

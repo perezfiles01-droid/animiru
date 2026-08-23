@@ -1,0 +1,76 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+build/
+dist/
+.next/
+*.apk
+*.aab
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+
+# Firebase
+.firebase/
+.firebaserc
+
+# Cache
+.cache/
+.eslintcache
+
+# Misc
+.env.*.swp
+.env.*.swo
+
+# Android
+android/app/debug/
+android/app/release/
+android/.gradle/
+android/local.properties
+*.jks
+*.keystore
+
+# Build artifacts
+out/
+gen/
+
+# Production
+.next
+out
+dist
+build
+
+# Mobile specific
+mobile/platforms/
+mobile/plugins/
+mobile/node_modules/
