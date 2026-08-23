@@ -1,0 +1,2 @@
+# The compiled React app is copied here by CI (see .github/workflows/build-deploy.yml).
+# Kept in git so the assets source set exists in a fresh clone.

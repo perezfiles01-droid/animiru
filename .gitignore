@@ -53,6 +53,15 @@ coverage/
 .env.*.swo
 
 # Android
+# Paths are anchored under mobile/ to match this repo's layout; the bare
+# "android/..." patterns below never matched anything here.
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+# Staged into the APK by CI from frontend/build - never committed.
+mobile/android/app/src/main/assets/*
+!mobile/android/app/src/main/assets/.gitkeep
 android/app/debug/
 android/app/release/
 android/.gradle/

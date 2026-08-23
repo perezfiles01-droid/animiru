@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Animiru" parent="Theme.AppCompat.NoActionBar">
+        <item name="colorPrimary">@color/animiru_primary</item>
+        <item name="colorPrimaryDark">@color/animiru_primary</item>
+        <item name="colorAccent">@color/animiru_highlight</item>
+        <item name="android:windowBackground">@color/animiru_primary</item>
+        <item name="android:statusBarColor">@color/animiru_primary</item>
+    </style>
+</resources>

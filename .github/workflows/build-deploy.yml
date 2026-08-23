@@ -19,6 +19,10 @@ jobs:
         with:
           node-version: 20.x
 
+      # Plain npm install - no flags. Do NOT add --legacy-peer-deps or
+      # --force: they let npm ignore peer constraints and hoist ajv@6
+      # alongside ajv-keywords@5, which breaks the react-scripts build with
+      # "Cannot find module 'ajv/dist/compile/codegen'".
       - name: Install backend dependencies
         run: cd backend && npm install
 
@@ -28,35 +32,54 @@ jobs:
       - name: Build frontend
         run: cd frontend && npm run build
 
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v2
+        uses: android-actions/setup-android@v3
+
+      # The APK is a WebView shell around the compiled web app, so the build
+      # output has to land in the assets source set before Gradle runs.
+      - name: Stage web build into APK assets
+        run: |
+          rm -rf mobile/android/app/src/main/assets
+          mkdir -p mobile/android/app/src/main/assets
+          cp -r frontend/build/. mobile/android/app/src/main/assets/
+          test -f mobile/android/app/src/main/assets/index.html
+          echo "Staged assets:"
+          ls -la mobile/android/app/src/main/assets
 
       - name: Build APK (Debug)
         run: |
           cd mobile/android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew --no-daemon assembleDebug
 
       - name: Build APK (Release)
         continue-on-error: true
         run: |
           cd mobile/android
-          chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew --no-daemon assembleRelease
 
       - name: Find APK
-        run: find mobile/android -name "*.apk" -type f
+        run: find mobile/android -name "*.apk" -type f -exec ls -lh {} \;
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: animiru-apk
           path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
 
   release:
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -66,49 +89,28 @@ jobs:
         with:
           name: animiru-apk
 
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
+      - name: Create release with APK
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ github.run_number }}
-          release_name: Animiru v1.0.${{ github.run_number }}
-          body: |
-            🎉 **Animiru Anime Streaming App - Release v1.0.${{ github.run_number }}**
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mv app-debug.apk animiru-app.apk
+          gh release create "v1.0.${{ github.run_number }}" animiru-app.apk \
+            --title "Animiru v1.0.${{ github.run_number }}" \
+            --notes "$(cat <<'NOTES'
+          **Animiru — Android build**
 
-            📱 **APK Ready for Download**
+          This APK is a WebView shell hosting the compiled React app. It is
+          signed with the Android debug key, so Android will warn on install
+          and it is not suitable for Play Store distribution.
 
-            **Features:**
-            ✅ Browse anime with AniList API
-            ✅ Watch episodes with video player
-            ✅ Manage personal watchlist
-            ✅ Track viewing history
-            ✅ User authentication & profiles
-            ✅ Responsive mobile design
-            ✅ Offline support (PWA)
+          **Install**
+          1. Download `animiru-app.apk` below
+          2. Allow installs from unknown sources for your browser or file manager
+          3. Open the APK and tap Install
 
-            **Installation:**
-            1. Download the APK file below
-            2. Enable "Unknown Sources" in Android Settings
-            3. Open the APK and tap Install
+          **Requires** Android 5.0 (API 21) or newer.
 
-            **Requirements:**
-            - Android 5.0 (API 21) or higher
-            - Internet connection
-            - ~50MB storage
-
-            ---
-            Built with ❤️ using React, Express, and Firebase
-          draft: false
-          prerelease: false
-
-      - name: Upload APK to Release
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./app-debug.apk
-          asset_name: animiru-app.apk
-          asset_content_type: application/vnd.android.package-archive
+          **Note:** browsing and playback call the backend API, which must be
+          deployed and reachable for anime data to load.
+          NOTES
+          )"

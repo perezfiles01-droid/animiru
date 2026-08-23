@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mirrors the CSS custom properties in frontend/src/styles/App.css -->
+    <color name="animiru_primary">#1A1A2E</color>
+    <color name="animiru_secondary">#16213E</color>
+    <color name="animiru_accent">#0F3460</color>
+    <color name="animiru_highlight">#E94560</color>
+</resources>
