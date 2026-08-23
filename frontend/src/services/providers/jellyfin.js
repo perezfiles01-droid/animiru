@@ -45,9 +45,28 @@ function persistConfig(next) {
   }
 }
 
-/** Strips a trailing slash so URL joins never produce a double slash. */
+/**
+ * Reduces whatever the user pasted to a bare server origin.
+ *
+ * People copy the address out of their browser, which for Jellyfin looks like
+ * http://host:8096/web/index.html#!/home.html. Appending an API path to that
+ * yields a 404 that reads like the server is wrong when it is fine, so strip
+ * the fragment, any /web UI path, and trailing slashes.
+ *
+ * A sub-path from a reverse proxy (http://host/jellyfin) is deliberately
+ * preserved - that really is part of the API base.
+ */
 function normalizeServer(url) {
-  return String(url || '').trim().replace(/\/+$/, '');
+  let value = String(url || '').trim();
+  if (!value) return '';
+
+  // Drop the fragment first: everything after # is client-side routing.
+  value = value.split('#')[0];
+
+  // Drop the web UI entry point, with or without a filename.
+  value = value.replace(/\/web\/?(index\.html)?\/?$/i, '');
+
+  return value.replace(/\/+$/, '');
 }
 
 /**

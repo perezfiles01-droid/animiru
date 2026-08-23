@@ -77,6 +77,38 @@ describe('connect', () => {
     expect(result.server).toBe('http://192.168.1.10:8096');
   });
 
+  // Pasting the address out of a browser is the obvious thing to do, and
+  // every one of these previously produced a 404 that looked like a wrong
+  // server rather than a mangled URL.
+  test.each([
+    ['http://192.168.1.10:8096/web/index.html#!/home.html'],
+    ['http://192.168.1.10:8096/web/index.html'],
+    ['http://192.168.1.10:8096/web/'],
+    ['http://192.168.1.10:8096/web'],
+    ['http://192.168.1.10:8096//'],
+    ['  http://192.168.1.10:8096  ']
+  ])('reduces %s to the bare origin', async (pasted) => {
+    global.fetch.mockReturnValueOnce(jsonResponse(AUTH_OK));
+
+    const result = await jellyfin.connect({ server: pasted, username: 'jim' });
+
+    expect(result.server).toBe('http://192.168.1.10:8096');
+    expect(global.fetch.mock.calls[0][0]).toBe(
+      'http://192.168.1.10:8096/Users/AuthenticateByName'
+    );
+  });
+
+  test('keeps a reverse-proxy sub-path, which is part of the API base', async () => {
+    global.fetch.mockReturnValueOnce(jsonResponse(AUTH_OK));
+
+    const result = await jellyfin.connect({
+      server: 'https://media.example.com/jellyfin/',
+      username: 'jim'
+    });
+
+    expect(result.server).toBe('https://media.example.com/jellyfin');
+  });
+
   test('sends the MediaBrowser authorization header', async () => {
     global.fetch.mockReturnValueOnce(jsonResponse(AUTH_OK));
 
