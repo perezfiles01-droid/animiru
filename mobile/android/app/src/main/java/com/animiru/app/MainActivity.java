@@ -75,6 +75,19 @@ public class MainActivity extends AppCompatActivity {
         settings.setUseWideViewPort(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
 
+        // The app is served from an https:// origin (see WebViewAssetLoader
+        // above), but a self-hosted media server on the local network is
+        // almost always plain http on a private address. The default mixed
+        // content policy blocks those requests outright, so a Jellyfin server
+        // would silently fail to connect.
+        //
+        // Trade-off accepted deliberately: this permits http subresources
+        // generally, not just for the configured server, because the WebView
+        // policy is per-WebView rather than per-origin. Everything else this
+        // app talks to (AniList, YouTube) is https and stays https; the
+        // relaxation exists so a user can reach a server they run themselves.
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+
         if (savedInstanceState == null) {
             webView.loadUrl(START_URL);
         } else {
