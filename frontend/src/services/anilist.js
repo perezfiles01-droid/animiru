@@ -123,6 +123,7 @@ const DETAILS_QUERY = `
       duration
       status
       studios { nodes { name } }
+      trailer { id site }
     }
   }
 `;

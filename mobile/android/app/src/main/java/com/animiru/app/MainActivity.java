@@ -1,13 +1,18 @@
 package com.animiru.app;
 
 import android.annotation.SuppressLint;
+import android.content.pm.ActivityInfo;
 import android.os.Bundle;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
@@ -32,6 +37,11 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
 
+    /** Non-null only while a video is playing fullscreen. */
+    private View customView;
+    private WebChromeClient.CustomViewCallback customViewCallback;
+    private int savedOrientation;
+
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,8 +65,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Required for the HTML5 video element to enter fullscreen.
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new FullscreenChromeClient());
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -72,11 +81,13 @@ public class MainActivity extends AppCompatActivity {
             webView.restoreState(savedInstanceState);
         }
 
-        // Let the hardware back button walk the SPA's history before leaving.
+        // Back leaves fullscreen first, then walks the SPA's history.
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if (webView.canGoBack()) {
+                if (customView != null) {
+                    exitFullscreen();
+                } else if (webView.canGoBack()) {
                     webView.goBack();
                 } else {
                     setEnabled(false);
@@ -90,6 +101,63 @@ public class MainActivity extends AppCompatActivity {
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
         webView.saveState(outState);
+    }
+
+    /**
+     * Gives the WebView somewhere to put a fullscreen video.
+     *
+     * A bare WebChromeClient is not enough: without onShowCustomView the
+     * fullscreen button in an embedded player is inert, because the WebView has
+     * nowhere to hand the video surface. That matters here specifically because
+     * fullscreen is where a 1080p stream is actually worth watching.
+     */
+    private final class FullscreenChromeClient extends WebChromeClient {
+
+        @Override
+        public void onShowCustomView(View view, CustomViewCallback callback) {
+            if (customView != null) {
+                // Already fullscreen; the platform contract is to reject the
+                // second request rather than leak the first view.
+                callback.onCustomViewHidden();
+                return;
+            }
+
+            customView = view;
+            customViewCallback = callback;
+            savedOrientation = getRequestedOrientation();
+
+            FrameLayout decor = (FrameLayout) getWindow().getDecorView();
+            decor.addView(customView, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+
+            webView.setVisibility(View.GONE);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        }
+
+        @Override
+        public void onHideCustomView() {
+            exitFullscreen();
+        }
+    }
+
+    private void exitFullscreen() {
+        if (customView == null) {
+            return;
+        }
+
+        ((FrameLayout) getWindow().getDecorView()).removeView(customView);
+        customView = null;
+
+        webView.setVisibility(View.VISIBLE);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        setRequestedOrientation(savedOrientation);
+
+        if (customViewCallback != null) {
+            customViewCallback.onCustomViewHidden();
+            customViewCallback = null;
+        }
     }
 
     /**
