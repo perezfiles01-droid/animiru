@@ -287,3 +287,49 @@
   background-color: var(--accent);
   border-color: var(--highlight);
 }
+
+/**
+ * Repositories offered as one tap.
+ *
+ * Each row is a name, what it holds, and the single action - so the choice
+ * is readable without opening anything.
+ */
+
+.extensions-known {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.extensions-known-item {
+  align-items: center;
+  background-color: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+}
+
+.extensions-known-item .extensions-meta {
+  /* The description is the reason to tap or not, so it wraps rather than
+     truncating the way a URL does. */
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.extensions-known-item .btn {
+  flex-shrink: 0;
+}
+
+.extensions-manual {
+  margin-bottom: 8px;
+}
+
+@media (max-width: 600px) {
+  .extensions-known-item {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

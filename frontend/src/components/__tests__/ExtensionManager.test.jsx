@@ -46,6 +46,49 @@ describe('ExtensionManager', () => {
     expect(screen.getByText('No repositories yet.')).toBeInTheDocument();
   });
 
+  describe('one-tap repositories', () => {
+    it('offers the known repositories without typing a URL', () => {
+      render(<ExtensionManager />);
+
+      expect(screen.getByText('Animiru sources')).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: 'Add' }).length).toBeGreaterThan(0);
+    });
+
+    it('marks a repository that holds no anime, rather than letting it look broken', () => {
+      render(<ExtensionManager />);
+      expect(screen.getByText('no anime')).toBeInTheDocument();
+    });
+
+    it('adds one on a single tap', async () => {
+      fetchRepository.mockResolvedValue(catalogue());
+      render(<ExtensionManager />);
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'Add' })[0]);
+
+      expect(storage.getRepositories()).toEqual([
+        'https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/index.json'
+      ]);
+    });
+
+    it('shows one as added rather than offering it twice', async () => {
+      fetchRepository.mockResolvedValue(catalogue());
+      render(<ExtensionManager />);
+      await userEvent.click(screen.getAllByRole('button', { name: 'Add' })[0]);
+
+      expect(await screen.findByRole('button', { name: 'Added' })).toBeDisabled();
+    });
+
+    it('does not store one that fails to answer', async () => {
+      fetchRepository.mockRejectedValue(new Error('Repository responded 404'));
+      render(<ExtensionManager />);
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'Add' })[0]);
+
+      expect(await screen.findByText('Repository responded 404')).toBeInTheDocument();
+      expect(storage.getRepositories()).toEqual([]);
+    });
+  });
+
   it('validates a repository before storing it', async () => {
     fetchRepository.mockRejectedValue(new Error('Repository index is not valid JSON'));
     render(<ExtensionManager />);

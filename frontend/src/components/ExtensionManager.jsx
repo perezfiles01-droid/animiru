@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { fetchRepository } from '../services/extensions/client';
 import * as storage from '../services/extensions/storage';
+import { KNOWN_REPOSITORIES } from '../services/extensions/knownRepositories';
 import '../styles/Extensions.css';
 
 /**
@@ -13,6 +14,10 @@ import '../styles/Extensions.css';
  * The repository's own listing is re-fetched rather than cached in state
  * across visits, because an author's version bump should show up the next
  * time the user looks, not the next time they clear their storage.
+ *
+ * Known repositories are offered as one tap, because typing a raw GitHub URL
+ * on a phone is miserable and a typo is indistinguishable from a repository
+ * being down.
  */
 export default function ExtensionManager() {
   const [repos, setRepos] = useState(() => storage.getRepositories());
@@ -49,16 +54,19 @@ export default function ExtensionManager() {
     // every install would refetch the whole listing for a one-row change.
   }, [repos, loadRepository]);
 
-  const handleAdd = async (e) => {
-    e.preventDefault();
-    const trimmed = url.trim();
+  /**
+   * Adds a repository after checking it answers.
+   *
+   * Validating before storing means a typo reports why, rather than leaving
+   * a permanently broken row that has to be removed by hand.
+   */
+  const addRepository = useCallback(async (candidate) => {
+    const trimmed = String(candidate || '').trim();
     if (!trimmed) return;
 
-    setBusy(true);
+    setBusy(trimmed);
     setError(null);
     try {
-      // Validate before storing, so a typo does not leave a permanently
-      // broken row in the list.
       await fetchRepository(trimmed);
       setRepos(storage.addRepository(trimmed));
       setUrl('');
@@ -67,6 +75,11 @@ export default function ExtensionManager() {
     } finally {
       setBusy(false);
     }
+  }, []);
+
+  const handleAdd = (e) => {
+    e.preventDefault();
+    addRepository(url);
   };
 
   const handleRemoveRepo = (repoUrl) => {
@@ -101,6 +114,42 @@ export default function ExtensionManager() {
         is remembered on this device only.
       </p>
 
+      <div className="extensions-known">
+        {KNOWN_REPOSITORIES.map((known) => {
+          const added = repos.includes(known.url);
+
+          return (
+            <div key={known.url} className="extensions-known-item">
+              <div className="extensions-item-text">
+                <span className="extensions-name">
+                  {known.name}
+                  {known.contains !== 'anime' && (
+                    <span
+                      className="extensions-tag"
+                      title="This repository holds no anime sources, so Animiru will list them as not usable here"
+                    >
+                      no anime
+                    </span>
+                  )}
+                </span>
+                <span className="extensions-meta">{known.description}</span>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-primary btn-small"
+                onClick={() => addRepository(known.url)}
+                disabled={added || busy === known.url}
+              >
+                {added ? 'Added' : busy === known.url ? 'Checking...' : 'Add'}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="settings-help extensions-manual">Or paste a repository URL:</p>
+
       <form onSubmit={handleAdd} className="settings-form extensions-add">
         <label>
           Repository URL
@@ -115,8 +164,8 @@ export default function ExtensionManager() {
             required
           />
         </label>
-        <button type="submit" className="btn btn-primary" disabled={busy}>
-          {busy ? 'Checking...' : 'Add repository'}
+        <button type="submit" className="btn btn-primary" disabled={Boolean(busy)}>
+          {busy === url.trim() ? 'Checking...' : 'Add repository'}
         </button>
       </form>
 
