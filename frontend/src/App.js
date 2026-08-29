@@ -5,8 +5,6 @@ import Home from './pages/Home';
 import Browse from './pages/Browse';
 import Details from './pages/Details';
 import Watch from './pages/Watch';
-import Library from './pages/Library';
-import LibraryDetail from './pages/LibraryDetail';
 import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import { useAuth } from './hooks/useAuth';
@@ -29,9 +27,6 @@ function App() {
             <Route path="/browse" element={<Browse />} />
             <Route path="/anime/:id" element={<Details />} />
             <Route path="/watch/:id" element={<Watch />} />
-            {/* Library is the media server; Browse is AniList metadata. */}
-            <Route path="/library" element={<Library />} />
-            <Route path="/library/:id" element={<LibraryDetail />} />
             <Route path="/settings" element={<Settings />} />
             {user && <Route path="/profile" element={<Profile user={user} />} />}
           </Routes>
