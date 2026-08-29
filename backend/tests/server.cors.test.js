@@ -74,4 +74,14 @@ describe('serverless entry', () => {
     expect(typeof handler).toBe('function');
     expect(require('../server').server).toBeNull();
   });
+
+  it('serves a request through the entry the host actually calls', async () => {
+    // Exporting something callable is not the same as serving. A host imports
+    // this module and hands it requests, so that is what gets exercised.
+    jest.resetModules();
+    const handler = require('../api/index');
+
+    const res = await request(handler).get('/api/health');
+    expect(res.status).toBe(200);
+  });
 });
