@@ -3,11 +3,24 @@
  *
  * This is a source string rather than a module because it is evaluated in
  * the vm realm, not this one. Its job is to turn the two raw host callables
- * the sandbox is seeded with into a comfortable API - the one Mangayomi
- * sources are written against - and then remove every reference to those
- * callables from anywhere an extension can see.
+ * the sandbox is seeded with into the API Mangayomi sources are written
+ * against, and then remove every reference to those callables.
  *
- * The rules it exists to enforce:
+ * The API here is not invented. It follows Mangayomi's CONTRIBUTING-JS.md
+ * and the usage in its published sources, because the whole point is that a
+ * source written for that app runs here unmodified. Two details in
+ * particular are easy to get wrong and fatal when wrong:
+ *
+ *   - `Client` and `SharedPreferences` are classes a source instantiates
+ *     (`new Client().get(url)`), not globals it calls. Providing a global
+ *     named `client` instead produces "Client is not defined" on the first
+ *     line of almost every real source.
+ *   - On a DOM node, only `select`, `selectFirst` and `attr` are methods.
+ *     `text`, `innerHtml`, `getHref`, `getSrc` and the rest are properties.
+ *     Making them methods returns a function where a string was expected,
+ *     which fails later and further away, in parsing rather than access.
+ *
+ * The rules the bootstrap exists to enforce:
  *
  *   - No host object is ever handed to extension code. Host calls take and
  *     return JSON strings; everything an extension touches is built here,
@@ -92,22 +105,42 @@ const RUNTIME_SOURCE = `
   };
   Element.prototype.attr = function (name) { return sync('html.attr', [this._handle, name]); };
   Element.prototype.attrs = function () { return sync('html.attrs', [this._handle]); };
-  Element.prototype.text = function () { return sync('html.text', [this._handle]); };
-  Element.prototype.html = function () { return sync('html.html', [this._handle]); };
-  Element.prototype.outerHtml = function () { return sync('html.outerHtml', [this._handle]); };
-  Element.prototype.children = function () {
+  Element.prototype.getAttribute = function (name) { return this.attr(name); };
+
+  /**
+   * Everything below is a property, not a method, because that is how
+   * sources use it: \`el.selectFirst("h1").text\`, never \`.text()\`.
+   */
+  function defineGetter(name, read) {
+    Object.defineProperty(Element.prototype, name, { get: read, configurable: true });
+  }
+
+  defineGetter('text', function () { return sync('html.text', [this._handle]); });
+  defineGetter('innerHtml', function () { return sync('html.html', [this._handle]); });
+  defineGetter('html', function () { return sync('html.html', [this._handle]); });
+  defineGetter('outerHtml', function () { return sync('html.outerHtml', [this._handle]); });
+  defineGetter('getHref', function () { return this.attr('href'); });
+  defineGetter('getSrc', function () { return this.attr('src'); });
+  defineGetter('getDst', function () { return this.attr('data-src'); });
+  defineGetter('id', function () { return this.attr('id'); });
+  defineGetter('className', function () { return this.attr('class'); });
+  defineGetter('tagName', function () { return sync('html.tagName', [this._handle]); });
+
+  defineGetter('children', function () {
     return sync('html.children', [this._handle]).map(function (h) { return new Element(h); });
-  };
-  Element.prototype.parent = function () {
+  });
+  defineGetter('parent', function () {
     var handle = sync('html.parent', [this._handle]);
     return handle === null ? null : new Element(handle);
-  };
-  Element.prototype.tagName = function () { return sync('html.tagName', [this._handle]); };
-
-  // Jsoup-flavoured aliases, because that is what sources written for
-  // Mangayomi reach for.
-  Element.prototype.getHref = function () { return this.attr('href'); };
-  Element.prototype.getSrc = function () { return this.attr('src'); };
+  });
+  defineGetter('nextElementSibling', function () {
+    var handle = sync('html.nextElementSibling', [this._handle]);
+    return handle === null ? null : new Element(handle);
+  });
+  defineGetter('previousElementSibling', function () {
+    var handle = sync('html.previousElementSibling', [this._handle]);
+    return handle === null ? null : new Element(handle);
+  });
 
   function Document(html) {
     Element.call(this, sync('html.parse', [html]));
@@ -115,34 +148,118 @@ const RUNTIME_SOURCE = `
   Document.prototype = Object.create(Element.prototype);
   Document.prototype.constructor = Document;
 
-  function parseFragment(html) {
-    return new Element(sync('html.parseFragment', [html]));
+  /**
+   * What a Client call resolves to. \`body\` is what sources read; the rest
+   * is there for the ones that check a status before parsing.
+   */
+  function Response(raw) {
+    this.body = raw.body;
+    this.statusCode = raw.statusCode;
+    this.headers = raw.headers;
+    this.url = raw.url;
   }
 
   /**
-   * Extension-facing HTTP. Every method funnels into one host op so the
-   * host-side caps apply uniformly.
+   * HTTP. Instantiated per call in real sources - \`new Client().get(url)\` -
+   * so the constructor takes nothing and holds no state.
    */
-  var client = {
-    request: function (options) {
-      var opts = options || {};
-      return callAsync('http.request', [{
-        url: opts.url,
-        method: opts.method || 'GET',
-        headers: opts.headers || {},
-        body: opts.body
-      }]);
-    },
-    get: function (url, headers) {
-      return client.request({ url: url, method: 'GET', headers: headers });
-    },
-    post: function (url, headers, body) {
-      return client.request({ url: url, method: 'POST', headers: headers, body: body });
-    },
-    head: function (url, headers) {
-      return client.request({ url: url, method: 'HEAD', headers: headers });
-    }
+  function Client() {}
+
+  Client.prototype.request = function (options) {
+    var opts = options || {};
+    return callAsync('http.request', [{
+      url: opts.url,
+      method: opts.method || 'GET',
+      headers: opts.headers || {},
+      body: opts.body
+    }]).then(function (raw) { return new Response(raw); });
   };
+  Client.prototype.get = function (url, headers) {
+    return this.request({ url: url, method: 'GET', headers: headers });
+  };
+  Client.prototype.post = function (url, headers, body) {
+    return this.request({
+      url: url,
+      method: 'POST',
+      headers: headers,
+      // A source may pass an object; send it as form-encoded text, which is
+      // what the sites these sources talk to expect.
+      body: (body && typeof body === 'object') ? formEncode(body) : body
+    });
+  };
+  Client.prototype.head = function (url, headers) {
+    return this.request({ url: url, method: 'HEAD', headers: headers });
+  };
+
+  function formEncode(data) {
+    var parts = [];
+    for (var key in data) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(data[key]));
+      }
+    }
+    return parts.join('&');
+  }
+
+  /** This source's settings, read the way Mangayomi sources read them. */
+  function SharedPreferences() {}
+  SharedPreferences.prototype.get = function (key) { return sync('pref.get', [key]); };
+  SharedPreferences.prototype.getString = function (key) { return sync('pref.get', [key]); };
+  SharedPreferences.prototype.setString = function () {
+    // Settings are the user's, edited in the app; a source may read them
+    // but must not rewrite them behind the user's back.
+    throw new Error('A source cannot change preferences');
+  };
+
+  /**
+   * The base class Mangayomi sources extend.
+   */
+  function MProvider(source) {
+    this.source = source || {};
+  }
+  MProvider.prototype.getPreference = function (key) { return sync('pref.get', [key]); };
+  MProvider.prototype.getBaseUrl = function () {
+    return this.source.baseUrl || sync('pref.get', ['baseUrl']);
+  };
+  MProvider.prototype.getHeaders = function (url) {
+    return { Referer: this.source.baseUrl || url || '' };
+  };
+  MProvider.prototype.getSourcePreferences = function () { return []; };
+  MProvider.prototype.getFilterList = function () { return []; };
+
+  /**
+   * The string helpers Mangayomi documents. They are on String.prototype
+   * because sources call them on strings directly.
+   */
+  function defineStringMethod(name, fn) {
+    Object.defineProperty(String.prototype, name, {
+      value: fn, writable: true, configurable: true, enumerable: false
+    });
+  }
+
+  defineStringMethod('substringAfter', function (pattern) {
+    var index = this.indexOf(pattern);
+    return index === -1 ? String(this) : this.slice(index + pattern.length);
+  });
+  defineStringMethod('substringAfterLast', function (pattern) {
+    var index = this.lastIndexOf(pattern);
+    return index === -1 ? String(this) : this.slice(index + pattern.length);
+  });
+  defineStringMethod('substringBefore', function (pattern) {
+    var index = this.indexOf(pattern);
+    return index === -1 ? String(this) : this.slice(0, index);
+  });
+  defineStringMethod('substringBeforeLast', function (pattern) {
+    var index = this.lastIndexOf(pattern);
+    return index === -1 ? String(this) : this.slice(0, index);
+  });
+  defineStringMethod('substringBetween', function (left, right) {
+    var start = this.indexOf(left);
+    if (start === -1) return '';
+    var from = start + left.length;
+    var end = this.indexOf(right, from);
+    return end === -1 ? '' : this.slice(from, end);
+  });
 
   var base64 = {
     encode: function (value) { return sync('base64.encode', [value]); },
@@ -159,11 +276,6 @@ const RUNTIME_SOURCE = `
     aesDecrypt: function (payloadBase64, keyHex, ivHex) {
       return sync('crypto.aesDecrypt', [payloadBase64, keyHex, ivHex]);
     }
-  };
-
-  var preferences = {
-    get: function (key) { return sync('pref.get', [key]); },
-    all: function () { return sync('pref.all', []); }
   };
 
   function log(level) {
@@ -185,33 +297,39 @@ const RUNTIME_SOURCE = `
     };
   }
 
-  /**
-   * The base class Mangayomi sources extend. It carries nothing an
-   * extension cannot already reach; it exists so that sources written
-   * elsewhere load here unmodified.
-   */
-  function MProvider(source) {
-    this.source = source || {};
-  }
-  MProvider.prototype.getPreference = function (key) { return preferences.get(key); };
-  MProvider.prototype.getBaseUrl = function () {
-    return this.source.baseUrl || preferences.get('baseUrl');
-  };
-  MProvider.prototype.getHeaders = function (url) {
-    return { Referer: this.source.baseUrl || url || '' };
-  };
-  MProvider.prototype.getSourcePreferences = function () { return []; };
-
-  globalThis.MProvider = MProvider;
   globalThis.Element = Element;
   globalThis.Document = Document;
-  globalThis.parseFragment = parseFragment;
-  globalThis.client = client;
+  globalThis.Client = Client;
+  globalThis.Response = Response;
+  globalThis.SharedPreferences = SharedPreferences;
+  globalThis.MProvider = MProvider;
+
   globalThis.base64Encode = base64.encode;
   globalThis.base64Decode = base64.decode;
   globalThis.base64 = base64;
   globalThis.crypto = cryptoApi;
-  globalThis.preferences = preferences;
+
+  // Mangayomi's crypto utilities, as bare globals, which is how sources
+  // call them.
+  globalThis.cryptoHandler = function (text, iv, key, encrypt) {
+    return sync('crypto.cryptoHandler', [text, iv, key, Boolean(encrypt)]);
+  };
+  globalThis.encryptAESCryptoJS = function (plainText, passphrase) {
+    return sync('crypto.encryptAESCryptoJS', [plainText, passphrase]);
+  };
+  globalThis.decryptAESCryptoJS = function (encrypted, passphrase) {
+    return sync('crypto.decryptAESCryptoJS', [encrypted, passphrase]);
+  };
+  globalThis.unpackJs = function (code) {
+    return sync('crypto.unpackJs', [code]);
+  };
+  globalThis.deobfuscateJsPassword = function () {
+    // Deliberately absent rather than approximated: guessing at what this
+    // returns would produce a wrong string a source then parses, which is
+    // far harder to diagnose than a missing function.
+    throw new Error('deobfuscateJsPassword is not implemented in Animiru');
+  };
+
   globalThis.console = {
     log: log('log'),
     info: log('info'),

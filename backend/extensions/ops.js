@@ -19,6 +19,76 @@ const MAX_REQUESTS_PER_RUN = 60;
 const HASH_ALGORITHMS = new Set(['md5', 'sha1', 'sha256', 'sha512']);
 
 /**
+ * OpenSSL's EVP_BytesToKey with MD5 and one iteration.
+ *
+ * CryptoJS derives its key and IV this way when given a passphrase, so
+ * anything encrypted in a browser by CryptoJS can only be read by deriving
+ * them identically.
+ */
+function evpBytesToKey(passphrase, salt) {
+  const password = Buffer.from(passphrase, 'utf8');
+  const blocks = [];
+  let digest = Buffer.alloc(0);
+
+  // 48 bytes: a 32 byte key followed by a 16 byte IV.
+  while (Buffer.concat(blocks).length < 48) {
+    digest = crypto.createHash('md5')
+      .update(Buffer.concat([digest, password, salt]))
+      .digest();
+    blocks.push(digest);
+  }
+
+  const material = Buffer.concat(blocks);
+  return { key: material.subarray(0, 32), iv: material.subarray(32, 48) };
+}
+
+/**
+ * Reverses Dean Edwards' packer, the `eval(function(p,a,c,k,e,d){...})`
+ * wrapper video hosts favour.
+ *
+ * The payload is a template whose tokens are base-N indices into a word
+ * list, so unpacking is substitution: decode each token, look it up, put it
+ * back. No evaluation, which is the point - the sandbox has code generation
+ * disabled and this must work without it.
+ */
+function unpackJs(code) {
+  const header = code.match(
+    /}\s*\(\s*'(.*?)'\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*'(.*?)'\.split\('\|'\)/s
+  );
+  if (!header) {
+    throw new Error('Not a packed script (no packer payload found)');
+  }
+
+  const [, payload, radixText, countText, wordsText] = header;
+  const radix = Number(radixText);
+  const words = wordsText.split('|');
+
+  /** The packer's own base-N encoding: 0-9, a-z, A-Z, then recursive. */
+  function toBase(value) {
+    const low = value % radix;
+    const high = Math.floor(value / radix);
+    const digit = low < 10
+      ? String(low)
+      : String.fromCharCode(low + (low < 36 ? 87 : 29));
+    return high === 0 ? digit : toBase(high) + digit;
+  }
+
+  const lookup = {};
+  for (let index = Number(countText) - 1; index >= 0; index -= 1) {
+    const token = toBase(index);
+    // A word left empty means the token stands for itself.
+    lookup[token] = words[index] || token;
+  }
+
+  return payload
+    .replace(/\\'/g, "'")
+    .replace(/\\\\/g, '\\')
+    .replace(/\b\w+\b/g, (token) => (
+      Object.prototype.hasOwnProperty.call(lookup, token) ? lookup[token] : token
+    ));
+}
+
+/**
  * Builds the op tables for a single extension call.
  *
  * @param {Object} options
@@ -44,6 +114,8 @@ function createOps({ preferences = {}, timeoutMs } = {}) {
     'html.parent': (handle) => htmlStore.parent(handle),
     'html.children': (handle) => htmlStore.children(handle),
     'html.tagName': (handle) => htmlStore.tagName(handle),
+    'html.nextElementSibling': (handle) => htmlStore.nextElementSibling(handle),
+    'html.previousElementSibling': (handle) => htmlStore.previousElementSibling(handle),
 
     'base64.encode': (input) => Buffer.from(String(input), 'utf8').toString('base64'),
     'base64.decode': (input) => Buffer.from(String(input), 'base64').toString('utf8'),
@@ -79,6 +151,79 @@ function createOps({ preferences = {}, timeoutMs } = {}) {
         decipher.final()
       ]).toString('utf8');
     },
+
+    /**
+     * AES-CBC with an explicit key and IV, both UTF-8, over base64.
+     *
+     * This is Mangayomi's `cryptoHandler`, which several sources use to read
+     * an obfuscated payload - the key and IV arrive as ordinary strings
+     * rather than hex, so they are taken as UTF-8 bytes exactly as written.
+     */
+    'crypto.cryptoHandler': (text, iv, key, encrypt) => {
+      const keyBuffer = Buffer.from(String(key), 'utf8');
+      const ivBuffer = Buffer.from(String(iv), 'utf8');
+      const bits = keyBuffer.length * 8;
+      if (bits !== 128 && bits !== 192 && bits !== 256) {
+        throw new Error(`cryptoHandler needs a 16, 24 or 32 character key, got ${keyBuffer.length}`);
+      }
+      const algorithm = `aes-${bits}-cbc`;
+
+      if (encrypt) {
+        const cipher = crypto.createCipheriv(algorithm, keyBuffer, ivBuffer);
+        return Buffer.concat([
+          cipher.update(String(text), 'utf8'),
+          cipher.final()
+        ]).toString('base64');
+      }
+
+      const decipher = crypto.createDecipheriv(algorithm, keyBuffer, ivBuffer);
+      return Buffer.concat([
+        decipher.update(Buffer.from(String(text), 'base64')),
+        decipher.final()
+      ]).toString('utf8');
+    },
+
+    /**
+     * CryptoJS's passphrase format, which is OpenSSL's: the output is
+     * base64 of "Salted__", an eight byte salt, then the ciphertext, and
+     * the key and IV are derived from passphrase and salt by EVP_BytesToKey
+     * with MD5. Sources encrypted by CryptoJS in a browser expect exactly
+     * this, so it has to be reproduced rather than approximated.
+     */
+    'crypto.encryptAESCryptoJS': (plainText, passphrase) => {
+      const salt = crypto.randomBytes(8);
+      const { key, iv } = evpBytesToKey(String(passphrase), salt);
+      const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+      const body = Buffer.concat([
+        cipher.update(String(plainText), 'utf8'),
+        cipher.final()
+      ]);
+      return Buffer.concat([Buffer.from('Salted__', 'utf8'), salt, body]).toString('base64');
+    },
+
+    'crypto.decryptAESCryptoJS': (encrypted, passphrase) => {
+      const raw = Buffer.from(String(encrypted), 'base64');
+      if (raw.length < 16 || raw.subarray(0, 8).toString('utf8') !== 'Salted__') {
+        throw new Error('Not a CryptoJS passphrase payload (no Salted__ header)');
+      }
+      const salt = raw.subarray(8, 16);
+      const { key, iv } = evpBytesToKey(String(passphrase), salt);
+      const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+      return Buffer.concat([
+        decipher.update(raw.subarray(16)),
+        decipher.final()
+      ]).toString('utf8');
+    },
+
+    /**
+     * Unpacks a p.a.c.k.e.r-obfuscated script.
+     *
+     * Video hosts wrap their manifest URL in this constantly. It is done by
+     * substitution here rather than by evaluating the payload, because code
+     * generation is disabled in the sandbox and re-enabling it to read an
+     * obfuscated string would trade the boundary for a convenience.
+     */
+    'crypto.unpackJs': (code) => unpackJs(String(code)),
 
     'pref.get': (key) => {
       const value = preferences[String(key)];

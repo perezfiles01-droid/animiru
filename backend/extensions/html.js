@@ -106,6 +106,20 @@ class HtmlStore {
     return node.children().toArray().map((el) => this.store({ $, node: $(el) }));
   }
 
+  nextElementSibling(handle) {
+    const { $, node } = this.get(handle);
+    const found = node.next();
+    if (found.length === 0) return null;
+    return this.store({ $, node: found });
+  }
+
+  previousElementSibling(handle) {
+    const { $, node } = this.get(handle);
+    const found = node.prev();
+    if (found.length === 0) return null;
+    return this.store({ $, node: found });
+  }
+
   /** The tag name, lowercased, or null for a document root. */
   tagName(handle) {
     const el = this.get(handle).node.get(0);
