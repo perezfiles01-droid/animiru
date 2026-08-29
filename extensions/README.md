@@ -16,10 +16,15 @@ Then install **Internet Archive** from the list it shows.
 ## What is here
 
 **Internet Archive** — the Archive's public API. Free to watch, no key, no
-scraping: it is a worked example of a source rather than a way to reach any
-particular show. Search finds items by title; browsing shows what the Archive
-files under animation. Content is what the Archive happens to hold, which
-means public-domain and freely-licensed film rather than current series.
+scraping. Content is what the Archive happens to hold: public-domain and
+freely-licensed film rather than current series. Available everywhere.
+
+**Pluto TV** — free, ad-supported, legal, no account and no DRM on its
+on-demand HLS, and it carries anime. It is **region-locked** to the countries
+Pluto operates in, and sources run on the Animiru server rather than on your
+device, so what matters is where that server is - not where you are. A server
+outside those countries gets an empty catalogue, which the source reports as
+the region lock rather than as "no results".
 
 ## Writing your own
 
@@ -52,27 +57,36 @@ Add the file under `sources/`, add its entry to `index.json` with a matching
 
 ### What a source can use
 
-Sources run on the Animiru server in an isolated realm. There is no browser
-and no Node here - only the language itself plus this bridge:
+Sources run on the Animiru server in an isolated realm, against the same API
+Mangayomi provides - so a source written for that app runs here unmodified.
 
 | API | Does |
 | --- | --- |
-| `client.get(url, headers)` | HTTP GET, returns `{statusCode, body, headers, url}` |
-| `client.post(url, headers, body)` | HTTP POST |
+| `new Client().get(url, headers)` | HTTP GET, resolves to `{body, statusCode, headers, url}` |
+| `new Client().post(url, headers, body)` | HTTP POST; an object body is form-encoded |
 | `new Document(html)` | Parse HTML |
-| `.select(sel)` / `.selectFirst(sel)` | Query it, Jsoup-style |
-| `.text()` / `.attr(name)` / `.html()` | Read a node |
-| `base64Encode` / `base64Decode` | Base64 |
-| `crypto.md5/sha1/sha256/hmac` | Hashes |
-| `crypto.aesDecrypt(payload, key, iv)` | AES-CBC, for hosts that obfuscate manifests |
-| `preferences.get(key)` | This source's settings |
+| `.select(sel)` / `.selectFirst(sel)` / `.attr(name)` | **Methods** |
+| `.text` `.innerHtml` `.html` `.outerHtml` | **Properties**, not methods |
+| `.getHref` `.getSrc` `.getDst` `.id` `.className` | **Properties** |
+| `.children` `.parent` `.nextElementSibling` `.previousElementSibling` | **Properties** |
+| `new SharedPreferences().get(key)` | This source's settings |
+| `"a=b".substringAfter("=")` and Before/AfterLast/BeforeLast/Between | String helpers |
+| `cryptoHandler(text, iv, key, encrypt)` | AES-CBC with a UTF-8 key and IV, over base64 |
+| `encryptAESCryptoJS` / `decryptAESCryptoJS` | CryptoJS passphrase format |
+| `unpackJs(code)` | Unpacks a p.a.c.k.e.r-obfuscated script |
+| `base64Encode` / `base64Decode`, `crypto.md5/sha1/sha256/hmac` | Encoding and hashes |
 | `console.log` | Captured and returned with the result |
+
+The method-versus-property split is the one that bites: only `select`,
+`selectFirst` and `attr` take parentheses. `el.text()` returns a function,
+and the failure surfaces later, in parsing rather than at the access.
 
 `encodeURIComponent` and `JSON` are available. `URLSearchParams`, `fetch`,
 `require`, `process`, `setTimeout`, `eval` and `Function` are **not** - the
 last two deliberately, since disabling code generation is part of what keeps
-a source contained. A source that needs to deobfuscate a payload should use
-`crypto` rather than evaluating a string.
+a source contained. `unpackJs` exists precisely so an obfuscated payload can
+be read without them. `deobfuscateJsPassword` is not implemented and throws
+saying so, rather than returning a wrong string a source would then parse.
 
 ### Things that will catch you out
 

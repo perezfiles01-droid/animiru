@@ -92,8 +92,8 @@ describe('extension sandbox', () => {
       const { result } = await search(`
         const doc = new Document(${JSON.stringify(markup)});
         return doc.select("a.card").map((el) => ({
-          href: el.attr("href"),
-          title: el.selectFirst("span.t").text()
+          href: el.getHref,
+          title: el.selectFirst("span.t").text
         }));
       `);
       expect(result).toEqual([
@@ -122,7 +122,7 @@ describe('extension sandbox', () => {
       const { result } = await search(`
         const doc = new Document(${JSON.stringify(markup)});
         const card = doc.selectFirst("a.card");
-        return { parent: card.parent().attr("class"), children: card.children().length };
+        return { parent: card.parent.className, children: card.children.length };
       `);
       expect(result).toEqual({ parent: 'items', children: 1 });
     });
@@ -190,7 +190,7 @@ describe('extension sandbox', () => {
     // constructor found is the sandbox's own; and code generation is off in
     // this context, so that constructor cannot compile anything either.
     it('cannot compile code through a bridge function constructor', async () => {
-      await expect(search('return client.get.constructor("return typeof process")();'))
+      await expect(search('return Client.prototype.get.constructor("return typeof process")();'))
         .rejects.toThrow(/Code generation from strings disallowed/);
     });
 
@@ -204,7 +204,7 @@ describe('extension sandbox', () => {
     it('reaches only the sandbox realm when walking prototypes', async () => {
       const { result } = await search(`
         return [
-          client.get.constructor === Function,
+          Client.prototype.get.constructor === Function,
           Object.getPrototypeOf(new Document("<p>x</p>")).constructor.constructor === Function
         ];
       `);

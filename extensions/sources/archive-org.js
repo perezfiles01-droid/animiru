@@ -19,6 +19,10 @@ const mangayomiSources = [{
  * API rather than scraped HTML - the parsing is simpler, so what the code
  * shows is the shape of a source rather than a pile of selectors.
  *
+ * It uses the same API as a Mangayomi source: `new Client()` for HTTP,
+ * `MProvider` as the base class, and the same method names and return
+ * shapes. A source written for Mangayomi runs here unmodified.
+ *
  * Three endpoints do everything:
  *
  *   advancedsearch.php   search and browse, returns identifiers
@@ -52,7 +56,9 @@ class DefaultExtension extends MProvider {
   }
 
   async getJson(url) {
-    const res = await client.get(url, { Accept: "application/json" });
+    // `new Client()` per call, which is how Mangayomi sources do it - the
+    // client holds no state, so there is nothing to reuse.
+    const res = await new Client().get(url, { Accept: "application/json" });
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw new Error(`Archive.org responded ${res.statusCode}`);
     }
