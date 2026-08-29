@@ -30,28 +30,42 @@ jobs:
         run: cd frontend && npm install
 
       # The API base URL is compiled into the bundle by Create React App, so
-      # it has to be present here rather than configured on the device. Set
-      # it as a repository variable (Settings -> Secrets and variables ->
-      # Actions -> Variables) named REACT_APP_API_URL, pointing at the
-      # deployed backend, e.g. https://animiru-backend.vercel.app/api
+      # it is fixed at build time and cannot be configured on the device.
+      # Extensions execute on that backend, so a build without it produces an
+      # app that installs, opens, and can run nothing.
       #
-      # Extensions execute on that backend, so without this the installed app
-      # falls back to http://localhost:3001/api - which on a phone is the
-      # phone itself, where nothing is listening - and no source can run.
-      - name: Check backend URL is configured
+      # The default below is this project's deployed backend, which is a
+      # public endpoint rather than a secret. Set a repository variable named
+      # REACT_APP_API_URL (Settings -> Secrets and variables -> Actions ->
+      # Variables) to point a build somewhere else; it wins when present.
+      - name: Resolve backend URL
+        id: backend
         run: |
-          if [ -z "${{ vars.REACT_APP_API_URL }}" ]; then
-            echo "::warning::REACT_APP_API_URL is not set. The build will point at"
-            echo "::warning::http://localhost:3001/api and extensions will not work"
-            echo "::warning::on a device. Set it as a repository variable."
+          URL="${{ vars.REACT_APP_API_URL }}"
+          if [ -z "$URL" ]; then
+            URL="https://animiru-livid.vercel.app/api"
+            echo "Backend: $URL (workflow default)"
           else
-            echo "Backend: ${{ vars.REACT_APP_API_URL }}"
+            echo "Backend: $URL (repository variable)"
           fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
 
       - name: Build frontend
         env:
-          REACT_APP_API_URL: ${{ vars.REACT_APP_API_URL }}
+          REACT_APP_API_URL: ${{ steps.backend.outputs.url }}
         run: cd frontend && npm run build
+
+      # A bundle that does not carry the URL cannot reach a backend, and the
+      # failure only shows up after installing on a device. Cheaper to catch
+      # it here than to ship an APK that quietly does nothing.
+      - name: Verify the backend URL was compiled in
+        run: |
+          if ! grep -rqF "${{ steps.backend.outputs.url }}" frontend/build/static/js/; then
+            echo "::error::The built bundle does not contain ${{ steps.backend.outputs.url }}."
+            echo "::error::The app would fall back to localhost and run no extensions."
+            exit 1
+          fi
+          echo "Verified: the bundle points at ${{ steps.backend.outputs.url }}"
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4
