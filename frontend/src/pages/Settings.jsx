@@ -4,14 +4,21 @@ import jellyfin, {
   disconnect,
   getConfig
 } from '../services/providers/jellyfin';
+import ExtensionManager from '../components/ExtensionManager';
 import '../styles/Pages.css';
 
 /**
- * Connects the app to a Jellyfin server.
+ * Sources the app can play from.
  *
- * Credentials are exchanged for an access token once; the password is never
- * stored. The token lives in localStorage on the device, which is the same
- * place every Jellyfin web client keeps it.
+ * Two kinds live here. Jellyfin is a built-in the user configures with
+ * credentials; extensions are installed from a repository and run on the
+ * Animiru server. Both end up as providers the rest of the app cannot tell
+ * apart.
+ *
+ * Neither kind sends anything to us. Jellyfin credentials are exchanged for
+ * an access token once and the password is never stored; installed
+ * extensions are recorded on the device. Both live in localStorage, which is
+ * where every Jellyfin web client keeps its token anyway.
  */
 export default function Settings() {
   const [server, setServer] = useState('');
@@ -116,6 +123,11 @@ export default function Settings() {
             </p>
           </>
         )}
+      </section>
+
+      <section className="settings-section">
+        <h2>Extensions</h2>
+        <ExtensionManager />
       </section>
 
       <section className="settings-section">
