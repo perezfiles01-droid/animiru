@@ -1,0 +1,178 @@
+/**
+ * Extension manager.
+ *
+ * A source list is dense and repetitive, so the row is the unit of design:
+ * icon, identity, and the one action that applies to it. Everything else -
+ * skipped entries, long URLs - is present but subordinate, because a
+ * repository with forty sources should read as a list, not a wall.
+ */
+
+.extensions-add {
+  margin-bottom: 24px;
+}
+
+.extensions-empty,
+.extensions-status {
+  color: var(--text-muted);
+  padding: 12px 0;
+}
+
+.extensions-error {
+  background-color: rgba(233, 69, 96, 0.12);
+  border: 1px solid var(--highlight);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.extensions-repo {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.extensions-repo-header {
+  align-items: center;
+  background-color: var(--secondary);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 12px 16px;
+}
+
+/* A raw GitHub URL is long enough to push the actions off a phone screen. */
+.extensions-repo-url {
+  color: var(--text-muted);
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extensions-repo-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 8px;
+}
+
+.btn-link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.btn-link.btn-danger:hover {
+  color: var(--highlight);
+}
+
+.btn-small {
+  font-size: 13px;
+  padding: 6px 14px;
+}
+
+.extensions-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.extensions-item {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+}
+
+.extensions-icon {
+  border-radius: 4px;
+  flex-shrink: 0;
+  height: 32px;
+  object-fit: cover;
+  width: 32px;
+}
+
+.extensions-item-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.extensions-name {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.extensions-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.extensions-tag {
+  background-color: var(--accent);
+  border-radius: 3px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  text-transform: uppercase;
+}
+
+.extensions-item-actions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.extensions-toggle {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: 13px;
+  gap: 6px;
+}
+
+.extensions-skipped {
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 12px 16px;
+}
+
+.extensions-skipped summary {
+  cursor: pointer;
+}
+
+.extensions-skipped ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+@media (max-width: 600px) {
+  /* Stacking keeps the action button full width and thumb-reachable
+     rather than squeezed against a truncated name. */
+  .extensions-item {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .extensions-item-actions {
+    justify-content: space-between;
+    width: 100%;
+  }
+}
