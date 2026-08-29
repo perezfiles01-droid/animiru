@@ -182,7 +182,7 @@ export default function ExtensionManager() {
                         {source.name}
                         {source.isNsfw && <span className="extensions-tag">18+</span>}
                         {!source.isMetadataCapable && (
-                          <span className="extensions-tag" title="Plays episodes for titles found on AniList, but has no catalogue to browse">
+                          <span className="extensions-tag" title="Can be searched, but has no front page to browse">
                             video only
                           </span>
                         )}

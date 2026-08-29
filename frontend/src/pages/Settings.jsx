@@ -19,18 +19,6 @@ export default function Settings() {
         <h2>Extensions</h2>
         <ExtensionManager />
       </section>
-
-      <section className="settings-section">
-        <h2>Sources</h2>
-        <ul className="settings-sources">
-          <li>
-            <strong>AniList</strong>
-            <span className="settings-source-state">
-              Always on &mdash; metadata and discovery
-            </span>
-          </li>
-        </ul>
-      </section>
     </div>
   );
 }
