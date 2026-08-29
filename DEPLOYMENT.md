@@ -28,7 +28,9 @@ Set these environment variables on the host:
 | Variable       | Needed for                                          |
 | -------------- | --------------------------------------------------- |
 | `FRONTEND_URL` | The web app's origin, so CORS admits it. The Android app is allowed automatically. |
-| `JWT_SECRET`   | Auth routes. Any long random string.                 |
+
+There is nothing else to configure: the server holds no accounts and no
+per-user data. It fetches repositories, runs sources, caches, and forgets.
 
 Confirm it is up:
 

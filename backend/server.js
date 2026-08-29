@@ -51,10 +51,6 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // Routes
-app.use('/api/anime', require('./routes/anime'));
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/user', require('./routes/user'));
-app.use('/api/watchlist', require('./routes/watchlist'));
 app.use('/api/extensions', require('./routes/extensions'));
 app.use('/api/health', require('./routes/health'));
 

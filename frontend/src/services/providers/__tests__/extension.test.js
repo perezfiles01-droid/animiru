@@ -205,31 +205,4 @@ describe('extension provider', () => {
       expect(await provider.getStreams('/e/1')).toEqual({ options: [] });
     });
   });
-
-  describe('resolveByTitle', () => {
-    it('picks a confident match and reports it as such', async () => {
-      resolves({ list: [
-        { name: 'Naruto Shippuden', link: '/a/1' },
-        { name: 'Bleach', link: '/a/2' }
-      ] });
-
-      const match = await provider.resolveByTitle(['Bleach', 'BLEACH']);
-      expect(match.best.id).toBe('/a/2');
-      expect(match.confident).toBe(true);
-    });
-
-    it('reports a weak match rather than using it silently', async () => {
-      resolves({ list: [{ name: 'Something Entirely Different', link: '/a/1' }] });
-
-      const match = await provider.resolveByTitle(['Bleach']);
-      expect(match.confident).toBe(false);
-      expect(match.ranked).toHaveLength(1);
-    });
-
-    it('does not search when there is no title to search for', async () => {
-      const match = await provider.resolveByTitle([]);
-      expect(match).toEqual({ best: null, score: 0, confident: false, ranked: [] });
-      expect(runSource).not.toHaveBeenCalled();
-    });
-  });
 });

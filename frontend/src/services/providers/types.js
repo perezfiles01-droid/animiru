@@ -46,7 +46,7 @@
  * @typedef {Object} StreamOption
  * @property {string}  label     shown in the quality menu, e.g. "1080p"
  * @property {string}  url       playable URL
- * @property {string}  type      "hls" | "mp4" | "youtube"
+ * @property {string}  type      "hls" | "mp4"
  * @property {number}  [height]
  */
 

@@ -6,19 +6,14 @@
  * label. The rest of the app speaks the contract in ./types.js and must not
  * learn otherwise. Everything in this file is that translation.
  *
- * Two kinds of source come through here:
- *
- *   - Metadata-capable ones carry their own catalogue and can be browsed
- *     directly, so they answer search() and getLibrary() themselves.
- *   - The rest only answer for a title we already know from AniList, so
- *     they are matched by name first. That guess is exposed rather than
- *     hidden - see resolveByTitle - because it is sometimes wrong.
+ * A source that declares no catalogue of its own still answers search();
+ * it simply has no front page to browse, so getLibrary() returns nothing
+ * and the app does not offer it as somewhere to browse.
  */
 
 import { CAPABILITIES } from './types';
 import { runSource } from '../extensions/client';
 import { getPreferences } from '../extensions/storage';
-import { rankCandidates } from './titleMatch';
 
 /**
  * Pulls an episode or season number out of a title.
@@ -202,24 +197,6 @@ export function createExtensionProvider(source) {
     return { options };
   }
 
-  /**
-   * Finds this source's entry for a show AniList told us about.
-   *
-   * Returns the ranked candidates alongside the pick, so the UI can show
-   * what was chosen and let the user correct it. Nothing here decides
-   * silently on the user's behalf.
-   *
-   * @param {string[]} titles the names AniList has for the show
-   */
-  async function resolveByTitle(titles) {
-    const names = (Array.isArray(titles) ? titles : [titles]).filter(Boolean);
-    if (names.length === 0) return { best: null, score: 0, confident: false, ranked: [] };
-
-    // The first title is the one most likely to be indexed by a scraper.
-    const candidates = await search(names[0], 1);
-    return rankCandidates(names, candidates);
-  }
-
   const capabilities = [CAPABILITIES.SEARCH, CAPABILITIES.PLAYBACK];
   if (source.isMetadataCapable) capabilities.push(CAPABILITIES.LIBRARY);
   // Whether a given episode really offers tiers is only known once
@@ -241,8 +218,7 @@ export function createExtensionProvider(source) {
     getLibrary,
     getItem,
     getEpisodes,
-    getStreams,
-    resolveByTitle
+    getStreams
   };
 }
 
