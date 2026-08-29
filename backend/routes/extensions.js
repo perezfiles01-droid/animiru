@@ -17,6 +17,7 @@ const router = express.Router();
 
 const repository = require('./../extensions/repository');
 const { runExtension, ExtensionError, CALLABLE_METHODS } = require('./../extensions');
+const publish = require('./../extensions/publish');
 
 /**
  * Running an extension means making outbound requests on a caller's behalf,
@@ -132,6 +133,38 @@ router.post('/run', async (req, res, next) => {
     }
     return next(err);
   }
+});
+
+/**
+ * Publish a source to the official repository.
+ *
+ * The server holds the token, so a publish is us vouching for the content -
+ * which is why this is the one extension route behind an author check.
+ *
+ * POST /api/extensions/publish  { fileName, code }
+ */
+router.post('/publish', async (req, res, next) => {
+  const { fileName, code } = req.body || {};
+
+  try {
+    const { email } = publish.authorize(req);
+    const result = await publish.publishSource({ fileName, code, email });
+    return res.status(result.created ? 201 : 200).json(result);
+  } catch (err) {
+    if (err instanceof publish.PublishError) {
+      return fail(res, err.status, err.message);
+    }
+    return next(err);
+  }
+});
+
+/**
+ * Whether this server can publish at all, so the maker can hide the button
+ * rather than offering one that always fails.
+ * GET /api/extensions/publish
+ */
+router.get('/publish', (req, res) => {
+  res.json({ configured: publish.isConfigured() });
 });
 
 /**

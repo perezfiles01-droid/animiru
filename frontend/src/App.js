@@ -8,6 +8,7 @@ import Watch from './pages/Watch';
 import Library from './pages/Library';
 import LibraryDetail from './pages/LibraryDetail';
 import Settings from './pages/Settings';
+import ExtensionMaker from './pages/ExtensionMaker';
 import Profile from './pages/Profile';
 import { useAuth } from './hooks/useAuth';
 import './styles/App.css';
@@ -33,6 +34,7 @@ function App() {
             <Route path="/library" element={<Library />} />
             <Route path="/library/:id" element={<LibraryDetail />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/extensions/new" element={<ExtensionMaker />} />
             {user && <Route path="/profile" element={<Profile user={user} />} />}
           </Routes>
         </main>

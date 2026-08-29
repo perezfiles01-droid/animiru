@@ -5,13 +5,17 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import ExtensionManager from '../ExtensionManager';
 import { fetchRepository } from '../../services/extensions/client';
 import * as storage from '../../services/extensions/storage';
 
 jest.mock('../../services/extensions/client', () => ({ fetchRepository: jest.fn() }));
+
+/** The manager links to the maker, so it needs a router around it. */
+const render = (ui) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
 
 const REPO = 'https://repo.test/index.json';
 

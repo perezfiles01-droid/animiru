@@ -76,3 +76,30 @@ export async function fetchCallableMethods() {
   const { data } = await api.get('/extensions/methods');
   return data.methods;
 }
+
+/**
+ * Publishes a source to the official repository.
+ *
+ * @param {Object} options
+ * @param {string} options.fileName e.g. "example.js"
+ * @param {string} options.code
+ * @returns {Promise<{path:string, entry:Object, created:boolean}>}
+ */
+export async function publishSource({ fileName, code }) {
+  try {
+    const { data } = await api.post('/extensions/publish', { fileName, code });
+    return data;
+  } catch (err) {
+    return describe(err, 'Could not publish the source');
+  }
+}
+
+/** Whether the server can publish at all, so the maker can hide the button. */
+export async function canPublish() {
+  try {
+    const { data } = await api.get('/extensions/publish');
+    return Boolean(data.configured);
+  } catch (err) {
+    return false;
+  }
+}
