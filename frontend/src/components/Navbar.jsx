@@ -17,7 +17,6 @@ export default function Navbar({ user, onLogout }) {
         <SearchBar />
 
         <div className="nav-menu">
-          <Link to="/browse" className="nav-link">Browse</Link>
           <Link to="/settings" className="nav-link">Settings</Link>
 
           {user ? (
@@ -47,7 +46,6 @@ export default function Navbar({ user, onLogout }) {
 
       {isMenuOpen && (
         <div className="mobile-menu">
-          <Link to="/browse" className="mobile-link" onClick={() => setIsMenuOpen(false)}>Browse</Link>
           <Link to="/settings" className="mobile-link" onClick={() => setIsMenuOpen(false)}>Settings</Link>
           {user && (
             <Link to="/profile" className="mobile-link" onClick={() => setIsMenuOpen(false)}>

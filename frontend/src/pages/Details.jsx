@@ -1,122 +1,133 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import api from '../services/api';
-import { getAnimeById } from '../services/anilist';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { getProvider } from '../services/providers/registry';
 import '../styles/Pages.css';
 
+/**
+ * One title, as the source describes it.
+ *
+ * Ids from a source are its own links, which contain slashes and query
+ * strings, so they travel as search params rather than path segments - a
+ * path would need escaping the router would then undo.
+ *
+ * A scraper's detail page is thinner than a metadata API's. Synopsis and
+ * genres are shown when present and simply absent when not, rather than
+ * rendered as empty headings.
+ */
 export default function Details() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const [anime, setAnime] = useState(null);
+  const [searchParams] = useSearchParams();
+  const sourceId = searchParams.get('source');
+  const itemId = searchParams.get('id');
+
+  const provider = useMemo(() => getProvider(sourceId), [sourceId]);
+
+  const [item, setItem] = useState(null);
+  const [episodes, setEpisodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [inWatchlist, setInWatchlist] = useState(false);
 
   useEffect(() => {
-    const fetchAnime = async () => {
+    if (!provider || !itemId) {
+      setError(
+        provider
+          ? 'No title was specified.'
+          : 'That source is not installed any more.'
+      );
+      setLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+
       try {
-        setAnime(await getAnimeById(id));
+        // Both come from one getDetail call inside the provider, so asking
+        // together costs one request rather than two.
+        const [detail, list] = await Promise.all([
+          provider.getItem(itemId),
+          provider.getEpisodes(itemId)
+        ]);
+        if (cancelled) return;
+
+        setItem(detail);
+        setEpisodes(list);
       } catch (err) {
-        setError(err.message);
+        if (!cancelled) setError(err.message);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    fetchAnime();
-  }, [id]);
-
-  // Unlike browsing, the watchlist is stored server-side, so this still needs
-  // the backend deployed and reachable.
-  const handleAddToWatchlist = async () => {
-    try {
-      await api.post('/watchlist', {
-        animeId: parseInt(id, 10),
-        status: 'PLANNING'
-      });
-      setInWatchlist(true);
-      alert('Added to watchlist!');
-    } catch (err) {
-      const unreachable = !err.response;
-      alert(
-        unreachable
-          ? 'Watchlist needs the Animiru backend, which is not reachable right now. Browsing and search still work.'
-          : `Could not add to watchlist: ${err.message}`
-      );
-    }
-  };
-
-  const handleWatchNow = () => {
-    navigate(`/watch/${id}`);
-  };
+    load();
+    return () => { cancelled = true; };
+  }, [provider, itemId]);
 
   if (loading) return <div className="loader">Loading...</div>;
-  if (error) return <div className="error">Error: {error}</div>;
-  if (!anime) return <div className="error">Anime not found</div>;
+  if (error) return <div className="error">{error}</div>;
+  if (!item) return <div className="error">Nothing found.</div>;
+
+  const watchHref = (episode) =>
+    `/watch?source=${encodeURIComponent(sourceId)}`
+    + `&id=${encodeURIComponent(itemId)}`
+    + `&ep=${encodeURIComponent(episode.id)}`;
 
   return (
     <div className="details-page">
-      <div className="details-header" style={{
-        backgroundImage: `url(${anime.bannerImage})`
-      }}>
-        <div className="details-overlay"></div>
-      </div>
-
       <div className="details-content">
-        <div className="details-poster">
-          <img
-            src={anime.coverImage?.large}
-            alt={anime.title?.romaji}
-            className="poster-image"
-          />
-        </div>
+        {item.poster && (
+          <div className="details-poster">
+            <img src={item.poster} alt={item.title} className="poster-image" />
+          </div>
+        )}
 
         <div className="details-info">
-          <h1>{anime.title?.romaji || anime.title?.english}</h1>
+          <h1>{item.title}</h1>
+          <p className="details-source">{provider.name}</p>
 
-          <div className="details-meta">
-            <span className="meta-item">⭐ {anime.meanScore}/100</span>
-            <span className="meta-item">📺 {anime.episodes || '?'} episodes</span>
-            <span className="meta-item">⏱ {anime.duration}min/ep</span>
-            <span className="meta-item">
-              {anime.status === 'FINISHED' ? '✓ Finished' : '▶ Airing'}
-            </span>
-          </div>
-
-          {anime.genres && (
+          {item.genres && item.genres.length > 0 && (
             <div className="details-genres">
-              {anime.genres.map((genre) => (
+              {item.genres.map((genre) => (
                 <span key={genre} className="genre-badge">{genre}</span>
               ))}
             </div>
           )}
 
-          <div className="details-description">
-            <h3>Synopsis</h3>
-            <p>{anime.description?.replace(/<[^>]*>/g, '') || 'No description available'}</p>
-          </div>
-
-          <div className="details-actions">
-            <button onClick={handleWatchNow} className="btn btn-primary">
-              ▶ Watch Now
-            </button>
-            <button
-              onClick={handleAddToWatchlist}
-              disabled={inWatchlist}
-              className="btn btn-secondary"
-            >
-              {inWatchlist ? '✓ In Watchlist' : '+ Add to Watchlist'}
-            </button>
-          </div>
-
-          {anime.studios && anime.studios.nodes && (
-            <div className="details-studios">
-              <h3>Studios</h3>
-              <p>{anime.studios.nodes.map(s => s.name).join(', ')}</p>
+          {item.overview && (
+            <div className="details-description">
+              <h3>Synopsis</h3>
+              <p>{item.overview.replace(/<[^>]*>/g, '')}</p>
             </div>
+          )}
+
+          {episodes.length > 0 ? (
+            <div className="details-actions">
+              <Link to={watchHref(episodes[0])} className="btn btn-primary">
+                ▶ Watch {episodes[0].title}
+              </Link>
+            </div>
+          ) : (
+            <p className="extensions-empty">
+              This source listed no episodes for this title.
+            </p>
           )}
         </div>
       </div>
+
+      {episodes.length > 0 && (
+        <section className="episode-list">
+          <h3>{episodes.length} episodes</h3>
+          <div className="ext-episodes">
+            {episodes.map((episode) => (
+              <Link key={episode.id} to={watchHref(episode)} className="ext-episode">
+                {episode.title}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

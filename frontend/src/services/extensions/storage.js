@@ -12,6 +12,7 @@
 const REPOS_KEY = 'animiru.extensions.repos';
 const SOURCES_KEY = 'animiru.extensions.sources';
 const PREFS_KEY = 'animiru.extensions.preferences';
+const SELECTED_KEY = 'animiru.extensions.selected';
 
 /**
  * localStorage throws rather than returning null in a private window, in an
@@ -113,6 +114,10 @@ export function uninstallSource(key) {
   const sources = getInstalledSources().filter((source) => source.key !== key);
   write(SOURCES_KEY, sources);
 
+  // Leaving a selection pointing at a source that is gone would open the app
+  // on an empty screen with no obvious cause.
+  if (read(SELECTED_KEY, null) === key) write(SELECTED_KEY, null);
+
   const prefs = readAllPreferences();
   if (prefs[key]) {
     delete prefs[key];
@@ -153,11 +158,28 @@ export function setPreferences(key, preferences) {
   return all[key];
 }
 
+/**
+ * The source the user is currently browsing.
+ *
+ * Remembered so opening the app returns you to the source you were using,
+ * rather than to whichever happens to be first in the install list.
+ */
+export function getSelectedSourceKey() {
+  const key = read(SELECTED_KEY, null);
+  return typeof key === 'string' ? key : null;
+}
+
+export function setSelectedSourceKey(key) {
+  write(SELECTED_KEY, key);
+  return key;
+}
+
 /** Drops everything this module owns. Used by the settings "reset" action. */
 export function clearAll() {
   write(REPOS_KEY, []);
   write(SOURCES_KEY, []);
   write(PREFS_KEY, {});
+  write(SELECTED_KEY, null);
 }
 
-export const STORAGE_KEYS = { REPOS_KEY, SOURCES_KEY, PREFS_KEY };
+export const STORAGE_KEYS = { REPOS_KEY, SOURCES_KEY, PREFS_KEY, SELECTED_KEY };
