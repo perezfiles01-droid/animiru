@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Internet Archive",
+    "id": 1001,
+    "lang": "en",
+    "baseUrl": "https://archive.org",
+    "apiUrl": "https://archive.org",
+    "iconUrl": "https://archive.org/images/glogo.jpg",
+    "version": "1.0.0",
+    "itemType": 1,
+    "isNsfw": false,
+    "hasCloudflare": false,
+    "isMetadataCapable": true,
+    "pkgPath": "sources/archive-org.js"
+  }
+]
