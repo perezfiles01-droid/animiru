@@ -46,8 +46,8 @@ export async function fetchSource(codeUrl, { version, refresh } = {}) {
 /**
  * Runs one method of one source.
  *
- * Pass `codeUrl` for an installed source, or `code` to run an edit that has
- * not been published - which is what the maker's test panel does.
+ * Pass `codeUrl` for an installed source, or `code` to run source text
+ * directly.
  *
  * @returns {Promise<{result:*, logs:Object[], requests:Object[], durationMs:number}>}
  */
@@ -71,35 +71,8 @@ export async function runSource({ codeUrl, code, version, method, args, source, 
   }
 }
 
-/** The method names the backend will accept, for the maker's test panel. */
+/** The method names the backend will accept. */
 export async function fetchCallableMethods() {
   const { data } = await api.get('/extensions/methods');
   return data.methods;
-}
-
-/**
- * Publishes a source to the official repository.
- *
- * @param {Object} options
- * @param {string} options.fileName e.g. "example.js"
- * @param {string} options.code
- * @returns {Promise<{path:string, entry:Object, created:boolean}>}
- */
-export async function publishSource({ fileName, code }) {
-  try {
-    const { data } = await api.post('/extensions/publish', { fileName, code });
-    return data;
-  } catch (err) {
-    return describe(err, 'Could not publish the source');
-  }
-}
-
-/** Whether the server can publish at all, so the maker can hide the button. */
-export async function canPublish() {
-  try {
-    const { data } = await api.get('/extensions/publish');
-    return Boolean(data.configured);
-  } catch (err) {
-    return false;
-  }
 }

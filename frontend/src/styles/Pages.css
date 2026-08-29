@@ -636,3 +636,76 @@
     gap: 4px;
   }
 }
+
+/**
+ * Extension-driven browsing.
+ *
+ * The catalogue is whatever a scraper returned, so the layout has to look
+ * right with a poster and without one, and with titles that run long.
+ */
+
+.home-search {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 24px;
+}
+
+.home-search input {
+  background-color: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  flex: 1;
+  font-size: 15px;
+  min-width: 0;
+  padding: 10px 14px;
+}
+
+.home-search input:focus {
+  border-color: var(--highlight);
+  outline: none;
+}
+
+.catalogue h2 {
+  margin-bottom: 16px;
+}
+
+.load-more {
+  display: block;
+  margin: 24px auto 0;
+}
+
+.empty-state {
+  margin: 0 auto;
+  max-width: 480px;
+  padding: 64px 20px;
+  text-align: center;
+}
+
+.empty-state p {
+  color: var(--text-muted);
+  margin: 12px 0 24px;
+}
+
+/* Cards whose poster failed or never existed keep the grid aligned. */
+.card-image-empty {
+  align-items: center;
+  background-color: var(--secondary);
+  display: flex;
+  justify-content: center;
+}
+
+.details-source {
+  color: var(--text-muted);
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.watch-error {
+  padding: 24px 0;
+  text-align: center;
+}
+
+.watch-error .btn {
+  margin-top: 12px;
+}

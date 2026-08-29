@@ -1,11 +1,16 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import SearchBar from './SearchBar';
 import '../styles/Navbar.css';
 
-export default function Navbar({ user, onLogout }) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-
+/**
+ * Two destinations, which is all there is: what you are watching, and where
+ * sources come from.
+ *
+ * No account area. Nothing in the app is per-user any more - installed
+ * sources live on the device - so a login would guard nothing.
+ */
+export default function Navbar() {
   return (
     <nav className="navbar">
       <div className="navbar-container">
@@ -17,47 +22,9 @@ export default function Navbar({ user, onLogout }) {
         <SearchBar />
 
         <div className="nav-menu">
-          <Link to="/browse" className="nav-link">Browse</Link>
-          <Link to="/library" className="nav-link">Library</Link>
           <Link to="/settings" className="nav-link">Settings</Link>
-
-          {user ? (
-            <div className="user-menu">
-              <Link to="/profile" className="nav-link user-name">
-                {user.username}
-              </Link>
-              <button className="logout-btn" onClick={onLogout}>
-                Logout
-              </button>
-            </div>
-          ) : (
-            <div className="auth-buttons">
-              <Link to="/login" className="login-btn">Login</Link>
-              <Link to="/register" className="register-btn">Sign Up</Link>
-            </div>
-          )}
         </div>
-
-        <button
-          className="menu-toggle"
-          onClick={() => setIsMenuOpen(!isMenuOpen)}
-        >
-          ☰
-        </button>
       </div>
-
-      {isMenuOpen && (
-        <div className="mobile-menu">
-          <Link to="/browse" className="mobile-link" onClick={() => setIsMenuOpen(false)}>Browse</Link>
-          <Link to="/library" className="mobile-link" onClick={() => setIsMenuOpen(false)}>Library</Link>
-          <Link to="/settings" className="mobile-link" onClick={() => setIsMenuOpen(false)}>Settings</Link>
-          {user && (
-            <Link to="/profile" className="mobile-link" onClick={() => setIsMenuOpen(false)}>
-              {user.username}
-            </Link>
-          )}
-        </div>
-      )}
     </nav>
   );
 }

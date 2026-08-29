@@ -2,24 +2,19 @@
  * Every provider the app can currently use.
  *
  * Pages ask here rather than importing a provider directly, so that adding a
- * source is installing an extension rather than editing a page. Jellyfin
- * stays a built-in because it is configured, not installed.
+ * source is installing an extension rather than editing a page. There are no
+ * built-ins left: everything the app can play is something the user
+ * installed.
  */
 
-import jellyfin from './jellyfin';
 import { createExtensionProvider } from './extension';
 import { getEnabledSources } from '../extensions/storage';
 
-/** Providers built into the app, in the order they should be offered. */
-const BUILT_IN = [jellyfin];
-
 /**
- * @returns {Object[]} configured built-ins plus every enabled extension
+ * @returns {Object[]} every enabled extension, in install order
  */
 export function getProviders() {
-  const builtIn = BUILT_IN.filter((provider) => provider.isConfigured());
-  const extensions = getEnabledSources().map(createExtensionProvider);
-  return [...builtIn, ...extensions];
+  return getEnabledSources().map(createExtensionProvider);
 }
 
 export function getProvider(id) {

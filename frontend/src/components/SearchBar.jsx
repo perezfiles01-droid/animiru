@@ -9,7 +9,7 @@ export default function SearchBar() {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (query.trim()) {
-      navigate(`/browse?q=${encodeURIComponent(query)}`);
+      navigate(`/?q=${encodeURIComponent(query)}`);
       setQuery('');
     }
   };

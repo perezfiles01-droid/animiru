@@ -17,7 +17,6 @@ const router = express.Router();
 
 const repository = require('./../extensions/repository');
 const { runExtension, ExtensionError, CALLABLE_METHODS } = require('./../extensions');
-const publish = require('./../extensions/publish');
 
 /**
  * Running an extension means making outbound requests on a caller's behalf,
@@ -80,8 +79,7 @@ router.post('/source', async (req, res, next) => {
 /**
  * Run one method of one source.
  *
- * The caller supplies either a codeUrl to fetch, or code directly - the
- * latter is how the maker tests an edit that has not been published yet.
+ * The caller supplies either a codeUrl to fetch, or code directly.
  *
  * POST /api/extensions/run
  *   { codeUrl | code, version, method, args, source, preferences }
@@ -136,40 +134,8 @@ router.post('/run', async (req, res, next) => {
 });
 
 /**
- * Publish a source to the official repository.
- *
- * The server holds the token, so a publish is us vouching for the content -
- * which is why this is the one extension route behind an author check.
- *
- * POST /api/extensions/publish  { fileName, code }
- */
-router.post('/publish', async (req, res, next) => {
-  const { fileName, code } = req.body || {};
-
-  try {
-    const { email } = publish.authorize(req);
-    const result = await publish.publishSource({ fileName, code, email });
-    return res.status(result.created ? 201 : 200).json(result);
-  } catch (err) {
-    if (err instanceof publish.PublishError) {
-      return fail(res, err.status, err.message);
-    }
-    return next(err);
-  }
-});
-
-/**
- * Whether this server can publish at all, so the maker can hide the button
- * rather than offering one that always fails.
- * GET /api/extensions/publish
- */
-router.get('/publish', (req, res) => {
-  res.json({ configured: publish.isConfigured() });
-});
-
-/**
- * The methods a source may expose, so the maker's test panel and the client
- * do not each keep their own copy of the list.
+ * The methods a source may expose, so the client does not keep its own copy
+ * of the list.
  * GET /api/extensions/methods
  */
 router.get('/methods', (req, res) => {

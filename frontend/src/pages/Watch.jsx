@@ -1,64 +1,73 @@
-import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import YouTubePlayer from '../components/YouTubePlayer';
-import ExtensionSources from '../components/ExtensionSources';
-import { getAnimeById } from '../services/anilist';
-import {
-  LICENSED_CHANNELS,
-  canSearchEpisodes,
-  channelSearchUrl,
-  findLicensedEpisodes,
-  trailerVideoId
-} from '../services/youtube';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import VideoPlayer from '../components/VideoPlayer';
+import { getProvider } from '../services/providers/registry';
 import '../styles/Pages.css';
 
 /**
- * Plays an episode, from a licensed YouTube channel or an installed source.
+ * Plays one episode from the source it came from.
  *
- * This page previously pointed a custom player at
- * https://stream.example.com/... - a placeholder host that never existed, so
- * nothing ever played. AniList supplies metadata only, so the video has to
- * come from somewhere else: a licensed distributor by default, or an
- * extension the user installed themselves.
+ * Two calls, deliberately separate: the episode list so you can move between
+ * episodes without going back, and the video for the one you are watching.
+ * Resolving a video is the slow part - a source usually has to load the
+ * episode page and then an embedded host - so the list appears first and
+ * playback follows.
  */
 export default function Watch() {
-  const { id } = useParams();
-  const [anime, setAnime] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sourceId = searchParams.get('source');
+  const itemId = searchParams.get('id');
+  const episodeId = searchParams.get('ep');
+
+  const provider = useMemo(() => getProvider(sourceId), [sourceId]);
+
   const [episodes, setEpisodes] = useState([]);
-  const [selected, setSelected] = useState(null);
+  const [streams, setStreams] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const episode = episodes.find((candidate) => candidate.id === episodeId) || null;
+
   useEffect(() => {
+    if (!provider || !itemId) return undefined;
+
+    let cancelled = false;
+    provider.getEpisodes(itemId)
+      .then((list) => { if (!cancelled) setEpisodes(list); })
+      // The list is a convenience; failing to load it must not stop the
+      // episode the user actually asked for from playing.
+      .catch(() => {});
+
+    return () => { cancelled = true; };
+  }, [provider, itemId]);
+
+  useEffect(() => {
+    if (!provider || !episodeId) {
+      setError(
+        provider
+          ? 'No episode was specified.'
+          : 'That source is not installed any more.'
+      );
+      setLoading(false);
+      return undefined;
+    }
+
     let cancelled = false;
 
     const load = async () => {
+      setLoading(true);
+      setError(null);
+      setStreams(null);
+
       try {
-        setLoading(true);
-        setError(null);
-
-        const media = await getAnimeById(id);
+        const found = await provider.getStreams(episodeId);
         if (cancelled) return;
-        setAnime(media);
 
-        const title = media.title?.romaji || media.title?.english || '';
-
-        // Only reachable when a YouTube Data API key is configured; without
-        // one this resolves to [] and the trailer is used instead.
-        let found = [];
-        try {
-          found = await findLicensedEpisodes(title);
-        } catch (err) {
-          found = []; // episode lookup is a bonus, never a hard failure
+        if (!found.options || found.options.length === 0) {
+          setError('This source found no video for that episode.');
+        } else {
+          setStreams(found);
         }
-        if (cancelled) return;
-
-        setEpisodes(found);
-        setSelected(
-          found.length > 0
-            ? { videoId: found[0].videoId, title: found[0].title, kind: 'episode' }
-            : resolveTrailer(media)
-        );
       } catch (err) {
         if (!cancelled) setError(err.message);
       } finally {
@@ -67,96 +76,54 @@ export default function Watch() {
     };
 
     load();
-    return () => {
-      cancelled = true;
-    };
-  }, [id]);
+    return () => { cancelled = true; };
+  }, [provider, episodeId]);
 
-  if (loading) return <div className="loader">Loading...</div>;
-  if (error) return <div className="error">Error: {error}</div>;
-  if (!anime) return <div className="error">Anime not found</div>;
+  const title = episode ? episode.title : 'Episode';
 
-  const title = anime.title?.romaji || anime.title?.english || 'This anime';
+  const select = (chosen) => {
+    setSearchParams({ source: sourceId, id: itemId, ep: chosen.id });
+  };
 
   return (
     <div className="watch-page">
-      <YouTubePlayer
-        videoId={selected?.videoId}
-        title={selected?.title || title}
-        label={
-          selected?.kind === 'trailer'
-            ? 'Trailer. Full episodes are on the licensed channels below.'
-            : selected?.title
-        }
-      />
+      {streams && <VideoPlayer streams={streams} title={title} />}
+
+      {loading && <div className="loader">Finding video...</div>}
+
+      {error && (
+        <div className="watch-error">
+          <p className="extensions-error">{error}</p>
+          {itemId && sourceId && (
+            <Link
+              to={`/anime?source=${encodeURIComponent(sourceId)}&id=${encodeURIComponent(itemId)}`}
+              className="btn btn-secondary"
+            >
+              Back to episodes
+            </Link>
+          )}
+        </div>
+      )}
 
       <div className="watch-info">
         <h2>{title}</h2>
+        {provider && <p className="details-source">{provider.name}</p>}
 
         {episodes.length > 0 && (
-          <div className="episode-list">
-            <h3>Episodes on licensed channels</h3>
-            <div className="yt-episode-list">
-              {episodes.map((ep) => (
-                <button
-                  key={ep.videoId}
-                  className={`yt-episode-btn ${
-                    selected?.videoId === ep.videoId ? 'active' : ''
-                  }`}
-                  onClick={() =>
-                    setSelected({
-                      videoId: ep.videoId,
-                      title: ep.title,
-                      kind: 'episode'
-                    })
-                  }
-                >
-                  {ep.title}
-                  <span className="yt-source-region">{ep.channel}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <ExtensionSources
-          titles={[anime.title?.romaji, anime.title?.english, anime.title?.native]}
-          poster={anime.coverImage?.large}
-        />
-
-        <div className="yt-sources">
-          <h3>Where to watch full episodes</h3>
-          <p>
-            {canSearchEpisodes()
-              ? 'These distributors licence the anime they upload, and stream free on YouTube at up to 1080p.'
-              : 'Automatic episode lookup is off because no YouTube API key is configured, so only the trailer plays here. These distributors licence the anime they upload and stream free on YouTube at up to 1080p.'}
-          </p>
-          <div className="yt-source-list">
-            {LICENSED_CHANNELS.map((channel) => (
-              <a
-                key={channel.name}
-                className="yt-source-link"
-                href={channelSearchUrl(channel, title)}
-                target="_blank"
-                rel="noopener noreferrer"
+          <div className="ext-episodes">
+            {episodes.map((candidate) => (
+              <button
+                key={candidate.id}
+                type="button"
+                className={`ext-episode ${candidate.id === episodeId ? 'active' : ''}`}
+                onClick={() => select(candidate)}
               >
-                {channel.name}
-                <span className="yt-source-region">{channel.regions}</span>
-              </a>
+                {candidate.title}
+              </button>
             ))}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
-}
-
-function resolveTrailer(media) {
-  const videoId = trailerVideoId(media);
-  if (!videoId) return null;
-  return {
-    videoId,
-    title: `${media.title?.romaji || 'Anime'} trailer`,
-    kind: 'trailer'
-  };
 }

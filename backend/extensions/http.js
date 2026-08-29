@@ -140,8 +140,8 @@ function parseTarget(url) {
  * @param {Object} [options.headers]
  * @param {string} [options.body]
  * @param {number} [options.timeoutMs]
- * @param {Function} [options.onRequest] called with each hop, for the maker's
- *   request log
+ * @param {Function} [options.onRequest] called with each hop, for the
+ *   per-request trace returned alongside a run
  * @returns {Promise<{statusCode:number, body:string, headers:Object, url:string}>}
  */
 async function request(options = {}) {

@@ -7,12 +7,12 @@ import '../styles/VideoPlayer.css';
  *
  * The selector switches between distinct stream URLs supplied by the
  * provider, rather than trying to steer the player. That is what makes it
- * real here: Jellyfin transcodes per URL, so picking "720p" genuinely
- * requests a 720p encode. An earlier version of this component rendered the
+ * real: a source returns a separate URL per quality, so picking "720p"
+ * plays a different file. An earlier version of this component rendered the
  * same dropdown over a single source and changed nothing at all.
  *
- * Only rendered for providers advertising QUALITY_SELECTION; sources that
- * cannot honour a tier get no control.
+ * A source that returns one option gets no control, since there would be
+ * nothing to switch between.
  */
 export default function VideoPlayer({ streams, title, poster }) {
   const videoRef = useRef(null);

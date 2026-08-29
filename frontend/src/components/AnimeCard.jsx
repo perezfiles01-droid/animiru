@@ -2,35 +2,36 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import '../styles/AnimeCard.css';
 
-export default function AnimeCard({ anime }) {
+/**
+ * One entry in a source's catalogue.
+ *
+ * Takes the provider contract's CatalogItem, so every source renders the
+ * same way. A scraper knows a title and usually a poster; it rarely knows a
+ * score, an episode count or an airing status, so nothing here invents one -
+ * an empty overlay is better than "⭐ undefined/100".
+ */
+export default function AnimeCard({ item }) {
+  const href = `/anime?source=${encodeURIComponent(item.providerId)}`
+    + `&id=${encodeURIComponent(item.id)}`;
+
   return (
-    <Link to={`/anime/${anime.id}`} className="anime-card">
+    <Link to={href} className="anime-card">
       <div className="card-image-container">
-        <img
-          src={anime.coverImage?.large || 'https://via.placeholder.com/225x320'}
-          alt={anime.title?.romaji || anime.title?.english}
-          className="card-image"
-          loading="lazy"
-        />
-        <div className="card-overlay">
-          <div className="card-rating">⭐ {anime.meanScore}/100</div>
-          <div className="card-episodes">
-            📺 {anime.episodes || '?'} eps
-          </div>
-        </div>
+        {item.poster ? (
+          <img
+            src={item.poster}
+            alt={item.title}
+            className="card-image"
+            loading="lazy"
+            // A source's images live on its own site and go missing often.
+            onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }}
+          />
+        ) : (
+          <div className="card-image card-image-empty" aria-hidden="true" />
+        )}
       </div>
       <div className="card-info">
-        <h3 className="card-title">
-          {anime.title?.romaji || anime.title?.english || 'Unknown'}
-        </h3>
-        {anime.genres && (
-          <p className="card-genres">
-            {anime.genres.slice(0, 2).join(', ')}
-          </p>
-        )}
-        <p className="card-status">
-          {anime.status === 'FINISHED' ? '✓ Finished' : '▶ Airing'}
-        </p>
+        <h3 className="card-title">{item.title}</h3>
       </div>
     </Link>
   );

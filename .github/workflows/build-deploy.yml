@@ -29,7 +29,28 @@ jobs:
       - name: Install frontend dependencies
         run: cd frontend && npm install
 
+      # The API base URL is compiled into the bundle by Create React App, so
+      # it has to be present here rather than configured on the device. Set
+      # it as a repository variable (Settings -> Secrets and variables ->
+      # Actions -> Variables) named REACT_APP_API_URL, pointing at the
+      # deployed backend, e.g. https://animiru-backend.vercel.app/api
+      #
+      # Extensions execute on that backend, so without this the installed app
+      # falls back to http://localhost:3001/api - which on a phone is the
+      # phone itself, where nothing is listening - and no source can run.
+      - name: Check backend URL is configured
+        run: |
+          if [ -z "${{ vars.REACT_APP_API_URL }}" ]; then
+            echo "::warning::REACT_APP_API_URL is not set. The build will point at"
+            echo "::warning::http://localhost:3001/api and extensions will not work"
+            echo "::warning::on a device. Set it as a repository variable."
+          else
+            echo "Backend: ${{ vars.REACT_APP_API_URL }}"
+          fi
+
       - name: Build frontend
+        env:
+          REACT_APP_API_URL: ${{ vars.REACT_APP_API_URL }}
         run: cd frontend && npm run build
 
       - name: Setup JDK 17

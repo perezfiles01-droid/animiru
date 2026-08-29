@@ -1,41 +1,31 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
-import Browse from './pages/Browse';
 import Details from './pages/Details';
 import Watch from './pages/Watch';
-import Library from './pages/Library';
-import LibraryDetail from './pages/LibraryDetail';
 import Settings from './pages/Settings';
-import ExtensionMaker from './pages/ExtensionMaker';
-import Profile from './pages/Profile';
-import { useAuth } from './hooks/useAuth';
 import './styles/App.css';
 
-function App() {
-  const { user, loading, logout } = useAuth();
-
-  if (loading) {
-    return <div className="loader">Loading...</div>;
-  }
-
+/**
+ * Animiru: a player for sources you install yourself.
+ *
+ * Home is the installed source's catalogue, /anime one of its titles, and
+ * /watch one episode. Both carry the source and the source's own id as
+ * search params, because a scraper's ids are URLs and do not survive being
+ * path segments.
+ */
+export default function App() {
   return (
     <Router>
       <div className="app">
-        <Navbar user={user} onLogout={logout} />
+        <Navbar />
         <main className="main-content">
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/browse" element={<Browse />} />
-            <Route path="/anime/:id" element={<Details />} />
-            <Route path="/watch/:id" element={<Watch />} />
-            {/* Library is the media server; Browse is AniList metadata. */}
-            <Route path="/library" element={<Library />} />
-            <Route path="/library/:id" element={<LibraryDetail />} />
+            <Route path="/anime" element={<Details />} />
+            <Route path="/watch" element={<Watch />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/extensions/new" element={<ExtensionMaker />} />
-            {user && <Route path="/profile" element={<Profile user={user} />} />}
           </Routes>
         </main>
         <footer className="footer">
@@ -45,5 +35,3 @@ function App() {
     </Router>
   );
 }
-
-export default App;

@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
 import { fetchRepository } from '../services/extensions/client';
 import * as storage from '../services/extensions/storage';
 import '../styles/Extensions.css';
@@ -102,11 +101,6 @@ export default function ExtensionManager() {
         is remembered on this device only.
       </p>
 
-      <p className="settings-help">
-        <Link to="/extensions/new">Write your own source</Link> to test one
-        against a site and publish it.
-      </p>
-
       <form onSubmit={handleAdd} className="settings-form extensions-add">
         <label>
           Repository URL
@@ -188,7 +182,7 @@ export default function ExtensionManager() {
                         {source.name}
                         {source.isNsfw && <span className="extensions-tag">18+</span>}
                         {!source.isMetadataCapable && (
-                          <span className="extensions-tag" title="Plays episodes for titles found on AniList, but has no catalogue to browse">
+                          <span className="extensions-tag" title="Can be searched, but has no front page to browse">
                             video only
                           </span>
                         )}

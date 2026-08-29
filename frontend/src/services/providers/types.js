@@ -7,7 +7,7 @@
  *
  * A provider implements some or all of:
  *
- *   id            string   stable identifier, e.g. "jellyfin"
+ *   id            string   stable identifier, e.g. "extension:<key>"
  *   name          string   shown in the UI
  *   capabilities  object   see CAPABILITIES below
  *   isConfigured()          -> boolean
@@ -46,7 +46,7 @@
  * @typedef {Object} StreamOption
  * @property {string}  label     shown in the quality menu, e.g. "1080p"
  * @property {string}  url       playable URL
- * @property {string}  type      "hls" | "mp4" | "youtube"
+ * @property {string}  type      "hls" | "mp4"
  * @property {number}  [height]
  */
 
@@ -66,18 +66,3 @@ export const CAPABILITIES = {
   /** Provider supplies playable video (as opposed to metadata only). */
   PLAYBACK: 'playback'
 };
-
-/**
- * Standard quality tiers.
- *
- * Providers that transcode (Jellyfin) map these onto real encoder
- * constraints. Providers that cannot honour them (YouTube, whose API no
- * longer allows programmatic quality control) must not advertise
- * QUALITY_SELECTION, so the UI does not render a control that does nothing.
- */
-export const QUALITY_TIERS = [
-  { label: '1080p', height: 1080, maxWidth: 1920, bitrate: 8000000 },
-  { label: '720p', height: 720, maxWidth: 1280, bitrate: 4000000 },
-  { label: '480p', height: 480, maxWidth: 854, bitrate: 1500000 },
-  { label: '360p', height: 360, maxWidth: 640, bitrate: 800000 }
-];
