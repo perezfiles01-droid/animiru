@@ -60,20 +60,19 @@ curl https://your-backend.vercel.app/api/health
 The API base URL is compiled into the bundle by Create React App, so it is
 fixed at build time and cannot be changed on the device.
 
-In GitHub: **Settings → Secrets and variables → Actions → Variables → New
-repository variable**
+This is already done. `build-deploy.yml` carries the deployed backend as its
+default, so every build points at it with nothing to configure.
 
-| Name                  | Value                                     |
-| --------------------- | ----------------------------------------- |
-| `REACT_APP_API_URL`   | `https://your-backend.vercel.app/api`     |
+To point builds at a different backend, set a repository variable - **Settings
+→ Secrets and variables → Actions → Variables → New repository variable** -
+named `REACT_APP_API_URL`, with the value `https://your-backend/api`. It
+overrides the default when present.
 
-Note the trailing `/api` - the routes are mounted under it.
+Note the trailing `/api` either way: the routes are mounted under it.
 
-Every APK built after this points at that backend. Builds run before you set
-it are not retrofitted; run the workflow again to produce a new one. The
-build logs a warning when the variable is missing rather than failing, so a
-build without it still produces an installable APK - it just will not be able
-to run extensions.
+The build fails if the URL does not end up in the compiled bundle. That check
+exists because the alternative is an APK that installs, opens, and silently
+runs nothing - a failure that otherwise only shows up on a device.
 
 ## Local development
 
