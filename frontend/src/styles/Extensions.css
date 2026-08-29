@@ -176,3 +176,114 @@
     width: 100%;
   }
 }
+
+/**
+ * Playing from an installed source.
+ *
+ * The order on screen is the order of the decisions: which source, which
+ * title it matched, then which episode - so the player appears above the
+ * episode list once there is something to play.
+ */
+
+.ext-sources {
+  margin-top: 32px;
+}
+
+.ext-source-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.ext-source-tab {
+  background-color: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 8px 16px;
+}
+
+.ext-source-tab:hover {
+  border-color: var(--highlight);
+}
+
+.ext-source-tab.active {
+  background-color: var(--highlight);
+  border-color: var(--highlight);
+}
+
+.ext-match {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 8px 0;
+}
+
+/* A weak match is the failure users actually hit, so it is called out
+   in the accent colour rather than left to be noticed. */
+.ext-match-warn {
+  color: var(--highlight);
+}
+
+.ext-candidates {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.ext-candidates button {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  padding: 8px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.ext-candidates button:hover {
+  border-color: var(--highlight);
+}
+
+.ext-candidate-score {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.ext-episodes {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  margin-top: 16px;
+}
+
+.ext-episode {
+  background-color: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  overflow: hidden;
+  padding: 10px 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ext-episode:hover {
+  border-color: var(--highlight);
+}
+
+.ext-episode.active {
+  background-color: var(--accent);
+  border-color: var(--highlight);
+}

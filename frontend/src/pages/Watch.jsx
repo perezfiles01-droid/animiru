@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import YouTubePlayer from '../components/YouTubePlayer';
+import ExtensionSources from '../components/ExtensionSources';
 import { getAnimeById } from '../services/anilist';
 import {
   LICENSED_CHANNELS,
@@ -12,12 +13,13 @@ import {
 import '../styles/Pages.css';
 
 /**
- * Plays officially licensed video from YouTube.
+ * Plays an episode, from a licensed YouTube channel or an installed source.
  *
  * This page previously pointed a custom player at
  * https://stream.example.com/... - a placeholder host that never existed, so
  * nothing ever played. AniList supplies metadata only, so the video has to
- * come from a licensed distributor.
+ * come from somewhere else: a licensed distributor by default, or an
+ * extension the user installed themselves.
  */
 export default function Watch() {
   const { id } = useParams();
@@ -116,6 +118,11 @@ export default function Watch() {
             </div>
           </div>
         )}
+
+        <ExtensionSources
+          titles={[anime.title?.romaji, anime.title?.english, anime.title?.native]}
+          poster={anime.coverImage?.large}
+        />
 
         <div className="yt-sources">
           <h3>Where to watch full episodes</h3>
