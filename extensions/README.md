@@ -16,10 +16,15 @@ Then install **Internet Archive** from the list it shows.
 ## What is here
 
 **Internet Archive** — the Archive's public API. Free to watch, no key, no
-scraping: it is a worked example of a source rather than a way to reach any
-particular show. Search finds items by title; browsing shows what the Archive
-files under animation. Content is what the Archive happens to hold, which
-means public-domain and freely-licensed film rather than current series.
+scraping. Content is what the Archive happens to hold: public-domain and
+freely-licensed film rather than current series. Available everywhere.
+
+**Pluto TV** — free, ad-supported, legal, no account and no DRM on its
+on-demand HLS, and it carries anime. It is **region-locked** to the countries
+Pluto operates in, and sources run on the Animiru server rather than on your
+device, so what matters is where that server is - not where you are. A server
+outside those countries gets an empty catalogue, which the source reports as
+the region lock rather than as "no results".
 
 ## Writing your own
 
