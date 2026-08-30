@@ -82,12 +82,76 @@ describe('servers', () => {
       option({ id: '1:Server:1080p', server: 'Server', quality: '1080p' })
     ]);
 
-    expect(screen.getByLabelText('Server').querySelectorAll('option')).toHaveLength(2);
+    // Numbered, because they are different streams under one name and
+    // collapsing them would leave no way to reach the second by hand.
+    expect([...screen.getByLabelText('Server').options].map((o) => o.text))
+      .toEqual(['Server', 'Server (2)']);
   });
 
-  it('names the server and its quality separately', () => {
+  // Sources put both in one string - "1080p [SUB - mega]" - so a single
+  // menu listing those strings was really showing quality, which is what
+  // users reported. They are separate controls.
+  it('offers quality and server as separate controls', () => {
     renderPlayer([option(), option({ id: 'b', server: 'Doodstream', quality: '720p' })]);
-    expect(screen.getByRole('option', { name: 'Doodstream · 720p' })).toBeInTheDocument();
+
+    expect([...screen.getByLabelText('Quality').options].map((o) => o.text))
+      .toEqual(['1080p', '720p']);
+    expect([...screen.getByLabelText('Server').options].map((o) => o.text))
+      .toEqual(['Vidstreaming', 'Doodstream']);
+  });
+
+  it('lists a server once however many qualities it carries', () => {
+    renderPlayer([
+      option({ id: 'a', server: 'Mega', quality: '1080p', height: 1080 }),
+      option({ id: 'b', server: 'Mega', quality: '720p', height: 720 })
+    ]);
+
+    // One server, so no Server control to show - quality is the only choice.
+    expect(screen.queryByLabelText('Server')).not.toBeInTheDocument();
+    expect([...screen.getByLabelText('Quality').options].map((o) => o.text))
+      .toEqual(['1080p', '720p']);
+  });
+
+  it('keeps the server when the quality changes', async () => {
+    renderPlayer([
+      option({ id: 'a', server: 'Mega', quality: '1080p', height: 1080, url: 'https://cdn.test/mega-1080.m3u8' }),
+      option({ id: 'b', server: 'Kiwi', quality: '1080p', height: 1080 }),
+      option({ id: 'c', server: 'Mega', quality: '720p', height: 720, url: 'https://cdn.test/mega-720.m3u8' })
+    ]);
+
+    await userEvent.selectOptions(screen.getByLabelText('Server'), 'Mega');
+    await userEvent.selectOptions(screen.getByLabelText('Quality'), '720p');
+
+    expect(screen.getByLabelText('Server').value).toBe('Mega');
+    expect(screen.getByLabelText('Quality').value).toBe('720p');
+  });
+
+  it('keeps the quality when the server changes', async () => {
+    renderPlayer([
+      option({ id: 'a', server: 'Mega', quality: '1080p', height: 1080 }),
+      option({ id: 'b', server: 'Mega', quality: '720p', height: 720 }),
+      option({ id: 'c', server: 'Kiwi', quality: '720p', height: 720 })
+    ]);
+
+    await userEvent.selectOptions(screen.getByLabelText('Quality'), '720p');
+    await userEvent.selectOptions(screen.getByLabelText('Server'), 'Kiwi');
+
+    expect(screen.getByLabelText('Quality').value).toBe('720p');
+    expect(screen.getByLabelText('Server').value).toBe('Kiwi');
+  });
+
+  // Not every mirror carries every resolution; the control the user just
+  // touched wins and the other gives way rather than nothing happening.
+  it('honours the control just used when the pairing does not exist', async () => {
+    renderPlayer([
+      option({ id: 'a', server: 'Mega', quality: '1080p', height: 1080 }),
+      option({ id: 'b', server: 'Kiwi', quality: '480p', height: 480 })
+    ]);
+
+    await userEvent.selectOptions(screen.getByLabelText('Server'), 'Kiwi');
+
+    expect(screen.getByLabelText('Server').value).toBe('Kiwi');
+    expect(screen.getByLabelText('Quality').value).toBe('480p');
   });
 
   it('offers no server control when there is only one', () => {
@@ -150,18 +214,62 @@ describe('subtitles', () => {
     expect(screen.queryByRole('button', { name: 'CC' })).not.toBeInTheDocument();
   });
 
-  it('toggles on and off', async () => {
+  // An episode without subtitles is the exception rather than the intent, so
+  // the player turns them on itself and CC is there to turn them off.
+  it('starts with subtitles on', async () => {
     respondWith();
     renderPlayer(withSubs([ENGLISH]));
 
     const cc = screen.getByRole('button', { name: 'CC' });
+    await waitFor(() => expect(cc).toHaveAttribute('aria-pressed', 'true'));
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+  });
+
+  it('toggles off and back on', async () => {
+    respondWith();
+    renderPlayer(withSubs([ENGLISH]));
+
+    const cc = screen.getByRole('button', { name: 'CC' });
+    await waitFor(() => expect(cc).toHaveAttribute('aria-pressed', 'true'));
+
+    await userEvent.click(cc);
     expect(cc).toHaveAttribute('aria-pressed', 'false');
 
     await userEvent.click(cc);
     expect(cc).toHaveAttribute('aria-pressed', 'true');
+  });
 
+  // Turning them on again on every server switch would make the button
+  // useless: the user turned them off, and meant it.
+  it('leaves subtitles off after the user turns them off', async () => {
+    respondWith();
+    const subtitled = (id, server) => ({ ...option({ id, server }), subtitles: [ENGLISH] });
+    renderPlayer([subtitled('a', 'Server A'), subtitled('b', 'Server B')]);
+
+    const cc = screen.getByRole('button', { name: 'CC' });
+    await waitFor(() => expect(cc).toHaveAttribute('aria-pressed', 'true'));
     await userEvent.click(cc);
-    expect(cc).toHaveAttribute('aria-pressed', 'false');
+
+    await userEvent.selectOptions(screen.getByLabelText('Server'), 'Server B');
+
+    expect(screen.getByRole('button', { name: 'CC' }))
+      .toHaveAttribute('aria-pressed', 'false');
+  });
+
+  // AniKoto downloads its own subtitles and hands back the file itself in
+  // the field a URL would use. Fetching that produced "The subtitle host
+  // responded 404" for a track already in memory.
+  it('shows subtitle content a source returned inline, without a request', async () => {
+    respondWith();
+    renderPlayer(withSubs([{
+      content: '1\n00:00:01,000 --> 00:00:02,000\nHello\n', label: 'English', isEnglish: true
+    }]));
+
+    await waitFor(() => expect(global.URL.createObjectURL).toHaveBeenCalled());
+    expect(global.fetch).not.toHaveBeenCalled();
+
+    const [blob] = global.URL.createObjectURL.mock.calls[0];
+    expect(blob.type).toBe('text/vtt');
   });
 
   it('fetches through the backend rather than linking the host directly', async () => {
@@ -169,8 +277,6 @@ describe('subtitles', () => {
     // browser demand CORS for the video too and stop playback.
     respondWith();
     renderPlayer(withSubs([ENGLISH]));
-
-    await userEvent.click(screen.getByRole('button', { name: 'CC' }));
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     expect(global.fetch.mock.calls[0][0]).toContain('/extensions/subtitle?url=');
@@ -180,8 +286,6 @@ describe('subtitles', () => {
     respondWith();
     renderPlayer(withSubs([ENGLISH]));
 
-    await userEvent.click(screen.getByRole('button', { name: 'CC' }));
-
     await waitFor(() => expect(global.URL.createObjectURL).toHaveBeenCalled());
   });
 
@@ -189,19 +293,17 @@ describe('subtitles', () => {
     respondWith();
     renderPlayer(withSubs([SPANISH, ENGLISH]));
 
-    await userEvent.click(screen.getByRole('button', { name: 'CC' }));
-
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     expect(decodeURIComponent(global.fetch.mock.calls[0][0])).toContain('en.vtt');
   });
 
-  it('offers a track list only once subtitles are on and there is a choice', async () => {
+  it('offers a track list while subtitles are on and there is a choice', async () => {
     respondWith();
     renderPlayer(withSubs([ENGLISH, SPANISH]));
 
-    expect(screen.queryByLabelText('Subtitles')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'CC' }));
     expect(await screen.findByLabelText('Subtitles')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'CC' }));
+    expect(screen.queryByLabelText('Subtitles')).not.toBeInTheDocument();
   });
 
   it('reports why a subtitle could not be loaded, and turns CC back off', async () => {
@@ -211,8 +313,6 @@ describe('subtitles', () => {
       json: async () => ({ error: 'ASS subtitles cannot be shown in a browser.' })
     });
     renderPlayer(withSubs([{ url: 'https://cdn.test/subs.ass', label: 'English' }]));
-
-    await userEvent.click(screen.getByRole('button', { name: 'CC' }));
 
     expect(await screen.findByText(/ASS subtitles cannot be shown/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'CC' })).toHaveAttribute('aria-pressed', 'false');
@@ -256,7 +356,7 @@ describe('when a server fails', () => {
     failCurrentServer(container);
 
     await screen.findByText(/switched to Second/);
-    expect(screen.getByRole('option', { name: /First · 1080p \(failed\)/ }))
+    expect(screen.getByRole('option', { name: /First \(failed\)/ }))
       .toBeInTheDocument();
   });
 
@@ -305,7 +405,7 @@ describe('when a server fails', () => {
     failCurrentServer(container);
     await screen.findByText(/switched to Second/);
 
-    await userEvent.selectOptions(screen.getByLabelText('Server'), '2');
+    await userEvent.selectOptions(screen.getByLabelText('Server'), 'Third');
 
     await waitFor(() =>
       expect(screen.queryByText(/switched to Second/)).not.toBeInTheDocument());

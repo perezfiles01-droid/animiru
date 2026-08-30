@@ -167,29 +167,66 @@ const RUNTIME_SOURCE = `
 
   Client.prototype.request = function (options) {
     var opts = options || {};
+    var headers = {};
+    for (var h in (opts.headers || {})) {
+      if (Object.prototype.hasOwnProperty.call(opts.headers, h)) headers[h] = opts.headers[h];
+    }
     return callAsync('http.request', [{
       url: opts.url,
       method: opts.method || 'GET',
-      headers: opts.headers || {},
-      body: opts.body
+      headers: headers,
+      body: encodeBody(opts.body, headers)
     }]).then(function (raw) { return new Response(raw); });
   };
   Client.prototype.get = function (url, headers) {
     return this.request({ url: url, method: 'GET', headers: headers });
   };
   Client.prototype.post = function (url, headers, body) {
-    return this.request({
-      url: url,
-      method: 'POST',
-      headers: headers,
-      // A source may pass an object; send it as form-encoded text, which is
-      // what the sites these sources talk to expect.
-      body: (body && typeof body === 'object') ? formEncode(body) : body
-    });
+    return this.request({ url: url, method: 'POST', headers: headers, body: body });
   };
   Client.prototype.head = function (url, headers) {
     return this.request({ url: url, method: 'HEAD', headers: headers });
   };
+
+  /**
+   * Turns an object body into the bytes the server is being told to expect.
+   *
+   * A source may hand over an object and say what it is:
+   *
+   *     this.client.post(url, { "Content-Type": "application/json" }, { query: q })
+   *
+   * Form-encoding that regardless - as this did - sends a GraphQL API a
+   * body it cannot parse. It answers with an error rather than a failure,
+   * so the source's own try/catch swallows it and the user sees an empty
+   * list instead of a problem: "Miruro returned no titles".
+   *
+   * With no Content-Type the body is form-encoded, which is what Dart's
+   * http client does for a Map and therefore what Mangayomi sources that
+   * omit the header are written against. The header is filled in to match,
+   * so the server is never told one thing and sent another.
+   *
+   * @param body    whatever the source passed
+   * @param headers mutated in place when a Content-Type has to be added
+   */
+  function encodeBody(body, headers) {
+    if (body === null || body === undefined) return body;
+    if (typeof body !== 'object') return body;
+
+    var declared = '';
+    for (var key in headers) {
+      if (Object.prototype.hasOwnProperty.call(headers, key) &&
+          String(key).toLowerCase() === 'content-type') {
+        declared = String(headers[key] || '').toLowerCase();
+        break;
+      }
+    }
+
+    if (declared.indexOf('json') >= 0) return JSON.stringify(body);
+    if (declared) return formEncode(body);
+
+    headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    return formEncode(body);
+  }
 
   function formEncode(data) {
     var parts = [];
@@ -303,6 +340,12 @@ const RUNTIME_SOURCE = `
   globalThis.Response = Response;
   globalThis.SharedPreferences = SharedPreferences;
   globalThis.MProvider = MProvider;
+
+  // Used by the driver, not by sources: hands the host the defaults a
+  // source declared so pref.get can fall back to them.
+  globalThis.__declarePreferenceDefaults = function (declared) {
+    sync('pref.declareDefaults', [declared || []]);
+  };
 
   globalThis.base64Encode = base64.encode;
   globalThis.base64Decode = base64.decode;

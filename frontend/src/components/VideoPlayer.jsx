@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import Hls from 'hls.js';
 import { subtitleUrl } from '../services/extensions/client';
+import { toVtt } from '../services/subtitles';
+import { preferredSubtitleIndex } from '../services/providers/extension';
 import '../styles/VideoPlayer.css';
 
 /**
@@ -17,6 +19,11 @@ import '../styles/VideoPlayer.css';
  * started the choice becomes theirs, because a mid-episode failure is often
  * a passing network problem and switching would throw away their position
  * for nothing.
+ *
+ * Subtitles start on. An episode without them is the exception rather than
+ * the intent, so the player picks a track - the one the source marked, else
+ * an English one - and shows it. CC turns them off, and that choice sticks
+ * across servers and episodes until it is turned back on.
  *
  * Subtitles are fetched and turned into a blob rather than pointed at
  * directly. A <track> from another origin needs crossOrigin on the <video>,
@@ -35,7 +42,10 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
   const [audioKind, setAudioKind] = useState(null);
   const [selected, setSelected] = useState(0);
   const [error, setError] = useState(null);
-  const [ccOn, setCcOn] = useState(false);
+  // On unless the user says otherwise. `ccChosen` records that they did, so
+  // moving to another server does not quietly switch subtitles back on.
+  const [ccOn, setCcOn] = useState(true);
+  const ccChosen = useRef(false);
   const [subtitleIndex, setSubtitleIndex] = useState(0);
   const [subtitleError, setSubtitleError] = useState(null);
   const [tracks, setTracks] = useState([]);
@@ -66,7 +76,82 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
   }, [options, audioKind, hasDub, hasSub]);
 
   const current = visible[selected] || visible[0] || null;
-  const subtitles = current ? current.subtitles || [] : [];
+
+  /**
+   * The distinct qualities on offer, best first.
+   *
+   * Sources put the resolution and the server in one string, so a single
+   * "Server" menu listing those strings was really showing quality. The two
+   * are separated here and offered as their own controls.
+   */
+  const qualities = useMemo(() => {
+    const byName = new Map();
+    for (const option of visible) {
+      const name = option.quality || 'Auto';
+      const height = option.height || 0;
+      if (!byName.has(name) || byName.get(name) < height) byName.set(name, height);
+    }
+    return [...byName.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name);
+  }, [visible]);
+
+  /**
+   * A name per stream for the Server menu, in the order the source listed
+   * them.
+   *
+   * One server offering 1080p and 720p is one entry - quality is its own
+   * control. Two mirrors offering the same quality under the same name are
+   * two entries, numbered, because they are genuinely different streams and
+   * collapsing them would leave no way to reach the second by hand.
+   */
+  const serverKeys = useMemo(() => {
+    const counts = new Map();
+    return visible.map((option) => {
+      const pair = `${option.server}\u0000${option.quality || 'Auto'}`;
+      const seen = counts.get(pair) || 0;
+      counts.set(pair, seen + 1);
+      return seen === 0 ? option.server : `${option.server} (${seen + 1})`;
+    });
+  }, [visible]);
+
+  const servers = useMemo(() => {
+    const seen = [];
+    for (const key of serverKeys) if (!seen.includes(key)) seen.push(key);
+    return seen;
+  }, [serverKeys]);
+
+  const currentQuality = current ? current.quality || 'Auto' : null;
+  const currentServer = serverKeys[selected] ?? (current ? current.server : null);
+
+  /**
+   * Moves to another stream, keeping whichever of quality and server the
+   * user did not just change.
+   *
+   * Not every server carries every quality, so the pairing asked for may not
+   * exist. `prefer` names the control the user just used: that one is
+   * honoured and the other gives way, rather than the change doing nothing.
+   *
+   * @param {string} prefer 'quality' or 'server'
+   */
+  const choose = useCallback((quality, server, prefer) => {
+    const matchesQuality = (option) => (option.quality || 'Auto') === quality;
+
+    const exact = visible.findIndex(
+      (option, index) => matchesQuality(option) && serverKeys[index] === server
+    );
+    const fallback = prefer === 'server'
+      ? serverKeys.indexOf(server)
+      : visible.findIndex(matchesQuality);
+
+    const index = exact === -1 ? fallback : exact;
+    if (index === -1) return;
+    setAutoSwitched(null);
+    setSelected(index);
+  }, [visible, serverKeys]);
+  // Memoised because an effect keys on it: rebuilt every render, that effect
+  // would re-run every render, and it sets state.
+  const subtitles = useMemo(() => (current ? current.subtitles || [] : []), [current]);
 
   switchingRef.current = { visible, selected, dead: deadServers };
 
@@ -191,15 +276,23 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
 
     setSubtitleError(null);
     try {
-      const response = await fetch(
-        subtitleUrl(track.url, current && current.headers && current.headers.Referer)
-      );
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Subtitles could not be loaded (${response.status}).`);
+      // Content the source already downloaded for us needs no request, and
+      // making one against it is how a track in memory reported a 404.
+      let vtt;
+      if (track.content) {
+        vtt = toVtt(track.content);
+      } else {
+        const response = await fetch(
+          subtitleUrl(track.url, current && current.headers && current.headers.Referer)
+        );
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.error || `Subtitles could not be loaded (${response.status}).`);
+        }
+        vtt = await response.text();
       }
 
-      const blob = new Blob([await response.text()], { type: 'text/vtt' });
+      const blob = new Blob([vtt], { type: 'text/vtt' });
       const url = URL.createObjectURL(blob);
       blobUrls.current.push(url);
 
@@ -212,6 +305,21 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
       setCcOn(false);
     }
   }, [subtitles, current]);
+
+  // Turns subtitles on without being asked, once per server. Does not run
+  // for a user who has turned CC off - that choice outlives a server switch.
+  useEffect(() => {
+    if (ccChosen.current && !ccOn) return;
+    const index = preferredSubtitleIndex(subtitles);
+    if (index === -1) return;
+
+    setSubtitleIndex(index);
+    setCcOn(true);
+    loadSubtitle(index);
+    // Keyed on the track list alone. ccOn is read but deliberately not a
+    // dependency: including it would re-enable subtitles the moment a
+    // failed track switched them off, and again on every toggle.
+  }, [subtitles, loadSubtitle]);
 
   // Only the chosen track is shown; the browser will happily display two at
   // once otherwise, stacked over each other.
@@ -227,21 +335,19 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
   }, [ccOn, subtitleIndex, tracks, subtitles]);
 
   const toggleCc = () => {
+    ccChosen.current = true;
     if (ccOn) {
       setCcOn(false);
       return;
     }
-    // Default to English where the source labelled one, since that is what
-    // is usually wanted and the list is often long.
-    const preferred = subtitles.findIndex((track) => track.isEnglish);
-    const index = preferred === -1 ? 0 : preferred;
-
+    const index = Math.max(preferredSubtitleIndex(subtitles), 0);
     setSubtitleIndex(index);
     setCcOn(true);
     if (!tracks.some((entry) => entry.index === index)) loadSubtitle(index);
   };
 
   const chooseSubtitle = (index) => {
+    ccChosen.current = true;
     setSubtitleIndex(index);
     setCcOn(true);
     if (!tracks.some((entry) => entry.index === index)) loadSubtitle(index);
@@ -267,7 +373,7 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
         >
           {tracks.map((track) => (
             <track
-              key={track.url}
+              key={`${track.index}:${track.label}`}
               kind="subtitles"
               src={track.url}
               label={track.label}
@@ -301,7 +407,40 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
                 onChange={(e) => chooseSubtitle(Number(e.target.value))}
               >
                 {subtitles.map((track, index) => (
-                  <option key={track.url} value={index}>{track.label}</option>
+                  <option key={`${index}:${track.label}`} value={index}>{track.label}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {qualities.length > 1 && (
+            <label className="player-select">
+              Quality
+              <select
+                value={currentQuality || ''}
+                onChange={(e) => choose(e.target.value, currentServer, 'quality')}
+              >
+                {qualities.map((quality) => (
+                  <option key={quality} value={quality}>{quality}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {servers.length > 1 && (
+            <label className="player-select">
+              Server
+              <select
+                value={currentServer || ''}
+                onChange={(e) => choose(currentQuality, e.target.value, 'server')}
+              >
+                {servers.map((server) => (
+                  <option key={server} value={server}>
+                    {server}
+                    {visible
+                      .filter((_, index) => serverKeys[index] === server)
+                      .every((option) => deadServers.includes(option.id)) ? ' (failed)' : ''}
+                  </option>
                 ))}
               </select>
             </label>
@@ -316,29 +455,6 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
               >
                 <option value="sub">Sub</option>
                 <option value="dub">Dub</option>
-              </select>
-            </label>
-          )}
-
-          {visible.length > 1 && (
-            <label className="player-select">
-              Server
-              <select
-                value={selected}
-                onChange={(e) => {
-                  setAutoSwitched(null);
-                  setSelected(Number(e.target.value));
-                }}
-              >
-                {visible.map((option, index) => (
-                  // Keyed by id, not label: mirrors share labels, and a
-                  // duplicate key makes React reuse the wrong option.
-                  <option key={option.id} value={index}>
-                    {option.server}
-                    {option.quality ? ` · ${option.quality}` : ''}
-                    {deadServers.includes(option.id) ? ' (failed)' : ''}
-                  </option>
-                ))}
               </select>
             </label>
           )}

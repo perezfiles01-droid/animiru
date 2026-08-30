@@ -166,6 +166,48 @@ async function runExtension(options = {}) {
           throw new Error('Extension does not define a DefaultExtension class');
         }
         var instance = new Ctor(__invocation.source);
+
+        // Real sources are written as:
+        //
+        //     constructor() { super(); this.client = new Client(); }
+        //
+        // - super() with no arguments - and then go on to read
+        // this.source.baseUrl. Passing the source to the constructor is
+        // therefore not enough on its own: the subclass throws it away, and
+        // baseUrl comes back undefined, which is how a source ends up
+        // requesting "undefined/ongoing?page=1". Mangayomi attaches the
+        // source to the instance instead, so do the same here.
+        //
+        // Anything the constructor did set wins, so a source that genuinely
+        // computes its own baseUrl keeps it; the invocation only fills gaps.
+        var declared = instance.source;
+        var merged = {};
+        for (var k in __invocation.source) {
+          if (Object.prototype.hasOwnProperty.call(__invocation.source, k)) {
+            merged[k] = __invocation.source[k];
+          }
+        }
+        if (declared && typeof declared === 'object') {
+          for (var j in declared) {
+            if (Object.prototype.hasOwnProperty.call(declared, j) &&
+                declared[j] !== undefined && declared[j] !== null && declared[j] !== '') {
+              merged[j] = declared[j];
+            }
+          }
+        }
+        instance.source = merged;
+
+        // The defaults a source declares are part of how it behaves, not
+        // just decoration for a settings screen: it reads them back on
+        // every run and expects the declared value, not null, before the
+        // user has touched anything. Failing to declare them is not fatal
+        // - a source may not have any - so a throw here is ignored.
+        try {
+          if (typeof instance.getSourcePreferences === 'function') {
+            __declarePreferenceDefaults(instance.getSourcePreferences());
+          }
+        } catch (e) { /* a source with no usable declaration keeps its nulls */ }
+
         var fn = instance[__invocation.method];
         if (typeof fn !== 'function') {
           throw new Error('Extension does not implement ' + __invocation.method + '()');
