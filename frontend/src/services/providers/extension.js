@@ -215,9 +215,15 @@ function toCatalogItem(providerId, item) {
 export function createExtensionProvider(source) {
   const providerId = `extension:${source.key}`;
 
-  /** Every call into the source goes through here. */
-  async function call(method, args) {
-    const outcome = await runSource({
+  /**
+   * Every call into the source goes through here.
+   *
+   * Returns the whole run, not just its result: a run that succeeds still
+   * carries the requests it made, and when a source returns nothing that
+   * trace is the only evidence of why.
+   */
+  async function run(method, args) {
+    return runSource({
       codeUrl: source.codeUrl,
       version: source.version,
       method,
@@ -225,7 +231,48 @@ export function createExtensionProvider(source) {
       source,
       preferences: getPreferences(source.key)
     });
-    return outcome.result;
+  }
+
+  async function call(method, args) {
+    return (await run(method, args)).result;
+  }
+
+  /**
+   * A source that ran cleanly and produced nothing.
+   *
+   * Not an exception as far as the sandbox is concerned, so nothing is
+   * thrown and no diagnostics are built - which is exactly why "this source
+   * found no video for that episode" was unanswerable. The trace is
+   * assembled here in the shape a thrown failure would have had, so the same
+   * report renders it.
+   */
+  function emptyResultError(message, { method, outcome, cause, fix }) {
+    const error = new Error(message);
+    const requests = (outcome && outcome.requests) || [];
+    const logs = (outcome && outcome.logs) || [];
+
+    error.logs = logs;
+    error.requests = requests;
+    error.diagnostics = {
+      message,
+      method,
+      source: {
+        name: source.name || null,
+        version: source.version || null,
+        repoUrl: source.repoUrl || null,
+        codeUrl: source.codeUrl || null
+      },
+      cause,
+      fix,
+      location: null,
+      excerpt: null,
+      requests,
+      failedRequests: requests.filter((request) => (
+        request.error || (request.status && (request.status < 200 || request.status >= 300))
+      )),
+      logs
+    };
+    return error;
   }
 
   /** Mangayomi's paged list shape, in either of the two spellings sources use. */
@@ -309,7 +356,8 @@ export function createExtensionProvider(source) {
    */
   async function getStreams(episode) {
     const id = typeof episode === 'string' ? episode : episode.id;
-    const videos = (await call('getVideoList', [id])) || [];
+    const outcome = await run('getVideoList', [id]);
+    const videos = outcome.result || [];
 
     const seenUrls = new Set();
     const options = [];
@@ -356,6 +404,26 @@ export function createExtensionProvider(source) {
       if (b.height) return 1;
       return 0;
     });
+
+    if (options.length === 0) {
+      // Two different faults, and the trace tells them apart: a source that
+      // returned entries carrying no playable URL is a parsing bug, while
+      // one that returned nothing at all usually never got a usable page.
+      const returnedEntries = Array.isArray(videos) && videos.length > 0;
+
+      throw emptyResultError('This source found no video for that episode.', {
+        method: 'getVideoList',
+        outcome,
+        cause: returnedEntries
+          ? `The source listed ${videos.length} server${videos.length === 1 ? '' : 's'} `
+            + 'for this episode but none of them carried a video URL.'
+          : 'The source ran without failing and returned no servers at all for '
+            + 'this episode.',
+        fix: 'Check the requests below. A blocked or redirected request is the '
+          + 'usual cause; if they all succeeded, the episode page changed shape '
+          + 'and the source needs updating. Another source may have the episode.'
+      });
+    }
 
     return { options };
   }

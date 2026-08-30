@@ -200,6 +200,32 @@ fallback for a token that does. Use `--accent-text` or `--highlight` for text.
 
 ---
 
+## An empty result is a failure with no evidence
+
+`getVideoList` returning `[]` is not an exception, so the sandbox built no
+diagnostics for it and the player showed one bare sentence: "This source found
+no video for that episode." No request trace, no source name, no line — every
+report of it was unanswerable, and the same sentence covered a blocked fetch,
+a redirect, and markup that had moved.
+
+A successful run already carries the requests it made; only the result was
+being kept (`return outcome.result`). The provider now keeps the whole run and
+throws an error carrying diagnostics in the shape a real failure would have
+had, so the existing report renders it — and the source switcher is offered
+from the error itself, because another source is the actual way out.
+
+**Pinned by** `frontend/src/services/providers/__tests__/extension.test.js`
+("when a source returns no playable video") and
+`frontend/src/pages/__tests__/Watch.test.jsx` ("when a source finds no
+video"). The page assertion is scoped with `within` to the error block: the
+same switcher sits further down the page, and an unscoped query passed with
+the switcher removed.
+
+> When something produces nothing, say what it did on the way there. A
+> symptom without a trace generates another round of guessing, not a fix.
+
+---
+
 ## Verification
 
 The habit that caught most of the above, and is worth keeping:

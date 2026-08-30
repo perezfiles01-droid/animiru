@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import Watch from '../Watch';
@@ -94,13 +94,79 @@ describe('Watch', () => {
 
   it('says so when the source finds no video, and offers a way back', async () => {
     getProvider.mockReturnValue(makeProvider({
-      getStreams: jest.fn().mockResolvedValue({ options: [] })
+      getStreams: jest.fn().mockRejectedValue(new Error('This source found no video for that episode.'))
     }));
     await renderWatch();
 
     expect(screen.getByText(/found no video/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Back to episodes/ })).toBeInTheDocument();
     expect(screen.queryByTestId('player')).not.toBeInTheDocument();
+  });
+
+  /**
+   * An empty result carries a request trace now, and it is the whole
+   * answer: a 403 above "found no video" means the site blocked the fetch,
+   * not that the source needs rewriting. Reports of this were previously
+   * unanswerable because the sentence was all there was.
+   */
+  describe('when a source finds no video', () => {
+    function emptyWithTrace() {
+      const error = new Error('This source found no video for that episode.');
+      error.diagnostics = {
+        message: error.message,
+        method: 'getVideoList',
+        source: { name: 'Example Source', version: '1.0.0' },
+        cause: 'The source ran without failing and returned no servers at all.',
+        fix: 'Check the requests below.',
+        requests: [
+          { method: 'GET', url: 'https://site.test/e/1', status: 403, durationMs: 40 }
+        ],
+        failedRequests: [
+          { method: 'GET', url: 'https://site.test/e/1', status: 403, durationMs: 40 }
+        ],
+        logs: []
+      };
+      return makeProvider({ getStreams: jest.fn().mockRejectedValue(error) });
+    }
+
+    it('explains the cause rather than only stating the symptom', async () => {
+      getProvider.mockReturnValue(emptyWithTrace());
+      await renderWatch();
+
+      expect(screen.getByText(/returned no servers at all/)).toBeInTheDocument();
+    });
+
+    it('points at the failed request, which is usually the real cause', async () => {
+      getProvider.mockReturnValue(emptyWithTrace());
+      await renderWatch();
+
+      expect(screen.getByText(/403/)).toBeInTheDocument();
+    });
+
+    it('shows the requests the source made when asked for details', async () => {
+      getProvider.mockReturnValue(emptyWithTrace());
+      await renderWatch();
+
+      await userEvent.click(screen.getByRole('button', { name: /Show details/ }));
+      expect(screen.getByText('https://site.test/e/1')).toBeInTheDocument();
+    });
+
+    // The way out of a dead source is another source, and it was only
+    // offered below the error where it is easy to miss.
+    it('offers the source switcher from the error itself', async () => {
+      getProviders.mockReturnValue([
+        { id: SOURCE, name: 'Example Source' },
+        { id: 'extension:repo#2', name: 'Other Source' }
+      ]);
+      getProvider.mockReturnValue(emptyWithTrace());
+      await renderWatch();
+
+      // Scoped to the error block: the same switcher sits further down the
+      // page beside the episode list, so an unscoped query passes whether
+      // or not the error offers one.
+      const block = screen.getByText(/returned no servers at all/).closest('.watch-error');
+      expect(within(block).getByRole('button', { name: /Example Source/ })).toBeInTheDocument();
+    });
   });
 
   it('still plays when the episode list fails to load', async () => {

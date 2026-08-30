@@ -216,6 +216,74 @@ describe('extension provider', () => {
       expect(options[2]).toMatchObject({ type: 'mp4', height: undefined });
     });
 
+    /**
+     * A source that ran cleanly and produced nothing used to reach the
+     * player as a bare sentence - "This source found no video for that
+     * episode" - with no trace behind it, because diagnostics were only
+     * built for a thrown failure. Every report of it was therefore
+     * unanswerable: nobody could tell a blocked request from a page whose
+     * markup had moved.
+     */
+    describe('when a source returns no playable video', () => {
+      const trace = (requests, result) => runSource.mockResolvedValueOnce({
+        result, logs: [{ level: 'warn', message: 'no server' }], requests, durationMs: 9
+      });
+
+      const blocked = [
+        { method: 'GET', url: 'https://site.test/e/1', status: 403, durationMs: 40 }
+      ];
+
+      it('fails rather than returning an empty option list', async () => {
+        trace(blocked, []);
+        await expect(provider.getStreams('/e/1')).rejects.toThrow(/found no video/);
+      });
+
+      it('carries the requests the source made, which is the actual evidence', async () => {
+        trace(blocked, []);
+
+        const err = await provider.getStreams('/e/1').catch((caught) => caught);
+        expect(err.diagnostics.requests).toEqual(blocked);
+        expect(err.diagnostics.failedRequests).toHaveLength(1);
+      });
+
+      it('names the source, so a report says which one', async () => {
+        trace(blocked, []);
+
+        const err = await provider.getStreams('/e/1').catch((caught) => caught);
+        expect(err.diagnostics.source).toMatchObject({ name: 'Example', version: '1.0.0' });
+        expect(err.diagnostics.method).toBe('getVideoList');
+      });
+
+      it('distinguishes servers without URLs from no servers at all', async () => {
+        trace([], [{ quality: '1080p' }, { quality: '720p' }]);
+
+        const err = await provider.getStreams('/e/1').catch((caught) => caught);
+        expect(err.diagnostics.cause).toContain('2 servers');
+        expect(err.diagnostics.cause).toContain('none of them carried a video URL');
+      });
+
+      it('says the source returned nothing when it returned nothing', async () => {
+        trace([], []);
+
+        const err = await provider.getStreams('/e/1').catch((caught) => caught);
+        expect(err.diagnostics.cause).toContain('no servers at all');
+      });
+
+      it('keeps the console output the source produced', async () => {
+        trace(blocked, []);
+
+        const err = await provider.getStreams('/e/1').catch((caught) => caught);
+        expect(err.diagnostics.logs).toEqual([{ level: 'warn', message: 'no server' }]);
+      });
+
+      // A source answering null is the same situation, and used to be
+      // smoothed over into an empty list without comment.
+      it('treats a null result the same way', async () => {
+        trace(blocked, null);
+        await expect(provider.getStreams('/e/1')).rejects.toThrow(/found no video/);
+      });
+    });
+
     it('accepts an episode id string as well as an episode', async () => {
       resolves([{ url: 'https://cdn.test/a.mp4', quality: '480p' }]);
       const { options } = await provider.getStreams('/e/1');
@@ -364,9 +432,11 @@ describe('extension provider', () => {
       expect(options.map((o) => o.isDub)).toEqual([false, true]);
     });
 
-    it('returns no options rather than throwing when a source finds nothing', async () => {
+    // This used to resolve with an empty list. It now fails, carrying the
+    // trace - see 'when a source returns no playable video' above.
+    it('fails when a source finds nothing at all', async () => {
       resolves(null);
-      expect(await provider.getStreams('/e/1')).toEqual({ options: [] });
+      await expect(provider.getStreams('/e/1')).rejects.toThrow(/found no video/);
     });
   });
 });

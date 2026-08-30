@@ -710,6 +710,17 @@
   margin-top: 12px;
 }
 
+/* Switching source and going back are the two ways out of a failed
+   episode; side by side and centred, they read as the choice they are. */
+.watch-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
 /**
  * Search results, grouped by the source that returned them.
  *

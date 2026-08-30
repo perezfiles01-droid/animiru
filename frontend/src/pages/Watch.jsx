@@ -64,14 +64,13 @@ export default function Watch() {
       setStreams(null);
 
       try {
+        // A source with nothing to play now throws, carrying the trace of
+        // the requests it made - so the same report that explains a crash
+        // explains an empty result too.
         const found = await provider.getStreams(episodeId);
         if (cancelled) return;
 
-        if (!found.options || found.options.length === 0) {
-          setError('This source found no video for that episode.');
-        } else {
-          setStreams(found);
-        }
+        setStreams(found);
       } catch (err) {
         if (!cancelled) setError(err);
       } finally {
@@ -143,14 +142,21 @@ export default function Watch() {
           {typeof error === 'string'
             ? <p className="extensions-error">{error}</p>
             : <ExtensionErrorReport error={error} />}
-          {itemId && sourceId && (
-            <Link
-              to={`/anime?source=${encodeURIComponent(sourceId)}&id=${encodeURIComponent(itemId)}`}
-              className="btn btn-secondary"
-            >
-              Back to episodes
-            </Link>
-          )}
+          {/* Whatever the source could not play, another one may have. The
+              switcher belongs here as much as below it: this is the moment
+              the user needs it, and scrolling past the error to find it is
+              not obvious. */}
+          <div className="watch-error-actions">
+            <SourceSwitcher currentId={sourceId} title={showTitle} />
+            {itemId && sourceId && (
+              <Link
+                to={`/anime?source=${encodeURIComponent(sourceId)}&id=${encodeURIComponent(itemId)}`}
+                className="btn btn-secondary"
+              >
+                Back to episodes
+              </Link>
+            )}
+          </div>
         </div>
       )}
 
