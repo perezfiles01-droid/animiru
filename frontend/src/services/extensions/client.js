@@ -15,6 +15,9 @@ function describe(err, fallback) {
     const error = new Error(data.error);
     error.logs = data.logs || [];
     error.requests = data.requests || [];
+    // Where in the source it broke, what that means, and what to try. The
+    // whole point of a failed run.
+    error.diagnostics = data.diagnostics || null;
     throw error;
   }
   throw new Error(fallback);

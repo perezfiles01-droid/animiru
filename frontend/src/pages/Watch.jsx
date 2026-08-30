@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import VideoPlayer from '../components/VideoPlayer';
 import { getProvider } from '../services/providers/registry';
+import ExtensionErrorReport from '../components/ExtensionError';
 import '../styles/Pages.css';
 
 /**
@@ -69,7 +70,7 @@ export default function Watch() {
           setStreams(found);
         }
       } catch (err) {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) setError(err);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -93,7 +94,9 @@ export default function Watch() {
 
       {error && (
         <div className="watch-error">
-          <p className="extensions-error">{error}</p>
+          {typeof error === 'string'
+            ? <p className="extensions-error">{error}</p>
+            : <ExtensionErrorReport error={error} />}
           {itemId && sourceId && (
             <Link
               to={`/anime?source=${encodeURIComponent(sourceId)}&id=${encodeURIComponent(itemId)}`}

@@ -1,0 +1,58 @@
+/**
+ * Primary navigation, pinned to the bottom edge.
+ *
+ * Always on screen at every width - the failure this replaces was a link
+ * that a media query hid, which is invisible until someone picks up a phone.
+ */
+
+.bottom-nav {
+  background-color: var(--secondary);
+  border-top: 1px solid var(--border);
+  bottom: 0;
+  display: flex;
+  left: 0;
+  position: fixed;
+  right: 0;
+  /* Above the player and any page content, which can be full-bleed. */
+  z-index: 100;
+  /* Clear of the iOS home indicator and Android gesture bar. */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.bottom-nav-item {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  justify-content: center;
+  padding: 10px 4px;
+  text-decoration: none;
+  /* A generous target: this is the one control that must never be fiddly. */
+  min-height: 56px;
+}
+
+.bottom-nav-item.active {
+  color: var(--highlight);
+}
+
+.bottom-nav-item:active {
+  background-color: var(--accent);
+}
+
+.bottom-nav-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.bottom-nav-label {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+/* The bar overlays the page, so the last of the content needs room to
+   clear it rather than sitting underneath. */
+.app {
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+}

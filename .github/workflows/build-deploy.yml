@@ -50,22 +50,33 @@ jobs:
           fi
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
+      # The version the app reports, and compares against GitHub Releases to
+      # tell whether it is out of date. It must match the tag the release job
+      # creates below, or the app compares against the wrong thing and either
+      # never offers an update or offers one forever.
       - name: Build frontend
         env:
           REACT_APP_API_URL: ${{ steps.backend.outputs.url }}
+          REACT_APP_VERSION: v1.0.${{ github.run_number }}
         run: cd frontend && npm run build
 
       # A bundle that does not carry the URL cannot reach a backend, and the
       # failure only shows up after installing on a device. Cheaper to catch
       # it here than to ship an APK that quietly does nothing.
-      - name: Verify the backend URL was compiled in
+      - name: Verify the backend URL and version were compiled in
         run: |
           if ! grep -rqF "${{ steps.backend.outputs.url }}" frontend/build/static/js/; then
             echo "::error::The built bundle does not contain ${{ steps.backend.outputs.url }}."
             echo "::error::The app would fall back to localhost and run no extensions."
             exit 1
           fi
-          echo "Verified: the bundle points at ${{ steps.backend.outputs.url }}"
+          if ! grep -rqF "v1.0.${{ github.run_number }}" frontend/build/static/js/; then
+            echo "::error::The built bundle does not contain the version"
+            echo "::error::v1.0.${{ github.run_number }}, so its update check would"
+            echo "::error::compare against the wrong version."
+            exit 1
+          fi
+          echo "Verified: backend ${{ steps.backend.outputs.url }}, version v1.0.${{ github.run_number }}"
 
       - name: Setup JDK 17
         uses: actions/setup-java@v4

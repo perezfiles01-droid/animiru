@@ -1,0 +1,154 @@
+/**
+ * The settings menu and the screens it opens.
+ *
+ * Rows are large and full width because this is reached by thumb far more
+ * often than by cursor.
+ */
+
+.settings-menu {
+  display: flex;
+  flex-direction: column;
+  margin-top: 20px;
+}
+
+.settings-menu-item {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  display: flex;
+  gap: 16px;
+  padding: 18px 4px;
+  text-decoration: none;
+}
+
+.settings-menu-item:first-child {
+  border-top: 1px solid var(--border);
+}
+
+.settings-menu-item:active {
+  background-color: var(--secondary);
+}
+
+.settings-menu-icon {
+  font-size: 22px;
+  line-height: 1;
+  width: 28px;
+  text-align: center;
+}
+
+.settings-menu-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-menu-title {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.settings-menu-summary {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.settings-menu-chevron {
+  color: var(--text-muted);
+  font-size: 22px;
+}
+
+/* Every settings screen carries a way back, since the bottom bar returns to
+   the index rather than up one level. */
+.settings-back {
+  align-items: center;
+  color: var(--text-muted);
+  display: inline-flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  text-decoration: none;
+}
+
+.settings-back:hover {
+  color: var(--text);
+}
+
+.settings-screen h1 {
+  margin-bottom: 6px;
+}
+
+.settings-screen > .settings-help {
+  margin-bottom: 20px;
+}
+
+/**
+ * The update screen.
+ */
+
+.update-version {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.update-version-label {
+  color: var(--text-muted);
+}
+
+.update-version-value {
+  font-size: 16px;
+}
+
+.update-toggle {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.update-status {
+  color: var(--text-muted);
+  margin: 12px 0;
+}
+
+.update-available h3 {
+  color: var(--highlight);
+  margin: 16px 0 4px;
+}
+
+.update-notes {
+  margin: 12px 0 16px;
+}
+
+.update-notes h4 {
+  margin-bottom: 6px;
+}
+
+/* Release notes are written as plain text with hard line breaks, so they are
+   shown as written rather than reflowed - and capped, since a long changelog
+   should not bury the download button. */
+.update-notes pre {
+  background-color: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  max-height: 320px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.update-safety {
+  margin-top: 14px;
+}
+
+.update-backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

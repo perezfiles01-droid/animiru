@@ -248,39 +248,37 @@ function createOps({ preferences = {}, timeoutMs } = {}) {
       if (requests.length >= MAX_REQUESTS_PER_RUN) {
         throw new Error(`Extension exceeded ${MAX_REQUESTS_PER_RUN} requests in one call`);
       }
+
       const started = Date.now();
-      let logged = null;
+
+      // Recorded before the request is made, not from a callback the
+      // transport happens to invoke. What the source asked for is worth
+      // knowing even when the request never leaves - a refused address, a
+      // bad URL - and a trace that depends on the transport cooperating is
+      // empty in exactly the cases worth diagnosing.
+      const entry = {
+        method: String((options && options.method) || 'GET').toUpperCase(),
+        url: options && options.url ? String(options.url) : '',
+        startedAt: started
+      };
+      requests.push(entry);
 
       try {
         const response = await http.request({
           ...options,
           timeoutMs,
-          onRequest: (hop) => {
-            if (!logged) {
-              logged = { ...hop, startedAt: started };
-              requests.push(logged);
-            }
-          }
+          // Redirects are followed hop by hop, so the URL that finally
+          // answered is more useful than the one first asked for.
+          onRequest: (hop) => { entry.url = hop.url; }
         });
-        if (logged) {
-          logged.status = response.statusCode;
-          logged.durationMs = Date.now() - started;
-          logged.bytes = response.body.length;
-        }
+
+        entry.status = response.statusCode;
+        entry.durationMs = Date.now() - started;
+        entry.bytes = response.body.length;
         return response;
       } catch (err) {
-        if (logged) {
-          logged.error = err.message;
-          logged.durationMs = Date.now() - started;
-        } else {
-          requests.push({
-            method: String(options && options.method ? options.method : 'GET').toUpperCase(),
-            url: options && options.url ? String(options.url) : '',
-            error: err.message,
-            startedAt: started,
-            durationMs: Date.now() - started
-          });
-        }
+        entry.error = err.message;
+        entry.durationMs = Date.now() - started;
         throw err;
       }
     }

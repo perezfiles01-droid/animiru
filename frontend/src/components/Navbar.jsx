@@ -4,11 +4,11 @@ import SearchBar from './SearchBar';
 import '../styles/Navbar.css';
 
 /**
- * Two destinations, which is all there is: what you are watching, and where
- * sources come from.
+ * The top bar: identity and search.
  *
- * No account area. Nothing in the app is per-user any more - installed
- * sources live on the device - so a login would guard nothing.
+ * Navigation lives in BottomNav rather than here. It used to be a link in
+ * this bar, which a media query hid below 768px next to a menu button that
+ * had been removed - so Settings was unreachable on a phone.
  */
 export default function Navbar() {
   return (
@@ -21,9 +21,6 @@ export default function Navbar() {
 
         <SearchBar />
 
-        <div className="nav-menu">
-          <Link to="/settings" className="nav-link">Settings</Link>
-        </div>
       </div>
     </nav>
   );

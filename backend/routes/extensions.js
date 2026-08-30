@@ -125,9 +125,14 @@ router.post('/run', async (req, res, next) => {
     return res.json(outcome);
   } catch (err) {
     if (err instanceof ExtensionError) {
-      // The logs and request trace are the whole value of a failed run -
-      // they are what tells an author which selector stopped matching.
-      return fail(res, 422, err.message, { logs: err.logs, requests: err.requests });
+      // A failed run is worth more than its message: the diagnostics say
+      // where in the source it broke, what that usually means, and what the
+      // source asked for on the way there.
+      return fail(res, 422, err.message, {
+        logs: err.logs,
+        requests: err.requests,
+        diagnostics: err.diagnostics
+      });
     }
     return next(err);
   }

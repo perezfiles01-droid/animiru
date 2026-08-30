@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import AnimeCard from '../components/AnimeCard';
 import SourceTabs from '../components/SourceTabs';
+import SearchResults from '../components/SearchResults';
+import ExtensionErrorReport from '../components/ExtensionError';
 import { getProviders } from '../services/providers/registry';
 import { getSelectedSourceKey, setSelectedSourceKey } from '../services/extensions/storage';
 import '../styles/Pages.css';
@@ -10,15 +12,24 @@ import '../styles/Pages.css';
  * The app's front page: whatever your source shows on its own front page.
  *
  * Loads on open rather than behind a Browse click, because a media app that
- * starts empty looks broken. There is no separate browse page any more - with
- * one catalogue, browsing and searching are the same screen with and without
- * a query.
+ * starts empty looks broken.
+ *
+ * Browsing and searching differ deliberately. Browsing shows one source at a
+ * time: catalogues have no shared ranking, so merging them makes a pile
+ * nothing can order. A search names a title, so every installed source is
+ * asked at once and the answers stay grouped by which source gave them -
+ * picking a source and searching it alone, then repeating, was the hassle
+ * this removes.
+ *
+ * A search can still be narrowed to one source with ?source=, which is where
+ * a group's arrow leads.
  */
 export default function Home() {
   const providers = useMemo(() => getProviders(), []);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const query = searchParams.get('q') || '';
+  const onlySource = searchParams.get('source') || '';
 
   const [selectedId, setSelectedId] = useState(() => {
     const remembered = getSelectedSourceKey();
@@ -34,6 +45,10 @@ export default function Home() {
   const [draft, setDraft] = useState(query);
 
   const provider = providers.find((candidate) => candidate.id === selectedId) || null;
+
+  const searchProviders = useMemo(() => (
+    onlySource ? providers.filter((candidate) => candidate.id === onlySource) : providers
+  ), [providers, onlySource]);
 
   useEffect(() => { setDraft(query); }, [query]);
 
@@ -54,9 +69,7 @@ export default function Home() {
     // on screen, which is a wasted render and, in tests, an update arriving
     // after the assertions.
     try {
-      const result = query
-        ? await provider.search(query, wanted)
-        : await provider.getLibrary(wanted);
+      const result = await provider.getLibrary(wanted);
 
       setItems((current) => (append ? [...current, ...result] : result));
       // Sources are unreliable about hasNextPage, so a full-looking page is
@@ -65,18 +78,21 @@ export default function Home() {
       setPage(wanted);
       setLoading(false);
     } catch (err) {
-      setError(err.message);
+      setError(err);
       if (!append) setItems([]);
       setHasMore(false);
       setLoading(false);
     }
-  }, [provider, query]);
+  }, [provider]);
 
   useEffect(() => {
+    // A query is answered by SearchResults across every source, so the
+    // catalogue is only fetched when browsing.
+    if (query) return;
     setItems([]);
     setHasMore(false);
     load(1, false);
-  }, [load]);
+  }, [load, query]);
 
   const handleSource = (chosen) => {
     setSelectedId(chosen.id);
@@ -106,7 +122,9 @@ export default function Home() {
 
   return (
     <div className="home-page">
-      <SourceTabs providers={providers} selectedId={selectedId} onSelect={handleSource} />
+      {!query && (
+        <SourceTabs providers={providers} selectedId={selectedId} onSelect={handleSource} />
+      )}
 
       <form className="home-search" onSubmit={handleSearch}>
         <input
@@ -128,39 +146,44 @@ export default function Home() {
         )}
       </form>
 
-      <section className="catalogue">
-        <h2>{query ? `Results for "${query}"` : provider && provider.name}</h2>
+      {query ? (
+        <section className="catalogue">
+          <h2>Results for &ldquo;{query}&rdquo;</h2>
+          <SearchResults providers={searchProviders} query={query} />
+        </section>
+      ) : (
+        <section className="catalogue">
+          <h2>{provider && provider.name}</h2>
 
-        {error && <p className="extensions-error">{error}</p>}
+          {error && <ExtensionErrorReport error={error} />}
 
-        {items.length > 0 && (
-          <div className="anime-grid">
-            {items.map((item) => (
-              <AnimeCard key={`${item.providerId}:${item.id}`} item={item} />
-            ))}
-          </div>
-        )}
+          {items.length > 0 && (
+            <div className="anime-grid">
+              {items.map((item) => (
+                <AnimeCard key={`${item.providerId}:${item.id}`} item={item} />
+              ))}
+            </div>
+          )}
 
-        {loading && <p className="loading">Loading...</p>}
+          {loading && <p className="loading">Loading...</p>}
 
-        {!loading && items.length === 0 && !error && (
-          <p className="extensions-empty">
-            {query
-              ? `${provider ? provider.name : 'This source'} found nothing for "${query}".`
-              : `${provider ? provider.name : 'This source'} returned no titles.`}
-          </p>
-        )}
+          {!loading && items.length === 0 && !error && (
+            <p className="extensions-empty">
+              {provider ? provider.name : 'This source'} returned no titles.
+            </p>
+          )}
 
-        {!loading && hasMore && items.length > 0 && (
-          <button
-            type="button"
-            className="btn btn-secondary load-more"
-            onClick={() => load(page + 1, true)}
-          >
-            Load more
-          </button>
-        )}
-      </section>
+          {!loading && hasMore && items.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-secondary load-more"
+              onClick={() => load(page + 1, true)}
+            >
+              Load more
+            </button>
+          )}
+        </section>
+      )}
     </div>
   );
 }

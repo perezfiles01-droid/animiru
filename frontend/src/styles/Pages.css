@@ -709,3 +709,75 @@
 .watch-error .btn {
   margin-top: 12px;
 }
+
+/**
+ * Search results, grouped by the source that returned them.
+ *
+ * A row per source that scrolls sideways: a phone can show one source's
+ * results and the next source's heading at once, which is what makes several
+ * sources comparable without scrolling past all of the first.
+ */
+
+.search-group {
+  margin-bottom: 28px;
+}
+
+.search-group-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.search-group-title {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.search-group-title h3 {
+  margin: 0;
+}
+
+.search-group-lang {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.search-group-more {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 20px;
+  padding: 0 4px;
+  text-decoration: none;
+}
+
+.search-group-more:hover {
+  color: var(--highlight);
+}
+
+.search-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  /* Cards snap so a swipe lands on a card rather than between two. */
+  scroll-snap-type: x proximity;
+}
+
+.search-row-item {
+  flex: 0 0 140px;
+  scroll-snap-align: start;
+}
+
+.search-row-item .anime-card {
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .search-row-item {
+    flex-basis: 170px;
+  }
+}

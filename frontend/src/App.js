@@ -1,10 +1,13 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
+import BottomNav from './components/BottomNav';
 import Home from './pages/Home';
 import Details from './pages/Details';
 import Watch from './pages/Watch';
 import Settings from './pages/Settings';
+import ExtensionSettings from './pages/ExtensionSettings';
+import UpdateSettings from './pages/UpdateSettings';
 import './styles/App.css';
 
 /**
@@ -26,11 +29,11 @@ export default function App() {
             <Route path="/anime" element={<Details />} />
             <Route path="/watch" element={<Watch />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/settings/extensions" element={<ExtensionSettings />} />
+            <Route path="/settings/update" element={<UpdateSettings />} />
           </Routes>
         </main>
-        <footer className="footer">
-          <p>&copy; 2024 Animiru. Watch anime online.</p>
-        </footer>
+        <BottomNav />
       </div>
     </Router>
   );

@@ -88,7 +88,7 @@ describe('Home', () => {
     );
   });
 
-  it('searches the source when a query is in the URL', async () => {
+  it('searches when a query is in the URL, and does not fetch the catalogue', async () => {
     const provider = makeProvider();
     getProviders.mockReturnValue([provider]);
 
@@ -96,7 +96,101 @@ describe('Home', () => {
 
     await waitFor(() => expect(provider.search).toHaveBeenCalledWith('bleach', 1));
     expect(provider.getLibrary).not.toHaveBeenCalled();
-    expect(screen.getByText('Results for "bleach"')).toBeInTheDocument();
+    expect(screen.getByText(/Results for/)).toBeInTheDocument();
+  });
+
+  describe('searching every source at once', () => {
+    it('asks all of them, not just the selected one', async () => {
+      const first = makeProvider({ id: 'extension:a', name: 'First', sourceKey: 'a' });
+      const second = makeProvider({ id: 'extension:b', name: 'Second', sourceKey: 'b' });
+      getProviders.mockReturnValue([first, second]);
+
+      await renderHome('/?q=bleach');
+
+      // The hassle this removes: picking a source, searching, repeating.
+      await waitFor(() => expect(first.search).toHaveBeenCalledWith('bleach', 1));
+      await waitFor(() => expect(second.search).toHaveBeenCalledWith('bleach', 1));
+    });
+
+    it('groups the results under the source that returned them', async () => {
+      const first = makeProvider({
+        id: 'extension:a',
+        name: 'First',
+        sourceKey: 'a',
+        search: jest.fn().mockResolvedValue([
+          { id: '/1', providerId: 'extension:a', title: 'From First' }
+        ])
+      });
+      const second = makeProvider({
+        id: 'extension:b',
+        name: 'Second',
+        sourceKey: 'b',
+        search: jest.fn().mockResolvedValue([
+          { id: '/2', providerId: 'extension:b', title: 'From Second' }
+        ])
+      });
+      getProviders.mockReturnValue([first, second]);
+
+      await renderHome('/?q=bleach');
+
+      expect(await screen.findByRole('heading', { name: 'First' })).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: 'Second' })).toBeInTheDocument();
+      expect(screen.getByText('From First')).toBeInTheDocument();
+      expect(screen.getByText('From Second')).toBeInTheDocument();
+    });
+
+    it('shows a failing source in its own row without emptying the page', async () => {
+      const working = makeProvider({
+        id: 'extension:a',
+        name: 'Working',
+        sourceKey: 'a',
+        search: jest.fn().mockResolvedValue([
+          { id: '/1', providerId: 'extension:a', title: 'Still here' }
+        ])
+      });
+      const broken = makeProvider({
+        id: 'extension:b',
+        name: 'Broken',
+        sourceKey: 'b',
+        search: jest.fn().mockRejectedValue(new Error('Extension timed out after 20000ms'))
+      });
+      getProviders.mockReturnValue([working, broken]);
+
+      await renderHome('/?q=bleach');
+
+      expect(await screen.findByText('Still here')).toBeInTheDocument();
+      expect(await screen.findByText(/Extension timed out/)).toBeInTheDocument();
+    });
+
+    it('says when nothing at all was found', async () => {
+      const provider = makeProvider({ search: jest.fn().mockResolvedValue([]) });
+      getProviders.mockReturnValue([provider]);
+
+      await renderHome('/?q=zzzz');
+
+      expect(await screen.findByText(/Nothing found for/)).toBeInTheDocument();
+    });
+
+    it('narrows to one source when a group is followed', async () => {
+      const first = makeProvider({ id: 'extension:a', name: 'First', sourceKey: 'a' });
+      const second = makeProvider({ id: 'extension:b', name: 'Second', sourceKey: 'b' });
+      getProviders.mockReturnValue([first, second]);
+
+      await renderHome('/?q=bleach&source=extension%3Ab');
+
+      await waitFor(() => expect(second.search).toHaveBeenCalled());
+      expect(first.search).not.toHaveBeenCalled();
+    });
+
+    it('hides the source tabs during a search, since every source is used', async () => {
+      const first = makeProvider({ id: 'extension:a', name: 'First', sourceKey: 'a' });
+      const second = makeProvider({ id: 'extension:b', name: 'Second', sourceKey: 'b' });
+      getProviders.mockReturnValue([first, second]);
+
+      await renderHome('/?q=bleach');
+
+      expect(screen.queryByRole('button', { name: 'First' })).not.toBeInTheDocument();
+    });
   });
 
   it('searches from the box', async () => {
@@ -109,6 +203,18 @@ describe('Home', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Search' }));
 
     await waitFor(() => expect(provider.search).toHaveBeenCalledWith('naruto', 1));
+  });
+
+  it('browses the selected source, and only that one', async () => {
+    const first = makeProvider({ id: 'extension:a', name: 'First', sourceKey: 'a' });
+    const second = makeProvider({ id: 'extension:b', name: 'Second', sourceKey: 'b' });
+    getProviders.mockReturnValue([first, second]);
+
+    await renderHome();
+
+    // Catalogues have no shared ranking, so merging them is not honest.
+    expect(first.getLibrary).toHaveBeenCalled();
+    expect(second.getLibrary).not.toHaveBeenCalled();
   });
 
   it('appends the next page rather than replacing what is shown', async () => {
