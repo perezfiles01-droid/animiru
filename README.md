@@ -88,6 +88,14 @@ mobile/android/        the WebView shell
 The server keeps no per-user state. Which repositories you added and which
 sources you installed live in your browser, on the device.
 
+## Pitfalls
+
+[PITFALLS.md](PITFALLS.md) records the faults that reached a device, what
+caused them, and which test now stops each one returning. Worth reading
+before changing the player, the subtitle handling, the Android shell or the
+signing setup - most of those entries looked like a different problem than
+they were, and the wrong diagnosis is what made them expensive.
+
 ## Known limitations
 
 - A source may report that a video host requires a `Referer`. Browsers do not

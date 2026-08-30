@@ -84,6 +84,18 @@ Mangayomi's API, so a source written for Mangayomi runs here unmodified.
 `extensions/README.md` has the full list, and the sources already in
 [`extensions/sources/`](extensions/sources/) are worked examples.
 
+## Mistakes that have actually happened
+
+[PITFALLS.md](PITFALLS.md#extensions) lists them with their causes. The four
+that have each cost a round trip:
+
+- **The second argument to `Client.get` is the headers.** `{ headers: {...} }`
+  sends one header called `headers` and none of the ones you meant.
+- **The `id` must be unique.** Two sources sharing one overwrite each other.
+- **The file must end in `.js`.** It used to be skipped in silence.
+- **`getDetail` must set `name`.** Without it a title that reads correctly
+  while browsing opens as "Untitled".
+
 ## Check it before you push
 
 ```
