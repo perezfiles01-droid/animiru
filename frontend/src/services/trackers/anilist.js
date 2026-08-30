@@ -78,15 +78,13 @@ export const REDIRECT_URL = 'https://anilist.co/api/v2/oauth/pin';
 export function authorizeUrl(clientId = getClientId()) {
   const id = encodeURIComponent(String(clientId || '').trim());
 
-  // redirect_uri is sent even though AniList would fall back to whatever the
-  // client has registered. That fallback is the problem: a client still
-  // carrying an old redirect sends the browser to an address it cannot
-  // resolve, and the user gets a DNS error with no hint of the cause.
-  // Naming it here makes AniList refuse with a mismatch it can explain.
-  const redirect = encodeURIComponent(REDIRECT_URL);
-
+  // Deliberately only these two parameters. Adding redirect_uri - an attempt
+  // to make a stale registered redirect fail with a clearer message - made
+  // AniList answer unsupported_grant_type and refuse the request outright,
+  // breaking a flow that worked. AniList uses the redirect saved on the
+  // client, and this is the exact form it accepts.
   return 'https://anilist.co/api/v2/oauth/authorize'
-    + `?client_id=${id}&response_type=token&redirect_uri=${redirect}`;
+    + `?client_id=${id}&response_type=token`;
 }
 
 /** Reads the token AniList put in the fragment when it sent the user back. */

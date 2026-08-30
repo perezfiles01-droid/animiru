@@ -25,13 +25,13 @@ describe('connecting', () => {
     expect(anilist.authorizeUrl('12345')).toContain('response_type=token');
   });
 
-  // Without this AniList falls back to whatever the client has registered.
-  // A client still carrying an old redirect sends the browser to an address
-  // it cannot resolve, and the user sees a DNS error naming nothing useful;
-  // asking explicitly makes AniList refuse with a mismatch it can explain.
-  it('names the redirect rather than leaving it to what is registered', () => {
-    expect(anilist.authorizeUrl('12345'))
-      .toContain(`redirect_uri=${encodeURIComponent(anilist.REDIRECT_URL)}`);
+  // Sending redirect_uri as well made AniList answer unsupported_grant_type
+  // and refuse outright, breaking a flow that worked. AniList uses the
+  // redirect saved on the client; this is the exact form it accepts, and
+  // nothing may be added to it without evidence that AniList takes it.
+  it('sends only the two parameters AniList accepts', () => {
+    const url = new URL(anilist.authorizeUrl('12345'));
+    expect([...url.searchParams.keys()].sort()).toEqual(['client_id', 'response_type']);
   });
 
   // The token comes back in the fragment, which is never sent to a server -
