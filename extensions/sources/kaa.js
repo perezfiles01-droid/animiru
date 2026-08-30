@@ -3,494 +3,286 @@ const mangayomiSources = [{
   id: 174839261,
   lang: "en",
   baseUrl: "https://kaa.lt",
+  apiUrl: "https://kaa.lt/api",
   iconUrl: "https://www.google.com/s2/favicons?sz=256&domain=https://kaa.lt",
   typeSource: "single",
   itemType: 1,
-  version: "0.1.0",
+  version: "1.0.0",
   isNsfw: false,
   hasCloudflare: false,
   isManga: false,
   appMinVerReq: "0.5.0",
-  notes: "KAA metadata and episode-list source.",
+  notes: "Reads KAA's JSON API. The site is a single-page app: its HTML carries no titles.",
 }];
 
+/**
+ * KickAssAnime.
+ *
+ * The previous version scraped <a> tags out of the homepage and always
+ * returned nothing, because there is nothing there to find: KAA is a
+ * single-page app whose HTML ships an empty shell and fetches the catalogue
+ * as JSON afterwards. Reading that API is not an optimisation, it is the
+ * only thing that works.
+ *
+ *   api/show/recent          the front page, newest first
+ *   api/show/popular         the popular list
+ *   api/search               titles, POSTed as JSON
+ *   api/show/<slug>          one title
+ *   api/show/<slug>/episodes its episodes, paged
+ *   api/show/<slug>/episode/<episode>  the servers for one episode
+ *
+ * Every reader below tolerates more than one shape. KAA has moved fields
+ * between releases - a poster has been a string and an object, a list has
+ * been returned bare and wrapped in `result` - and a source pinned to one
+ * spelling breaks on the next change with no clue why.
+ */
 class DefaultExtension extends MProvider {
-  constructor() {
-    super();
-    this.client = new Client();
+  get api() {
+    return this.source.apiUrl || `${this.source.baseUrl}/api`;
   }
 
-  get ua() {
-    return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-      "AppleWebKit/537.36 (KHTML, like Gecko) " +
-      "Chrome/135.0.0.0 Safari/537.36";
-  }
-
-  get headers() {
+  headers() {
     return {
-      "User-Agent": this.ua,
-      "Referer": this.source.baseUrl + "/",
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      Accept: "application/json",
+      Referer: `${this.source.baseUrl}/`
     };
   }
 
-  async fetchHtml(url) {
-    var target = url;
+  async getJson(path, body) {
+    const url = path.startsWith("http") ? path : `${this.api}${path}`;
 
-    if (!/^https?:\/\//i.test(target)) {
-      target = this.source.baseUrl + "/" + target.replace(/^\/+/, "");
-    }
-
-    var response = await this.client.get(target, this.headers);
-    return (response && response.body) || "";
-  }
-
-  decodeHtml(value) {
-    return String(value || "")
-      .replace(/&amp;/g, "&")
-      .replace(/&quot;/g, "\"")
-      .replace(/&#39;|&apos;/g, "'")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&#(\d+);/g, function (_, n) {
-        return String.fromCharCode(parseInt(n, 10));
-      })
-      .replace(/&#x([0-9a-fA-F]+);/g, function (_, n) {
-        return String.fromCharCode(parseInt(n, 16));
-      });
-  }
-
-  absoluteUrl(url) {
-    if (!url) return "";
-
-    if (/^https?:\/\//i.test(url)) {
-      return url;
-    }
-
-    if (url.indexOf("//") === 0) {
-      return "https:" + url;
-    }
-
-    if (url.charAt(0) === "/") {
-      return this.source.baseUrl + url;
-    }
-
-    return this.source.baseUrl + "/" + url;
-  }
-
-  stripHtml(value) {
-    return this.decodeHtml(
-      String(value || "")
-        .replace(/<script[\s\S]*?<\/script>/gi, "")
-        .replace(/<style[\s\S]*?<\/style>/gi, "")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-    );
-  }
-
-  get supportsLatest() {
-    return true;
-  }
-
-  /*
-   * Extract anime cards from a KAA page.
-   *
-   * This intentionally uses generic anchor/image relationships instead of
-   * relying on one CSS class so minor presentation changes are less likely
-   * to break the extension.
-   */
-  parseAnimeList(html) {
-    var result = [];
-    var seen = {};
-
-    var rx = /<a\b([^>]*?)href=["']([^"']+)["']([^>]*)>([\s\S]*?)<\/a>/gi;
-    var match;
-
-    while ((match = rx.exec(html)) !== null) {
-      var attrsBefore = match[1] || "";
-      var href = match[2] || "";
-      var attrsAfter = match[3] || "";
-      var body = match[4] || "";
-
-      if (!href || href.indexOf("javascript:") === 0) {
-        continue;
-      }
-
-      /*
-       * Look for a recognizable anime slug rather than accepting every
-       * navigation link on the page.
-       */
-      if (!/\/[^\/?#]+(?:\/)?$/i.test(href)) {
-        continue;
-      }
-
-      var imageMatch = body.match(
-        /<img\b[^>]*src=["']([^"']+)["']/i
+    const res = body === undefined
+      ? await new Client().get(url, this.headers())
+      : await new Client().post(
+        url,
+        { ...this.headers(), "Content-Type": "application/json" },
+        JSON.stringify(body)
       );
 
-      var image = imageMatch ? this.absoluteUrl(imageMatch[1]) : "";
-
-      var text = this.stripHtml(body);
-
-      /*
-       * Some cards put the title in an attribute instead of visible text.
-       */
-      if (!text) {
-        var titleMatch = (
-          attrsBefore + " " + attrsAfter
-        ).match(
-          /(?:title|aria-label)=["']([^"']+)["']/i
-        );
-
-        if (titleMatch) {
-          text = this.decodeHtml(titleMatch[1]);
-        }
-      }
-
-      if (!text || text.length < 2) {
-        continue;
-      }
-
-      /*
-       * Ignore obvious non-anime navigation URLs.
-       */
-      if (
-        /\/(search|login|register|privacy|terms|contact|news|blog|genre|genres|season|schedule)(\/|$|\?)/i.test(href)
-      ) {
-        continue;
-      }
-
-      var link = this.absoluteUrl(href);
-
-      if (seen[link]) {
-        continue;
-      }
-
-      seen[link] = true;
-
-      result.push({
-        name: text.substring(0, 200),
-        link: link,
-        imageUrl: image,
-      });
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw new Error(`KickAssAnime responded ${res.statusCode} for ${url}`);
     }
 
-    return result;
+    const text = String(res.body || "");
+
+    try {
+      return JSON.parse(text);
+    } catch (_) {
+      // The old version's failure mode, named rather than repeated: asking
+      // for a page rather than the API returns an HTML shell with no titles
+      // in it at all.
+      throw new Error(
+        `KickAssAnime returned a page rather than JSON for ${url}. Its ` +
+        "catalogue lives in the API, not in the HTML."
+      );
+    }
+  }
+
+  /** A list has been returned bare, under `data`, and under `result`. */
+  rowsOf(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (!payload || typeof payload !== "object") return [];
+
+    for (const key of ["result", "data", "shows", "items"]) {
+      if (Array.isArray(payload[key])) return payload[key];
+    }
+    return [];
+  }
+
+  /** A poster has been a string, an object of sizes, and a list of formats. */
+  posterOf(row) {
+    const poster = row?.poster ?? row?.image ?? row?.thumbnail;
+    if (!poster) return "";
+
+    if (typeof poster === "string") {
+      return /^https?:/i.test(poster)
+        ? poster
+        : `${this.source.baseUrl}/image/poster/${poster}.webp`;
+    }
+
+    const name = poster.hq || poster.sm || poster.name || poster.url || "";
+    if (!name) return "";
+
+    return /^https?:/i.test(name)
+      ? name
+      : `${this.source.baseUrl}/image/poster/${name}.webp`;
+  }
+
+  titleOf(row) {
+    return row?.title_en || row?.title || row?.name
+      || row?.titles?.en || row?.titles?.rj || "Unknown Anime";
+  }
+
+  toItem(row) {
+    const slug = String(row?.slug || row?.id || "");
+    if (!slug) return null;
+
+    return { name: this.titleOf(row), imageUrl: this.posterOf(row), link: slug };
+  }
+
+  toList(payload, page) {
+    const list = this.rowsOf(payload).map((row) => this.toItem(row)).filter(Boolean);
+
+    const current = Number(page) || 1;
+    const pages = Number(payload?.pages ?? payload?.totalPages ?? 0);
+
+    return {
+      list,
+      // Without a page count, a full-looking page is treated as "there may
+      // be more" and an empty one ends the list.
+      hasNextPage: pages > 0 ? current < pages : list.length > 0
+    };
+  }
+
+  async browse(path, page) {
+    const current = Number(page) || 1;
+    return this.toList(await this.getJson(`${path}?page=${current}`), current);
   }
 
   async getPopular(page) {
-    /*
-     * KAA may change its browse-page URL over time. The source starts from
-     * the site's main catalogue and paginates locally when necessary.
-     */
-    var html = await this.fetchHtml(this.source.baseUrl + "/");
-
-    var list = this.parseAnimeList(html);
-
-    var pageSize = 30;
-    var currentPage = page || 1;
-    var start = (currentPage - 1) * pageSize;
-
-    return {
-      list: list.slice(start, start + pageSize),
-      hasNextPage: start + pageSize < list.length,
-    };
+    return this.browse("/show/popular", page);
   }
 
   async getLatestUpdates(page) {
-    var currentPage = page || 1;
-
-    if (currentPage > 1) {
-      return {
-        list: [],
-        hasNextPage: false,
-      };
-    }
-
-    var html = await this.fetchHtml(this.source.baseUrl + "/");
-
-    var list = this.parseAnimeList(html);
-
-    return {
-      list: list.slice(0, 30),
-      hasNextPage: false,
-    };
+    return this.browse("/show/recent?type=all", page);
   }
 
   async search(query, page, filters) {
-    var currentPage = page || 1;
+    const term = String(query || "").trim();
+    if (!term) return { list: [], hasNextPage: false };
 
-    if (!query || !query.trim()) {
-      return {
-        list: [],
-        hasNextPage: false,
-      };
-    }
-
-    /*
-     * KAA search URLs use the search term as part of the catalogue URL.
-     * Keep the request isolated here so it is easy to adjust if KAA changes
-     * its search route.
-     */
-    var searchUrl =
-      this.source.baseUrl +
-      "/search/" +
-      encodeURIComponent(query.trim());
-
-    try {
-      var html = await this.fetchHtml(searchUrl);
-      var list = this.parseAnimeList(html);
-
-      var pageSize = 30;
-      var start = (currentPage - 1) * pageSize;
-
-      return {
-        list: list.slice(start, start + pageSize),
-        hasNextPage: start + pageSize < list.length,
-      };
-    } catch (e) {
-      return {
-        list: [],
-        hasNextPage: false,
-      };
-    }
+    // Search is a POST with a JSON body; a GET returns the site's shell.
+    return this.toList(await this.getJson("/search", { query: term }), 1);
   }
 
-  extractMeta(html, name) {
-    var rx = new RegExp(
-      "<meta[^>]+(?:name|property)=[\"']" +
-      name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
-      "[\"'][^>]+content=[\"']([^\"']+)[\"']",
-      "i"
-    );
+  /**
+   * Mangayomi's status codes: 0 ongoing, 1 completed, 2 hiatus,
+   * 3 canceled, 5 unknown.
+   */
+  parseStatus(value) {
+    const status = String(value || "").toLowerCase();
 
-    var match = html.match(rx);
-
-    return match ? this.decodeHtml(match[1]) : "";
-  }
-
-  extractTitle(html) {
-    var ogTitle = this.extractMeta(html, "og:title");
-
-    if (ogTitle) {
-      return ogTitle
-        .replace(/\s*\|\s*KICKASSANIME.*$/i, "")
-        .trim();
-    }
-
-    var titleMatch = html.match(
-      /<title[^>]*>([\s\S]*?)<\/title>/i
-    );
-
-    if (titleMatch) {
-      return this.stripHtml(titleMatch[1])
-        .replace(/\s*\|\s*KICKASSANIME.*$/i, "")
-        .trim();
-    }
-
-    return "Unknown";
-  }
-
-  extractDescription(html) {
-    var description = this.extractMeta(
-      html,
-      "description"
-    );
-
-    if (!description) {
-      description = this.extractMeta(
-        html,
-        "og:description"
-      );
-    }
-
-    return description || "";
-  }
-
-  extractCover(html) {
-    var image = this.extractMeta(html, "og:image");
-
-    if (image) {
-      return this.absoluteUrl(image);
-    }
-
-    var poster = html.match(
-      /<img\b[^>]*(?:class|id)=["'][^"']*(?:poster|cover)[^"']*["'][^>]*src=["']([^"']+)["']/i
-    );
-
-    return poster
-      ? this.absoluteUrl(poster[1])
-      : "";
-  }
-
-  extractGenres(html) {
-    var genres = [];
-    var seen = {};
-
-    var rx = /(?:genre|genres)[^<]{0,100}<[^>]*>([\s\S]*?)<\/(?:div|section|ul)>/gi;
-    var block;
-
-    while ((block = rx.exec(html)) !== null) {
-      var links = block[1].match(
-        /<a\b[^>]*>([^<]+)<\/a>/gi
-      ) || [];
-
-      for (var i = 0; i < links.length; i++) {
-        var name = this.stripHtml(links[i]);
-
-        if (
-          name &&
-          name.length > 1 &&
-          name.length < 50 &&
-          !seen[name.toLowerCase()]
-        ) {
-          seen[name.toLowerCase()] = true;
-          genres.push(name);
-        }
-      }
-    }
-
-    return genres;
-  }
-
-  statusCode(value) {
-    var status = String(value || "").toLowerCase();
-
-    if (
-      status.indexOf("finished") >= 0 ||
-      status.indexOf("completed") >= 0
-    ) {
-      return 1;
-    }
-
-    if (
-      status.indexOf("airing") >= 0 ||
-      status.indexOf("ongoing") >= 0 ||
-      status.indexOf("releasing") >= 0
-    ) {
-      return 0;
-    }
-
-    if (
-      status.indexOf("upcoming") >= 0 ||
-      status.indexOf("not yet") >= 0
-    ) {
-      return 4;
-    }
+    if (/currently|ongoing|airing|releasing/.test(status)) return 0;
+    if (/finished|completed|ended/.test(status)) return 1;
+    if (/hiatus/.test(status)) return 2;
+    if (/cancel/.test(status)) return 3;
 
     return 5;
   }
 
-  extractStatus(html) {
-    var match = html.match(
-      /(?:Status|status)[\s\S]{0,150}?>([^<>]{3,40})</i
-    );
-
-    return match
-      ? this.statusCode(this.stripHtml(match[1]))
-      : 5;
-  }
-
-  /*
-   * Extract episode links from the anime page.
-   *
-   * The URL is retained as the episode URL. No attempt is made here to
-   * bypass player protection or derive hidden streaming URLs.
-   */
-  extractEpisodes(html) {
-    var chapters = [];
-    var seen = {};
-
-    var rx = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-    var match;
-
-    while ((match = rx.exec(html)) !== null) {
-      var href = match[1];
-      var text = this.stripHtml(match[2]);
-
-      if (!href || !text) {
-        continue;
-      }
-
-      /*
-       * Recognize common episode labels.
-       */
-      var ep = text.match(
-        /(?:episode|ep\.?|episodio)\s*[-:#]?\s*(\d+(?:\.\d+)?)/i
-      );
-
-      if (!ep) {
-        continue;
-      }
-
-      var link = this.absoluteUrl(href);
-
-      if (seen[link]) {
-        continue;
-      }
-
-      seen[link] = true;
-
-      chapters.push({
-        name: "Episode " + ep[1],
-        url: link,
-        isFiller: false,
-      });
-    }
-
-    /*
-     * Sort numerically so Animiru receives a predictable episode order.
-     */
-    chapters.sort(function (a, b) {
-      var an = parseFloat(
-        a.name.replace(/[^\d.]/g, "")
-      );
-
-      var bn = parseFloat(
-        b.name.replace(/[^\d.]/g, "")
-      );
-
-      return an - bn;
-    });
-
-    return chapters;
-  }
-
   async getDetail(url) {
-    var html = await this.fetchHtml(url);
+    const slug = String(url || "").replace(/^.*\/show\//, "").replace(/\/+$/, "");
+    if (!slug) throw new Error("Missing anime identifier");
 
-    var title = this.extractTitle(html);
-    var image = this.extractCover(html);
-    var description = this.extractDescription(html);
-    var genre = this.extractGenres(html);
-    var status = this.extractStatus(html);
-    var chapters = this.extractEpisodes(html);
+    const show = await this.getJson(`/show/${encodeURIComponent(slug)}`);
+    const row = show?.result ?? show?.data ?? show;
 
     return {
-      name: title || "Unknown",
-      imageUrl: image,
-      description: description,
-      genre: genre,
-      status: status,
-      link: url,
-      chapters: chapters,
+      // Named explicitly: a detail with no name shows as "Untitled".
+      name: this.titleOf(row),
+      imageUrl: this.posterOf(row),
+      description: this.plainText(row?.synopsis || row?.description || ""),
+      genre: Array.isArray(row?.genres)
+        ? row.genres.map((genre) => (typeof genre === "string" ? genre : genre?.name)).filter(Boolean)
+        : [],
+      status: this.parseStatus(row?.status),
+      link: slug,
+      episodes: await this.getEpisodes(slug)
     };
   }
 
-  /*
-   * Playback resolver intentionally does not reverse-engineer protected
-   * player URLs. If KAA exposes an authorized/public playback endpoint,
-   * this method can be connected to that API without changing the rest
-   * of the extension.
-   */
-  async getVideoList(url) {
-    return [];
+  async getEpisodes(slug) {
+    const episodes = [];
+    const seen = new Set();
+
+    let page = 1;
+    let pages = 1;
+
+    do {
+      const payload = await this.getJson(
+        `/show/${encodeURIComponent(slug)}/episodes?ep=${(page - 1) * 100 + 1}&lang=ja-JP`
+      );
+
+      for (const row of this.rowsOf(payload)) {
+        const episodeSlug = String(row?.slug || row?.episode_slug || "");
+        if (!episodeSlug || seen.has(episodeSlug)) continue;
+        seen.add(episodeSlug);
+
+        const number = Number(row?.episode_number ?? row?.number ?? row?.episode_string);
+        const label = row?.title ? `: ${row.title}` : "";
+
+        episodes.push({
+          name: Number.isFinite(number)
+            ? `Episode ${number}${label}`
+            : String(row?.episode_string || "Episode"),
+          url: `${slug}/${episodeSlug}`,
+          episodeNumber: Number.isFinite(number) ? number : 0
+        });
+      }
+
+      const declared = payload?.pages;
+      pages = Array.isArray(declared) ? declared.length : Number(declared) || 1;
+      page += 1;
+      // A malformed page count would otherwise page for ever.
+    } while (page <= pages && page <= 40);
+
+    episodes.sort((a, b) => b.episodeNumber - a.episodeNumber);
+    return episodes;
   }
 
-  getFilterList() {
-    return [];
+  async getVideoList(url) {
+    const path = String(url || "");
+    const at = path.indexOf("/");
+    if (at === -1) throw new Error("Missing episode identifier");
+
+    const slug = path.slice(0, at);
+    const episodeSlug = path.slice(at + 1);
+
+    const payload = await this.getJson(
+      `/show/${encodeURIComponent(slug)}/episode/${encodeURIComponent(episodeSlug)}`
+    );
+
+    const servers = this.rowsOf(payload?.servers ? { result: payload.servers } : payload);
+    const videos = [];
+    const seen = new Set();
+
+    for (const server of servers) {
+      const src = server?.src || server?.url || server?.file || server?.link;
+      if (!src || seen.has(src)) continue;
+      seen.add(src);
+
+      videos.push({
+        url: src,
+        originalUrl: src,
+        quality: [server?.shortName || server?.name || "KAA", server?.quality]
+          .filter(Boolean).join(" · "),
+        headers: { Referer: `${this.source.baseUrl}/` }
+      });
+    }
+
+    if (videos.length === 0) {
+      // Said out loud rather than returned as an empty list: a source that
+      // returns nothing looks like the app has failed, not the episode.
+      throw new Error(
+        "KickAssAnime listed no server for this episode. It guards its " +
+        "player endpoints and changes them often, so this can happen while " +
+        "browsing and episodes still work."
+      );
+    }
+
+    return videos;
+  }
+
+  plainText(value) {
+    return String(value || "")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   getSourcePreferences() {
