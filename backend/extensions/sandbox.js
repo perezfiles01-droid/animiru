@@ -20,6 +20,7 @@
 const vm = require('vm');
 const { createOps } = require('./ops');
 const { RUNTIME_SOURCE } = require('./runtime');
+const { buildDiagnostics } = require('./diagnostics');
 
 const DEFAULT_TIMEOUT_MS = 20000;
 const MAX_TIMEOUT_MS = 60000;
@@ -39,11 +40,15 @@ const CALLABLE_METHODS = new Set([
 ]);
 
 class ExtensionError extends Error {
-  constructor(message, { logs = [], requests = [] } = {}) {
+  constructor(message, { logs = [], requests = [] } = {}, diagnostics = null) {
     super(message);
     this.name = 'ExtensionError';
     this.logs = logs;
     this.requests = requests;
+    // Where it happened in the source, what it likely means, and what the
+    // source asked for on the way. Built at the throw site, where the stack
+    // and the code are both still in hand.
+    this.diagnostics = diagnostics;
   }
 }
 
@@ -134,7 +139,11 @@ async function runExtension(options = {}) {
         timeout: SYNC_SLICE_MS
       });
     } catch (err) {
-      throw new ExtensionError(`Extension failed to load: ${err.message}`, ops);
+      const message = `Extension failed to load: ${err.message}`;
+      throw new ExtensionError(message, ops, buildDiagnostics({
+        message, stack: err.stack, code, requests: ops.requests, logs: ops.logs,
+        source: options.source, method
+      }));
     }
 
     // The invocation is handed over as JSON text and re-parsed inside the
@@ -174,17 +183,23 @@ async function runExtension(options = {}) {
         timeout: SYNC_SLICE_MS
       });
     } catch (err) {
-      throw new ExtensionError(err.message, ops);
+      throw new ExtensionError(err.message, ops, buildDiagnostics({
+        message: err.message, stack: err.stack, code,
+        requests: ops.requests, logs: ops.logs, source: options.source, method
+      }));
     }
 
     // Guards the asynchronous tail. It cannot interrupt a spinning
     // extension - see the note at the top - but it does stop a source that
     // is merely waiting forever on a dead host from hanging the request.
     const deadline = new Promise((_, reject) => {
-      timer = setTimeout(
-        () => reject(new ExtensionError(`Extension timed out after ${timeoutMs}ms`, ops)),
-        timeoutMs
-      );
+      timer = setTimeout(() => {
+        const message = `Extension timed out after ${timeoutMs}ms`;
+        reject(new ExtensionError(message, ops, buildDiagnostics({
+          message, code, requests: ops.requests, logs: ops.logs,
+          source: options.source, method
+        })));
+      }, timeoutMs);
     });
 
     let resultJson;
@@ -192,12 +207,20 @@ async function runExtension(options = {}) {
       resultJson = await Promise.race([Promise.resolve(pending), deadline]);
     } catch (err) {
       if (err instanceof ExtensionError) throw err;
-      throw new ExtensionError(err && err.message ? String(err.message) : String(err), ops);
+      const message = err && err.message ? String(err.message) : String(err);
+      throw new ExtensionError(message, ops, buildDiagnostics({
+        message, stack: err && err.stack, code,
+        requests: ops.requests, logs: ops.logs, source: options.source, method
+      }));
     }
 
     const text = String(resultJson ?? 'null');
     if (text.length > MAX_RESULT_BYTES) {
-      throw new ExtensionError(`Extension returned more than ${MAX_RESULT_BYTES} bytes`, ops);
+      const message = `Extension returned more than ${MAX_RESULT_BYTES} bytes`;
+      throw new ExtensionError(message, ops, buildDiagnostics({
+        message, code, requests: ops.requests, logs: ops.logs,
+        source: options.source, method
+      }));
     }
 
     return {

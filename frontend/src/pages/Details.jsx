@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getProvider } from '../services/providers/registry';
+import ExtensionErrorReport from '../components/ExtensionError';
 import '../styles/Pages.css';
 
 /**
@@ -55,7 +56,7 @@ export default function Details() {
         setItem(detail);
         setEpisodes(list);
       } catch (err) {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) setError(err);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -66,7 +67,15 @@ export default function Details() {
   }, [provider, itemId]);
 
   if (loading) return <div className="loader">Loading...</div>;
-  if (error) return <div className="error">{error}</div>;
+  if (error) {
+    return (
+      <div className="details-page">
+        {typeof error === 'string'
+          ? <div className="error">{error}</div>
+          : <ExtensionErrorReport error={error} />}
+      </div>
+    );
+  }
   if (!item) return <div className="error">Nothing found.</div>;
 
   const watchHref = (episode) =>

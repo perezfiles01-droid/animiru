@@ -385,3 +385,156 @@
   color: var(--text-muted);
   font-size: 13px;
 }
+
+/**
+ * The failure report.
+ *
+ * Cause and fix lead, because they are what a person can act on. Everything
+ * that needs reading closely - the quoted line, the request trace - sits
+ * behind one tap, so a broken source does not fill the screen with detail
+ * before anyone has decided they want it.
+ */
+
+.ext-error {
+  background-color: rgba(233, 69, 96, 0.08);
+  border: 1px solid var(--highlight);
+  border-radius: 6px;
+  margin: 12px 0;
+  padding: 12px 14px;
+}
+
+.ext-error-cause {
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.ext-error-fix,
+.ext-error-hint {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
+.ext-error-hint {
+  color: var(--highlight);
+}
+
+.ext-error .btn-link {
+  padding-left: 0;
+}
+
+.ext-error-details {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.ext-error-details section {
+  margin-bottom: 14px;
+}
+
+.ext-error-details h4 {
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.ext-error-message {
+  font-family: monospace;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.ext-error-where {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.ext-error-code {
+  background-color: var(--primary);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  margin: 0;
+  overflow-x: auto;
+  padding: 8px 0;
+}
+
+.ext-error-line {
+  padding: 1px 10px;
+  white-space: pre;
+}
+
+/* The failing line is marked rather than merely included: in seven lines of
+   context it is otherwise just another line. */
+.ext-error-line.failing {
+  background-color: rgba(233, 69, 96, 0.18);
+  border-left: 2px solid var(--highlight);
+  padding-left: 8px;
+}
+
+.ext-error-lineno {
+  color: var(--text-muted);
+  display: inline-block;
+  min-width: 32px;
+  text-align: right;
+  user-select: none;
+  margin-right: 12px;
+}
+
+.ext-error-requests,
+.ext-error-logs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ext-error-requests li {
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  font-size: 12px;
+  gap: 2px;
+  grid-template-columns: auto 1fr;
+  padding: 5px 0;
+}
+
+.ext-error-requests li:last-child {
+  border-bottom: none;
+}
+
+.ext-error-method {
+  color: var(--text-muted);
+  padding-right: 8px;
+}
+
+.ext-error-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: break-all;
+}
+
+.ext-error-outcome {
+  color: var(--text-muted);
+  grid-column: 2;
+}
+
+.ext-error-requests li.failed .ext-error-outcome {
+  color: var(--highlight);
+}
+
+.ext-error-logs li {
+  font-family: monospace;
+  font-size: 12px;
+  padding: 2px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ext-error-logs .log-warn { color: #e8c547; }
+.ext-error-logs .log-error { color: var(--highlight); }
