@@ -149,6 +149,11 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // Lets the page make one request from this device when the server
+        // is refused by a site. See DeviceFetch for why a plain fetch()
+        // cannot do it.
+        webView.addJavascriptInterface(new DeviceFetch(webView), "AnimiruDeviceFetch");
+
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);

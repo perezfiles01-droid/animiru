@@ -253,6 +253,42 @@ nothing if the wiring drops them.
 
 ---
 
+## The block is on the address, not the request
+
+KickAssAnime refused the server 403 in 148ms with a full Chrome User-Agent
+already on the request. No header and no TLS change fixes that: extensions run
+on the Animiru server, so every request comes from a hosting provider's
+address, and that is what bot protection blocks. The user's own connection is
+not blocked, because it is not a datacenter.
+
+So a 403, 429 or 503 stops the run, names the request, and the app makes that
+one request from the device through a native bridge - a plain `fetch()` cannot,
+because the app is served from a virtual origin inside the WebView and every
+site is cross-origin. The run is then **replayed** with the answer supplied,
+not resumed: suspending a sandbox between HTTP requests would mean holding a
+live VM per user on a serverless host.
+
+Three things this gets wrong if built carelessly, each pinned by a test:
+
+- A source that catches a failed request and falls back would swallow the
+  refusal and return half an answer. The refusal is recorded as well as
+  thrown, and takes precedence over the result.
+- A 404 is an answer about the URL and a 500 is the site being broken. Neither
+  is about who is asking, so neither is worth a device round trip.
+- The request key includes the body. Answering a search for "bleach" with the
+  result for "naruto" is worse than failing.
+
+**Pinned by** `backend/tests/extensions.handoff.test.js`,
+`backend/tests/extensions.routes.test.js`,
+`frontend/src/services/extensions/__tests__/deviceFetch.test.js` and
+`client.handoff.test.js`.
+
+> The device path must refuse private addresses exactly as the server does.
+> Moving a request to the phone must not become the way an extension reaches
+> the user's own network.
+
+---
+
 ## Verification
 
 The habit that caught most of the above, and is worth keeping:
