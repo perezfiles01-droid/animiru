@@ -52,6 +52,7 @@ app.use(limiter);
 
 // Routes
 app.use('/api/extensions', require('./routes/extensions'));
+app.use('/api/metadata', require('./routes/metadata'));
 app.use('/api/health', require('./routes/health'));
 
 // Error handling middleware
