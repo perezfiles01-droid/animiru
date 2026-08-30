@@ -70,9 +70,22 @@ for Mangayomi runs here unmodified.
 
 ## Extensions in this folder
 
-2 extensions.
+15 extensions.
 
 | Extension | Language | Version | Site |
 | --- | --- | --- | --- |
+| Anidap | English | 1.6.0 | [anidap.lol](https://anidap.lol) |
+| AniKoto | English | 0.4.15 | [anikototv.to](https://anikototv.to) |
+| AniLight | English | 0.5.1 | [anilight.live](https://anilight.live) |
+| AnimeHeaven | English | 0.0.7 | [animeheaven.me](https://animeheaven.me) |
 | AnimePahe | English | 2.3.0 | [animepahe.org](https://animepahe.org) |
+| AnimeParadise | English | 0.3.4 | [animeparadise.moe](https://animeparadise.moe) |
+| AniNeko | English | 0.1.1 | [anineko.to](https://anineko.to) |
+| AniWave | English | 0.2.3 | [aniwaves.ru](https://aniwaves.ru) |
+| HiAnime | English | 0.4.11 | [hianime.ms](https://hianime.ms) |
+| Just4Anime | English | 0.1.1 | [just4anime.online](https://just4anime.online) |
+| JustAnime | English | 0.2.8 | [justanime.to](https://justanime.to) |
+| Miruro | English | 6.1.11 | [www.miruro.to](https://www.miruro.to) |
+| MyroniX | English | 0.2.4 | [myronix.strangled.net](https://myronix.strangled.net) |
+| Playback Diagnostic | English | 0.0.2 | [example.invalid](https://example.invalid) |
 | Re:ANIME | English | 2.2.0 | [reanime.to](https://reanime.to) |
