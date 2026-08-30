@@ -2,10 +2,10 @@ const mangayomiSources = [{
   name: "Jikan + AniList",
   id: 1004,
   lang: "en",
-  baseUrl: "https://myanimelist.net",
-  apiUrl: "https://api.jikan.moe/v4",
+  baseUrl: "https://graphql.anilist.co",
+  apiUrl: "https://graphql.anilist.co",
   iconUrl: "https://upload.wikimedia.org/wikipedia/commons/7/7a/Jikan_logo.png",
-  version: "2.1.0",
+  version: "3.0.0",
   itemType: 1,
   isManga: false,
   isNsfw: false,
@@ -15,216 +15,64 @@ const mangayomiSources = [{
 
 class DefaultExtension extends MProvider {
 
-  get jikanBase() {
+  get apiBase() {
     return this.source.apiUrl;
   }
 
-  get aniListBase() {
-    return "https://graphql.anilist.co";
-  }
-
-  async jikan(url) {
-    let lastError = null;
-
-    /*
-     * Jikan can occasionally return temporary 5xx/429
-     * responses. Retry a few times before giving up.
-     */
-    for (let attempt = 1; attempt <= 3; attempt++) {
-
-      try {
-        const res = await new Client().get(url, {
-          Accept: "application/json"
-        });
-
-        if (
-          res.statusCode >= 200 &&
-          res.statusCode < 300
-        ) {
-          if (!res.body || !res.body.trim()) {
-            throw new Error(
-              "Jikan returned an empty response"
-            );
-          }
-
-          try {
-            return JSON.parse(res.body);
-          } catch (_) {
-            throw new Error(
-              "Jikan returned invalid JSON"
-            );
-          }
-        }
-
-        lastError = new Error(
-          `Jikan API returned HTTP ${res.statusCode}`
-        );
-
-        /*
-         * Retry temporary errors only.
-         * Don't retry permanent client errors such
-         * as 400/401/403/404.
-         */
-        const retryable =
-          res.statusCode === 408 ||
-          res.statusCode === 429 ||
-          res.statusCode === 500 ||
-          res.statusCode === 502 ||
-          res.statusCode === 503 ||
-          res.statusCode === 504;
-
-        if (!retryable) {
-          throw lastError;
-        }
-
-      } catch (error) {
-        lastError = error;
-
-        /*
-         * If this isn't a temporary API/network
-         * problem, stop immediately.
-         */
-        const message =
-          String(error?.message || error);
-
-        const retryable =
-          message.includes("408") ||
-          message.includes("429") ||
-          message.includes("500") ||
-          message.includes("502") ||
-          message.includes("503") ||
-          message.includes("504") ||
-          message.toLowerCase().includes("timeout");
-
-        if (!retryable) {
-          throw error;
-        }
-      }
-    }
-
-    throw lastError ||
-      new Error("Jikan request failed");
-  }
-
-  async aniList(query, variables) {
-
+  async request(query, variables) {
     const body = JSON.stringify({
       query: query,
       variables: variables || {}
     });
 
-    let lastError = null;
+    const response = await new Client().post(
+      this.apiBase,
+      {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body
+    );
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
-
-      try {
-
-        const res = await new Client().post(
-          this.aniListBase,
-          {
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-          },
-          body
-        );
-
-        if (
-          res.statusCode >= 200 &&
-          res.statusCode < 300
-        ) {
-
-          let json;
-
-          try {
-            json = JSON.parse(res.body);
-          } catch (_) {
-            throw new Error(
-              "AniList returned invalid JSON"
-            );
-          }
-
-          if (
-            json.errors &&
-            json.errors.length > 0
-          ) {
-            throw new Error(
-              json.errors[0].message ||
-              "AniList GraphQL error"
-            );
-          }
-
-          return json.data;
-        }
-
-        lastError = new Error(
-          `AniList API returned HTTP ${res.statusCode}`
-        );
-
-        const retryable =
-          res.statusCode === 408 ||
-          res.statusCode === 429 ||
-          res.statusCode === 500 ||
-          res.statusCode === 502 ||
-          res.statusCode === 503 ||
-          res.statusCode === 504;
-
-        if (!retryable) {
-          throw lastError;
-        }
-
-      } catch (error) {
-
-        lastError = error;
-
-        const message =
-          String(error?.message || error);
-
-        const retryable =
-          message.includes("408") ||
-          message.includes("429") ||
-          message.includes("500") ||
-          message.includes("502") ||
-          message.includes("503") ||
-          message.includes("504") ||
-          message.toLowerCase().includes("timeout");
-
-        if (!retryable) {
-          throw error;
-        }
-      }
+    if (
+      response.statusCode < 200 ||
+      response.statusCode >= 300
+    ) {
+      throw new Error(
+        `AniList API returned HTTP ${response.statusCode}`
+      );
     }
 
-    throw lastError ||
-      new Error("AniList request failed");
-  }
-
-  mapAnimeList(data) {
-
-    const items =
-      Array.isArray(data?.data)
-        ? data.data
-        : [];
-
-    return items
-      .map((item) => ({
-        name:
-          item.title ||
-          item.title_english ||
-          "Unknown Anime",
-
-        imageUrl:
-          item.images?.jpg?.large_image_url ||
-          item.images?.jpg?.image_url ||
-          "",
-
-        link:
-          String(item.mal_id)
-      }))
-      .filter(
-        (item) =>
-          item.link &&
-          item.link !== "undefined"
+    if (
+      !response.body ||
+      !response.body.trim()
+    ) {
+      throw new Error(
+        "AniList returned an empty response"
       );
+    }
+
+    let json;
+
+    try {
+      json = JSON.parse(response.body);
+    } catch (_) {
+      throw new Error(
+        "AniList returned invalid JSON"
+      );
+    }
+
+    if (
+      json.errors &&
+      json.errors.length > 0
+    ) {
+      throw new Error(
+        json.errors[0].message ||
+        "AniList GraphQL error"
+      );
+    }
+
+    return json.data;
   }
 
   async getPopular(page) {
@@ -232,57 +80,87 @@ class DefaultExtension extends MProvider {
     const currentPage =
       Number(page) || 1;
 
-    /*
-     * First attempt:
-     * Jikan's top anime endpoint.
-     */
-    const topUrl =
-      `${this.jikanBase}/top/anime?` +
-      `page=${currentPage}&limit=10`;
+    const query = `
+      query ($page: Int, $perPage: Int) {
+        Page(
+          page: $page
+          perPage: $perPage
+        ) {
+          pageInfo {
+            currentPage
+            lastPage
+            hasNextPage
+          }
 
-    try {
+          media(
+            type: ANIME
+            sort: POPULARITY_DESC
+            isAdult: false
+          ) {
+            id
+            idMal
 
-      const data =
-        await this.jikan(topUrl);
+            title {
+              romaji
+              english
+              native
+            }
 
-      return {
-        list:
-          this.mapAnimeList(data),
+            coverImage {
+              large
+              extraLarge
+            }
+          }
+        }
+      }
+    `;
 
-        hasNextPage:
-          Boolean(
-            data?.pagination?.has_next_page
-          )
-      };
+    const data =
+      await this.request(
+        query,
+        {
+          page: currentPage,
+          perPage: 20
+        }
+      );
 
-    } catch (error) {
+    const pageData =
+      data?.Page;
 
-      /*
-       * Fallback:
-       * Jikan's regular anime endpoint ordered
-       * by score.
-       */
-      const fallbackUrl =
-        `${this.jikanBase}/anime?` +
-        `order_by=score&` +
-        `sort=desc&` +
-        `page=${currentPage}&` +
-        `limit=10&` +
-        `sfw=true`;
+    const media =
+      Array.isArray(
+        pageData?.media
+      )
+        ? pageData.media
+        : [];
 
-      const data =
-        await this.jikan(fallbackUrl);
+    return {
+      list:
+        media.map(
+          (anime) => ({
+            name:
+              anime.title?.english ||
+              anime.title?.romaji ||
+              anime.title?.native ||
+              "Unknown Anime",
 
-      return {
-        list:
-          this.mapAnimeList(data),
+            imageUrl:
+              anime.coverImage?.extraLarge ||
+              anime.coverImage?.large ||
+              "",
 
-        hasNextPage:
-          Boolean(
-            data?.pagination?.has_next_page
-          )
-      };
-    }
+            link:
+              String(anime.id)
+          })
+        ),
+
+      hasNextPage:
+        Boolean(
+          pageData
+            ?.pageInfo
+            ?.hasNextPage
+        )
+    };
   }
 
   async getLatestUpdates(page) {
@@ -290,186 +168,319 @@ class DefaultExtension extends MProvider {
     const currentPage =
       Number(page) || 1;
 
-    /*
-     * Use recently aired anime rather than
-     * duplicating the top list.
-     */
-    const url =
-      `${this.jikanBase}/anime?` +
-      `order_by=aired_from&` +
-      `sort=desc&` +
-      `page=${currentPage}&` +
-      `limit=10&` +
-      `sfw=true`;
+    const query = `
+      query ($page: Int, $perPage: Int) {
+        Page(
+          page: $page
+          perPage: $perPage
+        ) {
+          pageInfo {
+            hasNextPage
+          }
+
+          media(
+            type: ANIME
+            sort: UPDATED_AT_DESC
+            isAdult: false
+          ) {
+            id
+
+            title {
+              romaji
+              english
+              native
+            }
+
+            coverImage {
+              large
+              extraLarge
+            }
+          }
+        }
+      }
+    `;
 
     const data =
-      await this.jikan(url);
+      await this.request(
+        query,
+        {
+          page: currentPage,
+          perPage: 20
+        }
+      );
+
+    const pageData =
+      data?.Page;
+
+    const media =
+      Array.isArray(
+        pageData?.media
+      )
+        ? pageData.media
+        : [];
 
     return {
       list:
-        this.mapAnimeList(data),
+        media.map(
+          (anime) => ({
+            name:
+              anime.title?.english ||
+              anime.title?.romaji ||
+              anime.title?.native ||
+              "Unknown Anime",
+
+            imageUrl:
+              anime.coverImage?.extraLarge ||
+              anime.coverImage?.large ||
+              "",
+
+            link:
+              String(anime.id)
+          })
+        ),
 
       hasNextPage:
         Boolean(
-          data?.pagination?.has_next_page
+          pageData
+            ?.pageInfo
+            ?.hasNextPage
         )
     };
   }
 
-  async search(query, page, filters) {
+  async search(queryText, page, filters) {
 
     const currentPage =
       Number(page) || 1;
 
-    const cleanQuery =
-      String(query || "").trim();
+    const searchText =
+      String(queryText || "").trim();
 
-    if (!cleanQuery) {
+    if (!searchText) {
       return this.getPopular(
         currentPage
       );
     }
 
-    const url =
-      `${this.jikanBase}/anime?` +
-      `q=${encodeURIComponent(cleanQuery)}` +
-      `&page=${currentPage}` +
-      `&limit=10` +
-      `&sfw=true`;
+    const query = `
+      query (
+        $page: Int,
+        $perPage: Int,
+        $search: String
+      ) {
+        Page(
+          page: $page
+          perPage: $perPage
+        ) {
+          pageInfo {
+            hasNextPage
+          }
+
+          media(
+            search: $search
+            type: ANIME
+            sort: SEARCH_MATCH
+            isAdult: false
+          ) {
+            id
+
+            title {
+              romaji
+              english
+              native
+            }
+
+            coverImage {
+              large
+              extraLarge
+            }
+          }
+        }
+      }
+    `;
 
     const data =
-      await this.jikan(url);
+      await this.request(
+        query,
+        {
+          page: currentPage,
+          perPage: 20,
+          search: searchText
+        }
+      );
+
+    const pageData =
+      data?.Page;
+
+    const media =
+      Array.isArray(
+        pageData?.media
+      )
+        ? pageData.media
+        : [];
 
     return {
       list:
-        this.mapAnimeList(data),
+        media.map(
+          (anime) => ({
+            name:
+              anime.title?.english ||
+              anime.title?.romaji ||
+              anime.title?.native ||
+              "Unknown Anime",
+
+            imageUrl:
+              anime.coverImage?.extraLarge ||
+              anime.coverImage?.large ||
+              "",
+
+            link:
+              String(anime.id)
+          })
+        ),
 
       hasNextPage:
         Boolean(
-          data?.pagination?.has_next_page
+          pageData
+            ?.pageInfo
+            ?.hasNextPage
         )
     };
   }
 
   async getDetail(url) {
 
-    const malId =
+    const anilistId =
       Number(url);
 
-    if (!malId) {
+    if (!anilistId) {
       throw new Error(
-        "Invalid MyAnimeList ID"
+        "Invalid AniList ID"
       );
     }
 
+    const query = `
+      query ($id: Int) {
+        Media(
+          id: $id
+          type: ANIME
+        ) {
+          id
+          idMal
+
+          title {
+            romaji
+            english
+            native
+          }
+
+          coverImage {
+            large
+            extraLarge
+          }
+
+          description
+
+          genres
+
+          status
+
+          episodes
+
+          duration
+
+          season
+
+          seasonYear
+
+          startDate {
+            year
+            month
+            day
+          }
+
+          endDate {
+            year
+            month
+            day
+          }
+
+          streamingEpisodes {
+            title
+            thumbnail
+            url
+            site
+          }
+        }
+      }
+    `;
+
     const data =
-      await this.jikan(
-        `${this.jikanBase}/anime/${malId}`
+      await this.request(
+        query,
+        {
+          id: anilistId
+        }
       );
 
     const anime =
-      data?.data || {};
+      data?.Media;
+
+    if (!anime) {
+      throw new Error(
+        "Anime not found on AniList"
+      );
+    }
 
     const title =
-      anime.title ||
-      anime.title_english ||
-      anime.title_japanese ||
-      String(malId);
+      anime.title?.english ||
+      anime.title?.romaji ||
+      anime.title?.native ||
+      String(anilistId);
 
     const image =
-      anime.images?.jpg?.large_image_url ||
-      anime.images?.jpg?.image_url ||
+      anime.coverImage?.extraLarge ||
+      anime.coverImage?.large ||
       "";
 
     const description =
-      anime.synopsis ||
-      "";
+      this.cleanDescription(
+        anime.description
+      );
 
     const genres =
       Array.isArray(anime.genres)
-        ? anime.genres.map(
-            (genre) =>
-              genre.name
-          )
+        ? anime.genres
         : [];
 
-    /*
-     * Get episode information.
-     */
+    const totalEpisodes =
+      Number(anime.episodes) || 0;
+
     const episodes = [];
 
-    let page = 1;
-    let hasNextPage = true;
+    /*
+     * AniList gives us the total episode
+     * count but not always a complete
+     * per-episode catalog.
+     *
+     * Generate the known episode numbers.
+     */
+    for (
+      let i = 1;
+      i <= totalEpisodes;
+      i++
+    ) {
+      episodes.push({
+        name:
+          `Episode ${i}`,
 
-    while (hasNextPage) {
+        url:
+          `${anilistId}|${i}`,
 
-      const episodeUrl =
-        `${this.jikanBase}/anime/${malId}/episodes?` +
-        `page=${page}` +
-        `&limit=100`;
-
-      const episodeData =
-        await this.jikan(
-          episodeUrl
-        );
-
-      const items =
-        Array.isArray(
-          episodeData?.data
-        )
-          ? episodeData.data
-          : [];
-
-      for (
-        const episode
-        of items
-      ) {
-
-        const number =
-          Number(
-            episode.mal_id
-          );
-
-        if (!number) {
-          continue;
-        }
-
-        episodes.push({
-          name:
-            episode.title
-              ? `Episode ${number} - ${episode.title}`
-              : `Episode ${number}`,
-
-          url:
-            `${malId}|${number}`,
-
-          episodeNumber:
-            number
-        });
-      }
-
-      hasNextPage =
-        Boolean(
-          episodeData
-            ?.pagination
-            ?.has_next_page
-        );
-
-      page++;
-
-      /*
-       * Safety limit.
-       */
-      if (page > 100) {
-        break;
-      }
+        episodeNumber:
+          i
+      });
     }
-
-    episodes.sort(
-      (a, b) =>
-        a.episodeNumber -
-        b.episodeNumber
-    );
 
     return {
       name:
@@ -490,7 +501,7 @@ class DefaultExtension extends MProvider {
         ),
 
       link:
-        String(malId),
+        String(anilistId),
 
       episodes:
         episodes
@@ -503,36 +514,25 @@ class DefaultExtension extends MProvider {
       String(url || "")
         .split("|");
 
-    const malId =
+    const anilistId =
       Number(parts[0]);
 
     const episodeNumber =
       Number(parts[1]);
 
     if (
-      !malId ||
+      !anilistId ||
       !episodeNumber
     ) {
       return [];
     }
 
-    /*
-     * Look up the corresponding AniList
-     * anime using the MAL ID.
-     */
     const query = `
-      query ($malId: Int) {
+      query ($id: Int) {
         Media(
-          idMal: $malId
+          id: $id
           type: ANIME
         ) {
-          id
-
-          title {
-            romaji
-            english
-          }
-
           streamingEpisodes {
             title
             thumbnail
@@ -544,29 +544,22 @@ class DefaultExtension extends MProvider {
     `;
 
     const data =
-      await this.aniList(
+      await this.request(
         query,
         {
-          malId:
-            malId
+          id: anilistId
         }
       );
 
-    const media =
-      data?.Media;
-
-    if (!media) {
-      return [];
-    }
-
     const streamingEpisodes =
       Array.isArray(
-        media.streamingEpisodes
+        data?.Media
+          ?.streamingEpisodes
       )
-        ? media.streamingEpisodes
+        ? data.Media.streamingEpisodes
         : [];
 
-    const result = [];
+    const results = [];
 
     for (
       const episode
@@ -578,24 +571,12 @@ class DefaultExtension extends MProvider {
           episode?.title || ""
         );
 
-      /*
-       * Try several common episode
-       * naming formats.
-       *
-       * Examples:
-       *
-       * Episode 1
-       * Ep 1
-       * #1
-       * 1
-       */
       let match =
         title.match(
           /(?:episode|ep\.?|#)\s*(\d+)/i
         );
 
       if (!match) {
-
         match =
           title.match(
             /^\s*(\d+)\s*$/
@@ -622,7 +603,7 @@ class DefaultExtension extends MProvider {
         continue;
       }
 
-      result.push({
+      results.push({
         url:
           streamUrl,
 
@@ -635,32 +616,65 @@ class DefaultExtension extends MProvider {
       });
     }
 
-    return result;
+    return results;
+  }
+
+  cleanDescription(value) {
+
+    if (!value) {
+      return "";
+    }
+
+    return String(value)
+      .replace(
+        /<br\s*\/?>/gi,
+        "\n"
+      )
+      .replace(
+        /<[^>]*>/g,
+        ""
+      )
+      .replace(
+        /&nbsp;/gi,
+        " "
+      )
+      .replace(
+        /&amp;/gi,
+        "&"
+      )
+      .replace(
+        /&quot;/gi,
+        '"'
+      )
+      .replace(
+        /&#39;/gi,
+        "'"
+      )
+      .trim();
   }
 
   parseStatus(value) {
 
     const status =
       String(value || "")
-        .toLowerCase();
+        .toUpperCase();
 
     if (
-      status.includes(
-        "finished"
-      )
+      status === "FINISHED"
     ) {
       return 2;
     }
 
     if (
-      status.includes(
-        "airing"
-      ) ||
-      status.includes(
-        "currently"
-      )
+      status === "RELEASING"
     ) {
       return 1;
+    }
+
+    if (
+      status === "NOT_YET_RELEASED"
+    ) {
+      return 0;
     }
 
     return 1;
