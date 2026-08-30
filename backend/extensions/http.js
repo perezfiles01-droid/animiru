@@ -10,6 +10,7 @@
 const axios = require('axios');
 const dns = require('dns').promises;
 const net = require('net');
+const https = require('https');
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_REDIRECTS = 5;
@@ -97,6 +98,140 @@ async function assertPublicHost(hostname) {
   }
 }
 
+/**
+ * What a request looks like when a browser makes it.
+ *
+ * Sites behind bot protection do not decide on the User-Agent alone. A
+ * request claiming to be Chrome while sending no Accept-Language, no
+ * Sec-Fetch metadata and no client hints is not a shape any browser
+ * produces, and the cheapest tier of every bot check rejects it on that
+ * inconsistency - which is what a 403 arriving in 150ms with no page behind
+ * it means.
+ *
+ * Only headers a source did not set itself are filled in. A source that
+ * names its own User-Agent or Accept knows something about the site that
+ * this file does not.
+ */
+const CHROME_VERSION = '124';
+
+const CHROME_IDENTITY = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+    + `(KHTML, like Gecko) Chrome/${CHROME_VERSION}.0.0.0 Safari/537.36`,
+  'Accept-Language': 'en-US,en;q=0.9',
+  'sec-ch-ua': `"Chromium";v="${CHROME_VERSION}", "Google Chrome";v="${CHROME_VERSION}", `
+    + '"Not-A.Brand";v="99"',
+  'sec-ch-ua-mobile': '?0',
+  'sec-ch-ua-platform': '"Windows"'
+};
+
+/** The Accept a browser sends for a page, which is not what it sends for JSON. */
+const PAGE_ACCEPT = 'text/html,application/xhtml+xml,application/xml;q=0.9,'
+  + 'image/avif,image/webp,image/apng,*/*;q=0.8';
+
+/**
+ * Sec-Fetch describes why the request is being made, and a browser sends a
+ * different set for a typed-in address than for a script's fetch(). Getting
+ * this the wrong way round is itself a tell, so it is decided by what the
+ * request looks like: one asking for JSON, or carrying a Referer, is a page
+ * calling an API; anything else is a navigation.
+ */
+function fetchMetadata({ wantsJson, hasReferer, method }) {
+  if (wantsJson || hasReferer || method !== 'GET') {
+    return {
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': hasReferer ? 'same-origin' : 'cross-site'
+    };
+  }
+
+  return {
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1'
+  };
+}
+
+/**
+ * Fills in the headers a browser would send and the source did not.
+ *
+ * Matching is case-insensitive: a source setting `user-agent` has set the
+ * User-Agent, and overwriting it because the capitalisation differs would
+ * send two of them.
+ */
+function withBrowserIdentity(headers = {}, { method = 'GET' } = {}) {
+  const present = new Set(Object.keys(headers).map((key) => key.toLowerCase()));
+  const filled = { ...headers };
+
+  const accept = headers.Accept || headers.accept || '';
+  const wantsJson = /json/i.test(String(accept));
+  const hasReferer = present.has('referer');
+
+  const defaults = {
+    ...CHROME_IDENTITY,
+    Accept: PAGE_ACCEPT,
+    ...fetchMetadata({ wantsJson, hasReferer, method })
+  };
+
+  for (const [key, value] of Object.entries(defaults)) {
+    if (!present.has(key.toLowerCase())) filled[key] = value;
+  }
+
+  return filled;
+}
+
+/**
+ * A TLS handshake shaped like a browser's.
+ *
+ * The second tier of bot protection does not read headers at all - it
+ * fingerprints the ClientHello, and Node's cipher list and signature
+ * algorithms are in an order no browser sends. Reordering them to match
+ * Chrome's costs nothing and defeats a fingerprint match.
+ *
+ * Not a complete disguise: a browser negotiates HTTP/2 and this client
+ * speaks HTTP/1.1, which a determined check can still see.
+ */
+const CHROME_CIPHERS = [
+  'TLS_AES_128_GCM_SHA256',
+  'TLS_AES_256_GCM_SHA384',
+  'TLS_CHACHA20_POLY1305_SHA256',
+  'ECDHE-ECDSA-AES128-GCM-SHA256',
+  'ECDHE-RSA-AES128-GCM-SHA256',
+  'ECDHE-ECDSA-AES256-GCM-SHA384',
+  'ECDHE-RSA-AES256-GCM-SHA384',
+  'ECDHE-ECDSA-CHACHA20-POLY1305',
+  'ECDHE-RSA-CHACHA20-POLY1305',
+  'ECDHE-RSA-AES128-SHA',
+  'ECDHE-RSA-AES256-SHA',
+  'AES128-GCM-SHA256',
+  'AES256-GCM-SHA384',
+  'AES128-SHA',
+  'AES256-SHA'
+].join(':');
+
+const CHROME_SIGALGS = [
+  'ecdsa_secp256r1_sha256',
+  'rsa_pss_rsae_sha256',
+  'rsa_pkcs1_sha256',
+  'ecdsa_secp384r1_sha384',
+  'rsa_pss_rsae_sha384',
+  'rsa_pkcs1_sha384',
+  'rsa_pss_rsae_sha512',
+  'rsa_pkcs1_sha512'
+].join(':');
+
+const browserAgent = new https.Agent({
+  keepAlive: true,
+  ciphers: CHROME_CIPHERS,
+  sigalgs: CHROME_SIGALGS,
+  minVersion: 'TLSv1.2',
+  // Chrome lets the server choose from the list it offered rather than
+  // insisting on its own order.
+  honorCipherOrder: false
+});
+
 function sanitizeHeaders(headers) {
   const clean = {};
   if (!headers || typeof headers !== 'object') return clean;
@@ -151,7 +286,9 @@ async function request(options = {}) {
   }
 
   const timeoutMs = Math.min(Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
-  const headers = sanitizeHeaders(options.headers);
+  // The source's own headers win; the rest of a browser's request is filled
+  // in behind them.
+  const headers = withBrowserIdentity(sanitizeHeaders(options.headers), { method });
   const deadline = Date.now() + timeoutMs;
 
   let target = parseTarget(options.url);
@@ -178,6 +315,7 @@ async function request(options = {}) {
       maxContentLength: MAX_RESPONSE_BYTES,
       maxBodyLength: MAX_RESPONSE_BYTES,
       responseType: 'text',
+      httpsAgent: browserAgent,
       transformResponse: [(data) => data],
       // Redirects and error statuses are both ours to interpret, so accept
       // every status and branch below rather than throwing on 404.
@@ -210,6 +348,7 @@ async function request(options = {}) {
 
 module.exports = {
   request,
+  withBrowserIdentity,
   isPrivateAddress,
   sanitizeHeaders,
   parseTarget,

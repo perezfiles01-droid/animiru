@@ -226,6 +226,33 @@ the switcher removed.
 
 ---
 
+## A User-Agent alone is not a browser
+
+KickAssAnime answered 403 in 148ms to a request that already carried a full
+Chrome User-Agent. The rest of the request gave it away: no `Accept-Language`,
+no `Sec-Fetch-*`, no `sec-ch-ua`. A Chrome UA with none of those is a shape no
+browser produces, and the cheapest tier of every bot check tests exactly that
+inconsistency. Below the headers, Node's TLS handshake offers ciphers and
+signature algorithms in an order no browser sends, which the next tier
+fingerprints.
+
+`backend/extensions/http.js` now completes the request: client hints, Sec-Fetch
+metadata chosen by what the request actually is (a JSON call is a script's
+fetch, not a navigation), and an `https.Agent` with Chrome's cipher order. Only
+headers the source did not set are filled — a source naming its own User-Agent
+or Referer knows something this file does not — and matching is
+case-insensitive, or a source that wrote `user-agent` would get two of them.
+
+**Pinned by** `backend/tests/extensions.http-identity.test.js`, including that
+the request actually carries it: building the headers correctly is worth
+nothing if the wiring drops them.
+
+> Still not a complete disguise. A browser negotiates HTTP/2 and this client
+> speaks HTTP/1.1, and the request comes from a hosting provider's IP either
+> way. Only fetching from the user's own device fixes that.
+
+---
+
 ## Verification
 
 The habit that caught most of the above, and is worth keeping:
