@@ -4,6 +4,8 @@ import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import Home from './pages/Home';
 import Library from './pages/Library';
+import WatchOrder from './pages/WatchOrder';
+import Recommendations from './pages/Recommendations';
 import Details from './pages/Details';
 import Watch from './pages/Watch';
 import Settings from './pages/Settings';
@@ -30,6 +32,8 @@ export default function App() {
             <Route path="/anime" element={<Details />} />
             <Route path="/watch" element={<Watch />} />
             <Route path="/library" element={<Library />} />
+            <Route path="/watch-order" element={<WatchOrder />} />
+            <Route path="/recommendations" element={<Recommendations />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/settings/extensions" element={<ExtensionSettings />} />
             <Route path="/settings/update" element={<UpdateSettings />} />

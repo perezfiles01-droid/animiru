@@ -84,6 +84,14 @@ export default function Details() {
     + `&id=${encodeURIComponent(itemId)}`
     + `&ep=${encodeURIComponent(episode.id)}`;
 
+  // The title travels with the link because AniList is matched on it, and
+  // fetching the detail again purely to learn the title it already showed
+  // would be a wasted request.
+  const metadataHref = (path) =>
+    `${path}?source=${encodeURIComponent(sourceId)}`
+    + `&id=${encodeURIComponent(itemId)}`
+    + `&title=${encodeURIComponent(item.title || '')}`;
+
   return (
     <div className="details-page">
       <div className="details-content">
@@ -124,6 +132,15 @@ export default function Details() {
               <p>{item.overview.replace(/<[^>]*>/g, '')}</p>
             </div>
           )}
+
+          <div className="details-metadata-links">
+            <Link to={metadataHref('/recommendations')} className="metadata-link">
+              → Recommendations
+            </Link>
+            <Link to={metadataHref('/watch-order')} className="metadata-link">
+              → Watch order
+            </Link>
+          </div>
 
           {episodes.length > 0 ? (
             <div className="details-actions">
