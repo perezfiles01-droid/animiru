@@ -37,23 +37,6 @@
   white-space: nowrap;
 }
 
-.player-quality {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.85rem;
-  color: #b8b8c8;
-  flex-shrink: 0;
-}
-
-.player-quality select {
-  background: var(--accent, #0f3460);
-  color: #fff;
-  border: 1px solid var(--border, #444);
-  padding: 6px 8px;
-  font-size: 0.85rem;
-}
-
 .player-error {
   padding: 10px 12px;
   background: rgba(233, 69, 96, 0.12);
@@ -82,5 +65,80 @@
 
   .player-title {
     max-width: 100%;
+  }
+}
+
+/**
+ * Player controls: subtitles, audio, server.
+ *
+ * They wrap rather than shrink - on a phone a row of four controls squeezed
+ * onto one line is unusable, and a second line costs nothing.
+ */
+
+.player-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.player-select {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: 13px;
+  gap: 6px;
+}
+
+.player-select select {
+  background-color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  max-width: 160px;
+  padding: 6px 8px;
+}
+
+/* The CC button reads as a real toggle: off is outlined, on is filled, so
+   its state is visible without reading a label. */
+.player-cc {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  min-height: 32px;
+  padding: 5px 10px;
+}
+
+.player-cc:hover {
+  border-color: var(--highlight);
+  color: var(--text);
+}
+
+.player-cc.active {
+  background-color: var(--highlight);
+  border-color: var(--highlight);
+  color: white;
+}
+
+.player-error-hint {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+@media (max-width: 600px) {
+  .player-bar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .player-select select {
+    max-width: 120px;
   }
 }
