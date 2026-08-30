@@ -7,11 +7,15 @@
  */
 
 import React from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import Watch from '../Watch';
 import { getProvider } from '../../services/providers/registry';
+import { syncEpisodeProgress } from '../../services/trackers/sync';
+
+// Bound at import, so spying on the module afterwards would not take.
+jest.mock('../../services/trackers/sync', () => ({ syncEpisodeProgress: jest.fn() }));
 
 jest.mock('../../services/providers/registry', () => ({ getProvider: jest.fn() }));
 // The player needs media APIs jsdom does not implement; none of it is under
@@ -116,5 +120,44 @@ describe('Watch', () => {
     await renderWatch();
 
     expect(screen.getByText(/not installed any more/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * The player showed only "Episode 1" and the source's name, which is not
+ * enough to tell what you are watching. The same missing value is what
+ * tracking matches on, so every progress update searched AniList for an
+ * empty title, matched nothing, and did nothing.
+ */
+describe('knowing what is being watched', () => {
+  beforeEach(() => syncEpisodeProgress.mockClear());
+
+  it('shows the show name above the episode', async () => {
+    getProvider.mockReturnValue(makeProvider());
+    await renderWatch('/watch?source=extension%3Arepo%231&id=%2Fa%2F1&ep=%2Fe%2F1'
+      + '&title=Mushoku%20Tensei');
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Mushoku Tensei' }))
+      .toBeInTheDocument();
+    expect(screen.getAllByText('Episode 1').length).toBeGreaterThan(0);
+  });
+
+  it('still shows the episode when no show name was passed', async () => {
+    getProvider.mockReturnValue(makeProvider());
+    await renderWatch('/watch?source=extension%3Arepo%231&id=%2Fa%2F1&ep=%2Fe%2F1');
+
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
+    expect(screen.getAllByText('Episode 1').length).toBeGreaterThan(0);
+  });
+
+  // Tracking matches AniList on this, so an empty title meant no sync at all.
+  it('gives tracking the title to match on', async () => {
+    getProvider.mockReturnValue(makeProvider());
+
+    await renderWatch('/watch?source=extension%3Arepo%231&id=%2Fa%2F1&ep=%2Fe%2F1'
+      + '&title=Mushoku%20Tensei');
+
+    await waitFor(() => expect(syncEpisodeProgress).toHaveBeenCalled());
+    expect(syncEpisodeProgress.mock.calls[0][0]).toMatchObject({ title: 'Mushoku Tensei' });
   });
 });

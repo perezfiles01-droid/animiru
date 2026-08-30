@@ -62,9 +62,12 @@ describe('Details', () => {
     await renderDetails();
 
     expect(screen.getByText('2 episodes')).toBeInTheDocument();
+    // The show's name travels with the link: the player has nothing else
+    // to identify what is being watched, and tracking matches AniList on it.
     expect(screen.getByRole('link', { name: 'Episode 2' })).toHaveAttribute(
       'href',
-      `/watch?source=${encodeURIComponent(SOURCE)}&id=${encodeURIComponent(ITEM)}&ep=%2Fe%2F2`
+      `/watch?source=${encodeURIComponent(SOURCE)}&id=${encodeURIComponent(ITEM)}`
+      + '&ep=%2Fe%2F2&title=Bleach'
     );
   });
 

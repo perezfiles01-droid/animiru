@@ -95,20 +95,44 @@ export default function Watch() {
     syncEpisodeProgress({
       providerId: sourceId,
       itemId,
-      title: searchParams.get('title') || '',
+      title: showTitle,
       episodeNumber: episode.number
     });
   }, [episode, streams, sourceId, itemId, searchParams]);
 
-  const title = episode ? episode.title : 'Episode';
+  const episodeTitle = episode ? episode.title : 'Episode';
+
+  /**
+   * The name of the show, carried in the URL from the detail page.
+   *
+   * It was never being passed, so this screen showed only "Episode 1" and
+   * the source's name - which is not enough to tell what you are watching.
+   * Worse, the same value is what tracking matches against on AniList, so
+   * with it empty every progress update searched for an empty title,
+   * matched nothing, and silently did nothing at all.
+   */
+  const showTitle = searchParams.get('title') || '';
 
   const select = (chosen) => {
-    setSearchParams({ source: sourceId, id: itemId, ep: chosen.id });
+    // The title has to be carried across, or changing episode drops it -
+    // taking the heading and the tracking with it.
+    const next = { source: sourceId, id: itemId, ep: chosen.id };
+    if (showTitle) next.title = showTitle;
+    setSearchParams(next);
   };
 
   return (
     <div className="watch-page">
-      {streams && <VideoPlayer streams={streams} title={title} />}
+      {/* Above the player, so it is on screen whether or not the video
+          loaded - which is when you most need to know what this is. */}
+      {(showTitle || episodeTitle) && (
+        <header className="watch-heading">
+          {showTitle && <h1 className="watch-show">{showTitle}</h1>}
+          <p className="watch-episode">{episodeTitle}</p>
+        </header>
+      )}
+
+      {streams && <VideoPlayer streams={streams} title={episodeTitle} />}
 
       {loading && <div className="loader">Finding video...</div>}
 
@@ -129,7 +153,7 @@ export default function Watch() {
       )}
 
       <div className="watch-info">
-        <h2>{title}</h2>
+        <h2>{episodeTitle}</h2>
         {provider && <p className="details-source">{provider.name}</p>}
 
         {episodes.length > 0 && (

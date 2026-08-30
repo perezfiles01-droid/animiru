@@ -79,10 +79,13 @@ export default function Details() {
   }
   if (!item) return <div className="error">Nothing found.</div>;
 
+  // The show's name travels to the player: it has nothing else to identify
+  // what is being watched, and tracking matches AniList on this same value.
   const watchHref = (episode) =>
     `/watch?source=${encodeURIComponent(sourceId)}`
     + `&id=${encodeURIComponent(itemId)}`
-    + `&ep=${encodeURIComponent(episode.id)}`;
+    + `&ep=${encodeURIComponent(episode.id)}`
+    + `&title=${encodeURIComponent((item && item.title) || '')}`;
 
   // The title travels with the link because AniList is matched on it, and
   // fetching the detail again purely to learn the title it already showed
