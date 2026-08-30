@@ -4,7 +4,10 @@
  * the inconsistent ones.
  */
 
-import { createExtensionProvider, parseEpisodeNumber, parseSeasonNumber, parseQualityHeight } from '../extension';
+import {
+  createExtensionProvider, parseEpisodeNumber, parseSeasonNumber,
+  parseQualityHeight, parseServerLabel, isDubLabel
+} from '../extension';
 import { runSource } from '../../extensions/client';
 
 jest.mock('../../extensions/client', () => ({ runSource: jest.fn() }));
@@ -24,6 +27,31 @@ const source = {
 function resolves(result) {
   runSource.mockResolvedValueOnce({ result, logs: [], requests: [], durationMs: 1 });
 }
+
+describe('parseServerLabel', () => {
+  it.each([
+    ['Vidstreaming - 1080p', 'Vidstreaming', '1080p'],
+    ['Doodstream 720p', 'Doodstream', '720p'],
+    ['1080p', 'Default', '1080p'],
+    ['Server 2', 'Server 2', null],
+    ['StreamSB | 480p', 'StreamSB', '480p'],
+    ['Mp4Upload - HD', 'Mp4Upload', 'HD'],
+    ['', 'Default', null]
+  ])('splits %s into %s / %s', (label, server, quality) => {
+    expect(parseServerLabel(label)).toEqual({ server, quality });
+  });
+});
+
+describe('isDubLabel', () => {
+  it.each([
+    ['Server 1 - Dub', true],
+    ['Vidstreaming Dubbed 1080p', true],
+    ['Server 1 - Sub', false],
+    ['1080p', false]
+  ])('%s -> %s', (label, expected) => {
+    expect(isDubLabel(label)).toBe(expected);
+  });
+});
 
 describe('parsing helpers', () => {
   it.each([
@@ -189,15 +217,85 @@ describe('extension provider', () => {
       expect(options[0].headers).toEqual({ Referer: 'https://host.test/' });
     });
 
-    it('drops duplicate labels and entries with no URL', async () => {
+    it('keeps every server, even when they share a label', async () => {
+      // The bug this replaces: deduplicating on the label discarded every
+      // mirror after the first, leaving one option and no way off a server
+      // that would not play.
       resolves([
         { url: 'https://cdn.test/a.m3u8', quality: '1080p' },
         { url: 'https://cdn.test/b.m3u8', quality: '1080p' },
-        { quality: '720p' }
+        { url: 'https://cdn.test/c.m3u8', quality: '1080p' }
+      ]);
+
+      const { options } = await provider.getStreams('/e/1');
+      expect(options).toHaveLength(3);
+    });
+
+    it('drops the same URL twice, and entries with no URL at all', async () => {
+      resolves([
+        { url: 'https://cdn.test/a.m3u8', quality: '1080p' },
+        { url: 'https://cdn.test/a.m3u8', quality: '720p' },
+        { quality: '480p' }
       ]);
 
       const { options } = await provider.getStreams('/e/1');
       expect(options).toHaveLength(1);
+    });
+
+    it('separates the server name from the resolution', async () => {
+      resolves([{ url: 'https://cdn.test/a.m3u8', quality: 'Vidstreaming - 1080p' }]);
+
+      const [option] = (await provider.getStreams('/e/1')).options;
+      expect(option).toMatchObject({
+        server: 'Vidstreaming', quality: '1080p', label: 'Vidstreaming - 1080p'
+      });
+    });
+
+    it('carries subtitles through, per server', async () => {
+      resolves([{
+        url: 'https://cdn.test/a.m3u8',
+        quality: '1080p',
+        subtitles: [
+          { file: 'https://cdn.test/en.vtt', label: 'English' },
+          { file: 'https://cdn.test/es.vtt', label: 'Spanish' }
+        ]
+      }]);
+
+      const [option] = (await provider.getStreams('/e/1')).options;
+      expect(option.subtitles).toEqual([
+        { url: 'https://cdn.test/en.vtt', label: 'English', isEnglish: true },
+        { url: 'https://cdn.test/es.vtt', label: 'Spanish', isEnglish: false }
+      ]);
+    });
+
+    it('carries audio tracks through', async () => {
+      resolves([{
+        url: 'https://cdn.test/a.m3u8',
+        quality: '1080p',
+        audios: [{ file: 'https://cdn.test/en.m4a', label: 'English' }]
+      }]);
+
+      const [option] = (await provider.getStreams('/e/1')).options;
+      expect(option.audios).toHaveLength(1);
+      expect(option.audios[0].label).toBe('English');
+    });
+
+    it('leaves tracks as empty lists when a source offers none', async () => {
+      resolves([{ url: 'https://cdn.test/a.m3u8', quality: '1080p' }]);
+
+      const [option] = (await provider.getStreams('/e/1')).options;
+      expect(option.subtitles).toEqual([]);
+      expect(option.audios).toEqual([]);
+    });
+
+    it('marks an entry that names a dub', async () => {
+      resolves([
+        { url: 'https://cdn.test/sub.m3u8', quality: 'Server 1 - Sub - 1080p' },
+        { url: 'https://cdn.test/dub.m3u8', quality: 'Server 1 - Dub - 1080p' }
+      ]);
+
+      const { options } = await provider.getStreams('/e/1');
+      expect(options.map((o) => o.isDub)).toEqual([false, true]);
     });
 
     it('returns no options rather than throwing when a source finds nothing', async () => {
