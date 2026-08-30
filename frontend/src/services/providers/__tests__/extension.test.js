@@ -29,16 +29,32 @@ function resolves(result) {
 }
 
 describe('parseServerLabel', () => {
+  // The first three are the exact shapes the sources users installed
+  // produce. A parser that only handled "Server - 1080p" read the whole of
+  // "[SUB - mega]" as the server name, which is why the Server control was
+  // showing quality.
   it.each([
-    ['Vidstreaming - 1080p', 'Vidstreaming', '1080p'],
-    ['Doodstream 720p', 'Doodstream', '720p'],
-    ['1080p', 'Default', '1080p'],
-    ['Server 2', 'Server 2', null],
-    ['StreamSB | 480p', 'StreamSB', '480p'],
-    ['Mp4Upload - HD', 'Mp4Upload', 'HD'],
-    ['', 'Default', null]
-  ])('splits %s into %s / %s', (label, server, quality) => {
-    expect(parseServerLabel(label)).toEqual({ server, quality });
+    ['1080p [SUB \u00b7 mega]', 'mega', '1080p', false],          // Miruro
+    ['auto [DUB \u00b7 vidstream]', 'vidstream', 'AUTO', true],   // Miruro
+    ['SUB [1080p]', null, '1080p', false],                    // Just4Anime
+    ['DUB [auto]', null, 'AUTO', true],                       // Just4Anime
+    ['1080p - Mega [Sub]', 'Mega', '1080p', false],           // AniKoto
+    ['Srv [Sub]', 'Srv', null, false],                        // AniKoto
+    ['Kiwi Stream [Dub]', 'Kiwi Stream', null, true],         // AniKoto
+    ['Vidstreaming - 1080p', 'Vidstreaming', '1080p', false],
+    ['Doodstream 720p', 'Doodstream', '720p', false],
+    ['1080p', null, '1080p', false],
+    ['Server 2', 'Server 2', null, false],
+    ['StreamSB | 480p', 'StreamSB', '480p', false],
+    ['Mp4Upload - HD', 'Mp4Upload', 'HD', false],
+    ['', null, null, false]
+  ])('reads %s as server %s, quality %s', (label, server, quality, isDub) => {
+    expect(parseServerLabel(label)).toEqual({ server, quality, isDub });
+  });
+
+  it('spells one resolution one way, so the quality list does not repeat it', () => {
+    expect(parseServerLabel('Mega 1080P').quality).toBe('1080p');
+    expect(parseServerLabel('Mega [1080 p]').quality).toBe('1080p');
   });
 });
 

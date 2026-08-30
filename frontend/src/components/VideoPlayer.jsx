@@ -76,6 +76,79 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
   }, [options, audioKind, hasDub, hasSub]);
 
   const current = visible[selected] || visible[0] || null;
+
+  /**
+   * The distinct qualities on offer, best first.
+   *
+   * Sources put the resolution and the server in one string, so a single
+   * "Server" menu listing those strings was really showing quality. The two
+   * are separated here and offered as their own controls.
+   */
+  const qualities = useMemo(() => {
+    const byName = new Map();
+    for (const option of visible) {
+      const name = option.quality || 'Auto';
+      const height = option.height || 0;
+      if (!byName.has(name) || byName.get(name) < height) byName.set(name, height);
+    }
+    return [...byName.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name);
+  }, [visible]);
+
+  /**
+   * A name per stream for the Server menu, in the order the source listed
+   * them.
+   *
+   * One server offering 1080p and 720p is one entry - quality is its own
+   * control. Two mirrors offering the same quality under the same name are
+   * two entries, numbered, because they are genuinely different streams and
+   * collapsing them would leave no way to reach the second by hand.
+   */
+  const serverKeys = useMemo(() => {
+    const counts = new Map();
+    return visible.map((option) => {
+      const pair = `${option.server}\u0000${option.quality || 'Auto'}`;
+      const seen = counts.get(pair) || 0;
+      counts.set(pair, seen + 1);
+      return seen === 0 ? option.server : `${option.server} (${seen + 1})`;
+    });
+  }, [visible]);
+
+  const servers = useMemo(() => {
+    const seen = [];
+    for (const key of serverKeys) if (!seen.includes(key)) seen.push(key);
+    return seen;
+  }, [serverKeys]);
+
+  const currentQuality = current ? current.quality || 'Auto' : null;
+  const currentServer = serverKeys[selected] ?? (current ? current.server : null);
+
+  /**
+   * Moves to another stream, keeping whichever of quality and server the
+   * user did not just change.
+   *
+   * Not every server carries every quality, so the pairing asked for may not
+   * exist. `prefer` names the control the user just used: that one is
+   * honoured and the other gives way, rather than the change doing nothing.
+   *
+   * @param {string} prefer 'quality' or 'server'
+   */
+  const choose = useCallback((quality, server, prefer) => {
+    const matchesQuality = (option) => (option.quality || 'Auto') === quality;
+
+    const exact = visible.findIndex(
+      (option, index) => matchesQuality(option) && serverKeys[index] === server
+    );
+    const fallback = prefer === 'server'
+      ? serverKeys.indexOf(server)
+      : visible.findIndex(matchesQuality);
+
+    const index = exact === -1 ? fallback : exact;
+    if (index === -1) return;
+    setAutoSwitched(null);
+    setSelected(index);
+  }, [visible, serverKeys]);
   // Memoised because an effect keys on it: rebuilt every render, that effect
   // would re-run every render, and it sets state.
   const subtitles = useMemo(() => (current ? current.subtitles || [] : []), [current]);
@@ -340,6 +413,39 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
             </label>
           )}
 
+          {qualities.length > 1 && (
+            <label className="player-select">
+              Quality
+              <select
+                value={currentQuality || ''}
+                onChange={(e) => choose(e.target.value, currentServer, 'quality')}
+              >
+                {qualities.map((quality) => (
+                  <option key={quality} value={quality}>{quality}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {servers.length > 1 && (
+            <label className="player-select">
+              Server
+              <select
+                value={currentServer || ''}
+                onChange={(e) => choose(currentQuality, e.target.value, 'server')}
+              >
+                {servers.map((server) => (
+                  <option key={server} value={server}>
+                    {server}
+                    {visible
+                      .filter((_, index) => serverKeys[index] === server)
+                      .every((option) => deadServers.includes(option.id)) ? ' (failed)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
           {hasDub && hasSub && (
             <label className="player-select">
               Audio
@@ -349,29 +455,6 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
               >
                 <option value="sub">Sub</option>
                 <option value="dub">Dub</option>
-              </select>
-            </label>
-          )}
-
-          {visible.length > 1 && (
-            <label className="player-select">
-              Server
-              <select
-                value={selected}
-                onChange={(e) => {
-                  setAutoSwitched(null);
-                  setSelected(Number(e.target.value));
-                }}
-              >
-                {visible.map((option, index) => (
-                  // Keyed by id, not label: mirrors share labels, and a
-                  // duplicate key makes React reuse the wrong option.
-                  <option key={option.id} value={index}>
-                    {option.server}
-                    {option.quality ? ` · ${option.quality}` : ''}
-                    {deadServers.includes(option.id) ? ' (failed)' : ''}
-                  </option>
-                ))}
               </select>
             </label>
           )}

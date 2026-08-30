@@ -57,22 +57,79 @@ export function parseQualityHeight(label) {
  * that matters when one refuses to play, so it is pulled out rather than
  * shown as one opaque string.
  */
+/** A whole segment that names a resolution rather than a server. */
+const WHOLE_QUALITY = /^(\d{3,4}\s*p|4k|fhd|uhd|hd|sd|auto|default|original)$/i;
+
+/** A resolution sitting inside a segment, as in "Doodstream 720p". */
+const EMBEDDED_QUALITY = /\b(\d{3,4}\s*p|4K|FHD|UHD)\b/i;
+
+/** A whole segment that names an audio track rather than a server. */
+const WHOLE_AUDIO = /^(sub|dub|subbed|dubbed|softsub|hardsub|raw|multi)$/i;
+
+/**
+ * Splits a label into its segments.
+ *
+ * Sources build one string out of three things and each does it differently:
+ *
+ *     "1080p - Mega [Sub]"        AniKoto
+ *     "SUB [1080p]"               Just4Anime
+ *     "1080p [SUB · mega]"        Miruro
+ *     "Vidstreaming - 1080p"      common
+ *
+ * Brackets and the separators between them are punctuation, not content, so
+ * they are what the string is cut on. Spaces are not: a server is called
+ * "Kiwi Stream" as readily as "mega".
+ */
+function segmentsOf(text) {
+  return text
+    .split(/[[\]()·•|,;/]|\s[-–—:]\s|\s{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+/**
+ * One spelling per resolution, so the Quality control does not offer
+ * "1080P" and "1080 p" as two different things.
+ */
+function normaliseQuality(segment) {
+  const text = segment.replace(/\s+/g, '');
+  return /^\d/.test(text) ? text.toLowerCase() : text.toUpperCase();
+}
+
 export function parseServerLabel(label) {
   const text = String(label || '').trim();
-  if (!text) return { server: 'Default', quality: null };
+  if (!text) return { server: null, quality: null, isDub: false };
 
-  // The resolution, wherever it sits in the string.
-  const resolution = text.match(/\b(\d{3,4}\s*p|4K|FHD|HD|SD|Auto)\b/i);
-  const quality = resolution ? resolution[0].replace(/\s+/g, '') : null;
+  let quality = null;
+  let isDub = false;
+  const names = [];
 
-  // Whatever is left once the resolution and its separator are removed.
-  let server = text;
-  if (resolution) {
-    server = text.replace(resolution[0], '').replace(/[-–—|,:]+\s*$/, '')
-      .replace(/^\s*[-–—|,:]+/, '').trim();
+  for (const segment of segmentsOf(text)) {
+    if (WHOLE_QUALITY.test(segment)) {
+      if (!quality) quality = normaliseQuality(segment);
+      continue;
+    }
+    if (WHOLE_AUDIO.test(segment)) {
+      if (/^dub/i.test(segment)) isDub = true;
+      continue;
+    }
+
+    // A resolution can also sit inside a segment that names the server.
+    // What is left of the segment is still the server's name.
+    const embedded = segment.match(EMBEDDED_QUALITY);
+    if (embedded) {
+      if (!quality) quality = normaliseQuality(embedded[0]);
+      const rest = segment.replace(embedded[0], '').replace(/[-–—|,:]+/g, ' ').trim();
+      if (rest) names.push(rest);
+      continue;
+    }
+
+    names.push(segment);
   }
 
-  return { server: server || 'Default', quality: quality || null };
+  // A label may name no server at all - Just4Anime's is only "SUB [1080p]"
+  // - in which case the caller says where the stream came from instead.
+  return { server: names.length ? names.join(' ') : null, quality, isDub };
 }
 
 /** True when a label names an English dub rather than subtitles. */
@@ -263,13 +320,16 @@ export function createExtensionProvider(source) {
       seenUrls.add(url);
 
       const label = video.quality || video.label || 'Default';
-      const { server, quality } = parseServerLabel(label);
+      const parsed = parseServerLabel(label);
 
       options.push({
         // What the source called it, kept whole for display.
         label,
-        server,
-        quality,
+        // A label may name no server - Just4Anime's is only "SUB [1080p]"
+        // - so the extension it came from stands in. That keeps the Server
+        // control meaningful when several extensions offer the same episode.
+        server: parsed.server || source.name || source.key || 'Default',
+        quality: parsed.quality,
         url,
         type: streamType(url),
         height: parseQualityHeight(label),
@@ -279,9 +339,11 @@ export function createExtensionProvider(source) {
         originalUrl: video.originalUrl || undefined,
         subtitles: toTracks(video.subtitles),
         audios: toTracks(video.audios),
-        isDub: isDubLabel(label),
+        // The parser recognises "dub" as its own segment; isDubLabel still
+        // catches it written into a server's name.
+        isDub: parsed.isDub || isDubLabel(label),
         // Stable across re-ordering, so the player can remember a choice.
-        id: `${index}:${server}:${quality || ''}`
+        id: `${index}:${parsed.server || ''}:${parsed.quality || ''}`
       });
     });
 
