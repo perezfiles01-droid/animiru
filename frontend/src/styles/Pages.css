@@ -781,3 +781,60 @@
     flex-basis: 170px;
   }
 }
+
+/* The row of per-title actions under the heading: library, and later the
+   metadata screens. Spread out rather than stacked, as they are a set. */
+.details-toolbar {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.5rem;
+  margin: 0.75rem 0 0.25rem;
+}
+
+/* Library ------------------------------------------------------------- */
+
+.library-page { padding: 1rem 1rem 5rem; }
+
+.library-count { color: var(--muted, #9aa3bd); margin: 0 0 1rem; }
+
+.library-card { position: relative; }
+
+.library-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.library-card-poster {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 10px;
+  display: block;
+}
+
+.library-card-blank { background: var(--surface, #161a2b); }
+
+.library-card-title {
+  display: block;
+  margin-top: 0.45rem;
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+/* Sits over the poster: a remove control in the flow would push the grid
+   about, and it is a rare action that does not deserve the space. */
+.library-card-remove {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}

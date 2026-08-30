@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import Home from './pages/Home';
+import Library from './pages/Library';
 import Details from './pages/Details';
 import Watch from './pages/Watch';
 import Settings from './pages/Settings';
@@ -28,6 +29,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/anime" element={<Details />} />
             <Route path="/watch" element={<Watch />} />
+            <Route path="/library" element={<Library />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/settings/extensions" element={<ExtensionSettings />} />
             <Route path="/settings/update" element={<UpdateSettings />} />

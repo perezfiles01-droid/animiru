@@ -19,10 +19,17 @@ const renderAt = (path) =>
   render(<MemoryRouter initialEntries={[path]}><BottomNav /></MemoryRouter>);
 
 describe('BottomNav', () => {
-  it('offers Home and Settings', () => {
+  it('offers Home, Library and Settings', () => {
     renderAt('/');
     expect(screen.getByRole('link', { name: /Home/ })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: /Library/ })).toHaveAttribute('href', '/library');
     expect(screen.getByRole('link', { name: /Settings/ })).toHaveAttribute('href', '/settings');
+  });
+
+  it('marks Library when it is the current destination', () => {
+    renderAt('/library');
+    expect(screen.getByRole('link', { name: /Library/ })).toHaveClass('active');
+    expect(screen.getByRole('link', { name: /Home/ })).not.toHaveClass('active');
   });
 
   it('marks the current destination', () => {
@@ -39,7 +46,7 @@ describe('BottomNav', () => {
   it('is rendered unconditionally, not behind a menu that must be opened', () => {
     const { container } = renderAt('/');
     expect(container.querySelector('.bottom-nav')).toBeInTheDocument();
-    expect(container.querySelectorAll('.bottom-nav-item')).toHaveLength(2);
+    expect(container.querySelectorAll('.bottom-nav-item')).toHaveLength(3);
   });
 });
 

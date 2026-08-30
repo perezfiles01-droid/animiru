@@ -1,0 +1,19 @@
+.library-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  border: 0;
+  background: none;
+  color: var(--muted, #9aa3bd);
+  font: inherit;
+  cursor: pointer;
+}
+
+.library-button-icon { font-size: 1.6rem; line-height: 1; }
+
+.library-button-label { font-size: 0.85rem; }
+
+/* Saved is the state worth seeing at a glance, so it is the one with colour. */
+.library-button.saved { color: var(--accent, #8ea2d8); }

@@ -10,13 +10,14 @@ import '../styles/BottomNav.css';
  * removed - so on a phone, the only screen that decides what the app can
  * show was unreachable without typing its URL.
  *
- * A bar rather than a menu: two destinations do not justify something that
- * has to be opened first, and along the bottom edge both are within reach of
- * a thumb.
+ * A bar rather than a menu: a handful of destinations do not justify
+ * something that has to be opened first, and along the bottom edge they are
+ * all within reach of a thumb.
  */
 
 const DESTINATIONS = [
   { to: '/', label: 'Home', icon: '🏠', end: true },
+  { to: '/library', label: 'Library', icon: '♥', end: false },
   { to: '/settings', label: 'Settings', icon: '⚙️', end: false }
 ];
 

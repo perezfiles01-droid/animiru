@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { getProvider } from '../services/providers/registry';
 import ExtensionErrorReport from '../components/ExtensionError';
+import LibraryButton from '../components/LibraryButton';
 import '../styles/Pages.css';
 
 /**
@@ -95,6 +96,19 @@ export default function Details() {
         <div className="details-info">
           <h1>{item.title}</h1>
           <p className="details-source">{provider.name}</p>
+
+          <div className="details-toolbar">
+            <LibraryButton
+              item={{
+                id: itemId,
+                providerId: sourceId,
+                providerName: provider.name,
+                title: item.title,
+                poster: item.poster,
+                year: item.year
+              }}
+            />
+          </div>
 
           {item.genres && item.genres.length > 0 && (
             <div className="details-genres">
