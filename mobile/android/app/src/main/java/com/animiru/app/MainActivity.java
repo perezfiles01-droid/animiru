@@ -34,6 +34,9 @@ import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.webkit.WebViewAssetLoader;
 
 /**
@@ -410,6 +413,7 @@ public class MainActivity extends AppCompatActivity {
             webView.setVisibility(View.GONE);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+            setSystemBarsHidden(true);
         }
 
         @Override
@@ -429,10 +433,58 @@ public class MainActivity extends AppCompatActivity {
         webView.setVisibility(View.VISIBLE);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setRequestedOrientation(savedOrientation);
+        setSystemBarsHidden(false);
 
         if (customViewCallback != null) {
             customViewCallback.onCustomViewHidden();
             customViewCallback = null;
+        }
+    }
+
+    /**
+     * Takes the clock, battery and navigation buttons off the screen while a
+     * video is fullscreen, and puts them back afterwards.
+     *
+     * Entering fullscreen used to lock the orientation and keep the screen
+     * awake but leave the system bars exactly where they were, so a 19:52
+     * and a battery percentage sat on top of the video for its whole
+     * runtime.
+     *
+     * The bars are hidden rather than removed: a swipe from the edge brings
+     * them back for a few seconds, so Back and Home are still reachable. An
+     * app that took them away outright would be a worse problem than the one
+     * being fixed.
+     *
+     * Restoring is not optional. A shell that hides the bars and forgets to
+     * show them again leaves the app unusable everywhere else, which is why
+     * this is one method with a flag rather than two that can drift apart.
+     */
+    private void setSystemBarsHidden(boolean hidden) {
+        WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+
+        // The video fills the window rather than being laid out inside the
+        // space the bars used to occupy - otherwise hiding them leaves the
+        // gap behind.
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), !hidden);
+
+        if (hidden) {
+            controller.setSystemBarsBehavior(
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            controller.hide(WindowInsetsCompat.Type.systemBars());
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars());
+        }
+
+        // On a phone with a cutout the window stops short of it by default,
+        // which letterboxes a landscape video against a black band. Only
+        // while fullscreen: elsewhere the app wants the safe area.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            WindowManager.LayoutParams attributes = getWindow().getAttributes();
+            attributes.layoutInDisplayCutoutMode = hidden
+                    ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+            getWindow().setAttributes(attributes);
         }
     }
 

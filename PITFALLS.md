@@ -289,6 +289,32 @@ Three things this gets wrong if built carelessly, each pinned by a test:
 
 ---
 
+## Fullscreen that leaves the clock on the video
+
+Entering fullscreen locked the orientation and kept the screen awake, and
+never touched the system bars - so the time, the battery percentage and the
+navigation buttons sat on top of every episode. There was no
+`WindowInsetsController` call anywhere in the shell; the bars had simply never
+been asked to go.
+
+Hiding them is one line. The parts worth remembering are the rest:
+
+- The bars are **hidden, not removed** - a swipe brings them back transiently,
+  so Back and Home stay reachable.
+- `setDecorFitsSystemWindows(false)`, or the gap they occupied stays behind.
+- Restoring on exit is not optional. A shell that hides them and forgets is a
+  worse bug than the one being fixed, which is why it is one method with a
+  flag rather than two that can drift apart.
+- The display cutout is used **only** while fullscreen; elsewhere the app
+  wants the safe area.
+
+**Pinned by** `backend/tests/mobile.shell.test.js`, which reads the Java as
+text - there is no SDK or device here, so the enter and exit paths are checked
+for symmetry rather than executed. That file is the right home for any shell
+property whose absence is invisible until someone is holding a phone.
+
+---
+
 ## Verification
 
 The habit that caught most of the above, and is worth keeping:
