@@ -956,3 +956,103 @@
   flex: 1 1 auto;
   text-align: center;
 }
+
+/* History, laid out as a list rather than a grid: a row has to carry the
+   episode and the position, which a poster tile has no room for. */
+.history-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.list-search {
+  display: block;
+  margin: 12px 0 20px;
+}
+
+.list-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--surface);
+  background: var(--surface);
+  color: inherit;
+  font-size: 1rem;
+}
+
+.history-day {
+  font-size: 0.95rem;
+  color: var(--muted);
+  margin: 20px 0 8px;
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-row-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.history-poster {
+  width: 56px;
+  height: 78px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex: 0 0 auto;
+}
+
+.history-poster--blank {
+  background: var(--surface);
+}
+
+/* min-width:0 on both, or a long title pushes the delete button off screen
+   instead of being truncated. */
+.history-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.history-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-episode {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.history-forget {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 1.1rem;
+  padding: 8px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

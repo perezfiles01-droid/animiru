@@ -19,11 +19,18 @@ const renderAt = (path) =>
   render(<MemoryRouter initialEntries={[path]}><BottomNav /></MemoryRouter>);
 
 describe('BottomNav', () => {
-  it('offers Home, Library and Settings', () => {
+  it('offers Home, Library, History and Settings', () => {
     renderAt('/');
     expect(screen.getByRole('link', { name: /Home/ })).toHaveAttribute('href', '/');
     expect(screen.getByRole('link', { name: /Library/ })).toHaveAttribute('href', '/library');
+    expect(screen.getByRole('link', { name: /History/ })).toHaveAttribute('href', '/history');
     expect(screen.getByRole('link', { name: /Settings/ })).toHaveAttribute('href', '/settings');
+  });
+
+  it('marks History when it is the current destination', () => {
+    renderAt('/history');
+    expect(screen.getByRole('link', { name: /History/ })).toHaveClass('active');
+    expect(screen.getByRole('link', { name: /Library/ })).not.toHaveClass('active');
   });
 
   it('marks Library when it is the current destination', () => {
@@ -46,7 +53,7 @@ describe('BottomNav', () => {
   it('is rendered unconditionally, not behind a menu that must be opened', () => {
     const { container } = renderAt('/');
     expect(container.querySelector('.bottom-nav')).toBeInTheDocument();
-    expect(container.querySelectorAll('.bottom-nav-item')).toHaveLength(3);
+    expect(container.querySelectorAll('.bottom-nav-item')).toHaveLength(4);
   });
 });
 

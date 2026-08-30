@@ -6,6 +6,7 @@
 
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom';
 import Library from '../Library';
@@ -85,5 +86,56 @@ describe('the Library screen', () => {
 
     expect(screen.getByText('Frieren')).toBeInTheDocument();
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+});
+
+
+/**
+ * A library that has grown past a screenful needs a way to reach one title.
+ */
+describe('searching the library', () => {
+  const saved = () => {
+    addToLibrary({ id: '/a', providerId: 'extension:1', title: 'Tokyo Ghoul' });
+    addToLibrary({ id: '/b', providerId: 'extension:1', title: 'Bleach' });
+  };
+
+  beforeEach(() => window.localStorage.clear());
+
+  it('narrows to what is typed', async () => {
+    saved();
+    render(<MemoryRouter><Library /></MemoryRouter>);
+
+    await userEvent.type(screen.getByRole('searchbox', { name: /Search library/ }), 'ghoul');
+
+    expect(screen.getByText('Tokyo Ghoul')).toBeInTheDocument();
+    expect(screen.queryByText('Bleach')).not.toBeInTheDocument();
+  });
+
+  it('does not care about case', async () => {
+    saved();
+    render(<MemoryRouter><Library /></MemoryRouter>);
+
+    await userEvent.type(screen.getByRole('searchbox', { name: /Search library/ }), 'BLEACH');
+    expect(screen.getByText('Bleach')).toBeInTheDocument();
+  });
+
+  // A filtered-to-nothing grid is indistinguishable from an empty library.
+  it('says when nothing matches, and keeps the search box', async () => {
+    saved();
+    render(<MemoryRouter><Library /></MemoryRouter>);
+
+    await userEvent.type(screen.getByRole('searchbox', { name: /Search library/ }), 'naruto');
+
+    expect(screen.getByText(/Nothing saved matches/)).toBeInTheDocument();
+    expect(screen.getByRole('searchbox', { name: /Search library/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing saved yet/)).not.toBeInTheDocument();
+  });
+
+  it('still counts the whole library, not the filtered part', async () => {
+    saved();
+    render(<MemoryRouter><Library /></MemoryRouter>);
+
+    await userEvent.type(screen.getByRole('searchbox', { name: /Search library/ }), 'ghoul');
+    expect(screen.getByText('2 titles')).toBeInTheDocument();
   });
 });

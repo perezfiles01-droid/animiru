@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getLibrary, removeFromLibrary } from '../services/library';
 import '../styles/Pages.css';
@@ -16,6 +16,19 @@ import '../styles/Pages.css';
  */
 export default function Library() {
   const [entries, setEntries] = useState(() => getLibrary());
+  const [query, setQuery] = useState('');
+
+  /**
+   * Filtered here rather than by re-reading storage: the library is already
+   * in memory, and a shelf that has to be re-read to be searched would
+   * flicker on every keystroke.
+   */
+  const matching = useMemo(() => {
+    const wanted = query.trim().toLowerCase();
+    if (!wanted) return entries;
+
+    return entries.filter((entry) => String(entry.title || '').toLowerCase().includes(wanted));
+  }, [entries, query]);
 
   const detailHref = (entry) =>
     `/anime?source=${encodeURIComponent(entry.providerId)}`
@@ -49,8 +62,24 @@ export default function Library() {
         {entries.length} {entries.length === 1 ? 'title' : 'titles'}
       </p>
 
+      <label className="list-search">
+        <span className="visually-hidden">Search library</span>
+        <input
+          type="search"
+          value={query}
+          placeholder="Search library"
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
+
+      {/* Said plainly, because a filtered-to-nothing grid is
+          indistinguishable from an empty library. */}
+      {matching.length === 0 && (
+        <p className="extensions-empty">Nothing saved matches “{query}”.</p>
+      )}
+
       <div className="anime-grid">
-        {entries.map((entry) => (
+        {matching.map((entry) => (
           <div key={`${entry.providerId}:${entry.id}`} className="library-card">
             <Link to={detailHref(entry)} className="library-card-link">
               {entry.poster

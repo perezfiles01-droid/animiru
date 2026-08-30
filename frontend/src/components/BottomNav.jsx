@@ -18,6 +18,7 @@ import '../styles/BottomNav.css';
 const DESTINATIONS = [
   { to: '/', label: 'Home', icon: '🏠', end: true },
   { to: '/library', label: 'Library', icon: '♥', end: false },
+  { to: '/history', label: 'History', icon: '🕘', end: false },
   { to: '/settings', label: 'Settings', icon: '⚙️', end: false }
 ];
 

@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import Home from './pages/Home';
 import Library from './pages/Library';
+import History from './pages/History';
 import WatchOrder from './pages/WatchOrder';
 import Recommendations from './pages/Recommendations';
 import TrackingSettings from './pages/TrackingSettings';
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="/anime" element={<Details />} />
             <Route path="/watch" element={<Watch />} />
             <Route path="/library" element={<Library />} />
+            <Route path="/history" element={<History />} />
             <Route path="/watch-order" element={<WatchOrder />} />
             <Route path="/recommendations" element={<Recommendations />} />
             <Route path="/settings" element={<Settings />} />
