@@ -176,6 +176,22 @@
     "pkgPath": "sources/justanime.js"
   },
   {
+    "name": "KickAssAnime",
+    "id": 174839261,
+    "lang": "en",
+    "baseUrl": "https://kaa.lt",
+    "apiUrl": "",
+    "iconUrl": "https://www.google.com/s2/favicons?sz=256&domain=https://kaa.lt",
+    "version": "0.1.0",
+    "itemType": 1,
+    "isNsfw": false,
+    "hasCloudflare": false,
+    "isManga": false,
+    "typeSource": "single",
+    "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/kaa.js",
+    "pkgPath": "sources/kaa.js"
+  },
+  {
     "name": "Miruro",
     "id": 617345892,
     "lang": "en",
