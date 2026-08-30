@@ -14,5 +14,21 @@
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/animepahe.js",
     "pkgPath": "sources/animepahe.js"
+  },
+  {
+    "name": "Re:ANIME",
+    "id": 1003,
+    "lang": "en",
+    "baseUrl": "https://reanime.to",
+    "apiUrl": "https://reanime.to",
+    "iconUrl": "https://reanime.to/favicon.ico",
+    "version": "2.0.0",
+    "itemType": 1,
+    "isNsfw": false,
+    "hasCloudflare": true,
+    "isManga": false,
+    "typeSource": "single",
+    "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/reanime.js",
+    "pkgPath": "sources/reanime.js"
   }
 ]

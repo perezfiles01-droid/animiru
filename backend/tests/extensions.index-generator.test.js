@@ -130,3 +130,24 @@ describe('installing from the generated index', () => {
     expect(String(fetched.code ?? fetched)).toContain('class DefaultExtension');
   });
 });
+
+/**
+ * The folder's promise is that uploading a file is all it takes. A file the
+ * generator skips in silence breaks that promise in the worst way: the
+ * source is there, it is not in the index, and nothing says why.
+ */
+describe('a source uploaded without the .js suffix', () => {
+  const stray = path.join(SOURCES, 'StraySource');
+
+  afterEach(() => { if (fs.existsSync(stray)) fs.unlinkSync(stray); });
+
+  it('fails the build instead of being ignored', () => {
+    fs.writeFileSync(stray, 'const mangayomiSources = [];\n');
+    expect(() => build()).toThrow(/StraySource.*must be a \.js file/s);
+  });
+
+  it('says what to rename it to', () => {
+    fs.writeFileSync(stray, '');
+    expect(() => build()).toThrow(/Rename it to StraySource\.js/);
+  });
+});

@@ -70,8 +70,9 @@ for Mangayomi runs here unmodified.
 
 ## Extensions in this folder
 
-1 extension.
+2 extensions.
 
 | Extension | Language | Version | Site |
 | --- | --- | --- | --- |
 | AnimePahe | English | 2.0.0 | [animepahe.ru](https://animepahe.ru) |
+| Re:ANIME | English | 2.0.0 | [reanime.to](https://reanime.to) |

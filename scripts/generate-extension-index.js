@@ -87,10 +87,22 @@ function build() {
     throw new Error(`No sources directory at ${SOURCES_DIR}`);
   }
 
-  const files = fs.readdirSync(SOURCES_DIR).filter((f) => f.endsWith('.js')).sort();
+  const present = fs.readdirSync(SOURCES_DIR).sort();
+  const files = present.filter((f) => f.endsWith('.js'));
   const entries = [];
   const problems = [];
   const seenIds = new Map();
+
+  // A source uploaded without the .js suffix used to be skipped in silence:
+  // it sat in the folder, never reached the index, and nothing anywhere said
+  // why. Refusing the whole build is the only way that gets noticed.
+  for (const fileName of present) {
+    if (fileName.endsWith('.js') || fileName.startsWith('.')) continue;
+    problems.push(
+      `${fileName}: every source must be a .js file. Rename it to `
+      + `${fileName.replace(/\.[^.]*$/, '')}.js, or delete it if it is not a source.`
+    );
+  }
 
   for (const fileName of files) {
     const code = fs.readFileSync(path.join(SOURCES_DIR, fileName), 'utf8');
