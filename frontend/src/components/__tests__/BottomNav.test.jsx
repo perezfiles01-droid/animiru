@@ -49,9 +49,17 @@ describe('Navbar', () => {
     expect(container.querySelector('.nav-menu')).not.toBeInTheDocument();
   });
 
-  it('keeps search and the way home', () => {
+  it('keeps the way home', () => {
     render(<MemoryRouter><Navbar /></MemoryRouter>);
-    expect(screen.getByPlaceholderText(/Search anime/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Animiru/ })).toHaveAttribute('href', '/');
+  });
+
+  // There used to be a search box here as well as the one on the page
+  // below, so two were on screen at once. They shared no value, so which one
+  // you typed into decided whether the source filter beside it applied.
+  it('no longer carries a second search box', () => {
+    const { container } = render(<MemoryRouter><Navbar /></MemoryRouter>);
+    expect(container.querySelector('input[type="search"], .search-input')).toBeNull();
+    expect(screen.queryByPlaceholderText(/Search anime/i)).not.toBeInTheDocument();
   });
 });

@@ -3,9 +3,13 @@ import { Link, useSearchParams } from 'react-router-dom';
 import AnimeCard from '../components/AnimeCard';
 import SourceTabs from '../components/SourceTabs';
 import SearchResults from '../components/SearchResults';
+import SourceFilter from '../components/SourceFilter';
 import ExtensionErrorReport from '../components/ExtensionError';
 import { getProviders } from '../services/providers/registry';
-import { getSelectedSourceKey, setSelectedSourceKey } from '../services/extensions/storage';
+import {
+  getSelectedSourceKey, setSelectedSourceKey,
+  getSearchSourceKeys, setSearchSourceKeys
+} from '../services/extensions/storage';
 import '../styles/Pages.css';
 
 /**
@@ -21,8 +25,8 @@ import '../styles/Pages.css';
  * picking a source and searching it alone, then repeating, was the hassle
  * this removes.
  *
- * A search can still be narrowed to one source with ?source=, which is where
- * a group's arrow leads.
+ * A search can be narrowed to some of them with the filter beside the box,
+ * or to exactly one with ?source=, which is where a group's arrow leads.
  */
 export default function Home() {
   const providers = useMemo(() => getProviders(), []);
@@ -46,9 +50,41 @@ export default function Home() {
 
   const provider = providers.find((candidate) => candidate.id === selectedId) || null;
 
-  const searchProviders = useMemo(() => (
-    onlySource ? providers.filter((candidate) => candidate.id === onlySource) : providers
-  ), [providers, onlySource]);
+  /**
+   * Remembered as source keys rather than provider ids: an id is derived
+   * from the installed source and would not survive a reinstall, which
+   * would silently widen a search the user had narrowed.
+   */
+  const [searchSourceIds, setSearchSourceIds] = useState(() => {
+    const remembered = getSearchSourceKeys();
+    return providers
+      .filter((candidate) => remembered.includes(candidate.sourceKey))
+      .map((candidate) => candidate.id);
+  });
+
+  const searchProviders = useMemo(() => {
+    // ?source= pins one source and wins: it is where a result group's arrow
+    // leads, and it would be strange for that to land somewhere wider.
+    if (onlySource) {
+      return providers.filter((candidate) => candidate.id === onlySource);
+    }
+
+    if (searchSourceIds.length === 0) return providers;
+
+    const chosen = providers.filter((candidate) => searchSourceIds.includes(candidate.id));
+
+    // A selection naming only uninstalled sources would search nothing and
+    // look like a broken search, so it falls back to all of them.
+    return chosen.length > 0 ? chosen : providers;
+  }, [providers, onlySource, searchSourceIds]);
+
+  const handleSearchSources = (ids) => {
+    setSearchSourceIds(ids);
+    setSearchSourceKeys(
+      providers.filter((candidate) => ids.includes(candidate.id))
+        .map((candidate) => candidate.sourceKey)
+    );
+  };
 
   useEffect(() => { setDraft(query); }, [query]);
 
@@ -131,8 +167,13 @@ export default function Home() {
           type="search"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder={provider ? `Search ${provider.name}...` : 'Search...'}
+          placeholder="Search anime..."
           aria-label="Search"
+        />
+        <SourceFilter
+          providers={providers}
+          selected={searchSourceIds}
+          onChange={handleSearchSources}
         />
         <button type="submit" className="btn btn-primary">Search</button>
         {query && (

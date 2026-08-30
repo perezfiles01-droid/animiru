@@ -297,3 +297,97 @@ describe('Home', () => {
     });
   });
 });
+
+/**
+ * There used to be two search boxes on screen - one in the top bar and one
+ * on this page - which shared no value. Which one you typed into decided
+ * whether the source filter beside it applied to your search.
+ */
+describe('narrowing a search to some sources', () => {
+  const twoSources = () => {
+    const first = makeProvider({
+      id: 'extension:a', name: 'AniNeko', sourceKey: 'a',
+      search: jest.fn().mockResolvedValue([
+        { id: '/x', providerId: 'extension:a', title: 'From AniNeko' }
+      ])
+    });
+    const second = makeProvider({
+      id: 'extension:b', name: 'AnimePahe', sourceKey: 'b',
+      search: jest.fn().mockResolvedValue([
+        { id: '/y', providerId: 'extension:b', title: 'From AnimePahe' }
+      ])
+    });
+    getProviders.mockReturnValue([first, second]);
+    return { first, second };
+  };
+
+  beforeEach(() => { window.localStorage.clear(); getProviders.mockReset(); });
+
+  it('has exactly one search box', async () => {
+    twoSources();
+    const { container } = await renderHome();
+    expect(container.querySelectorAll('input[type="search"]')).toHaveLength(1);
+  });
+
+  it('asks every source when none is chosen', async () => {
+    const { first, second } = twoSources();
+    await renderHome('/?q=heart');
+
+    await waitFor(() => expect(first.search).toHaveBeenCalled());
+    expect(second.search).toHaveBeenCalled();
+  });
+
+  it('asks only the chosen source', async () => {
+    const { first, second } = twoSources();
+    storage.setSearchSourceKeys(['a']);
+
+    await renderHome('/?q=heart');
+
+    await waitFor(() => expect(first.search).toHaveBeenCalled());
+    expect(second.search).not.toHaveBeenCalled();
+  });
+
+  it('asks both when both are chosen', async () => {
+    const { first, second } = twoSources();
+    storage.setSearchSourceKeys(['a', 'b']);
+
+    await renderHome('/?q=heart');
+
+    await waitFor(() => expect(first.search).toHaveBeenCalled());
+    expect(second.search).toHaveBeenCalled();
+  });
+
+  // A selection naming only sources that have since been uninstalled would
+  // otherwise search nothing, which reads as a broken search rather than as
+  // a stale setting.
+  it('falls back to every source when the chosen ones are gone', async () => {
+    const { first, second } = twoSources();
+    storage.setSearchSourceKeys(['uninstalled-source']);
+
+    await renderHome('/?q=heart');
+
+    await waitFor(() => expect(first.search).toHaveBeenCalled());
+    expect(second.search).toHaveBeenCalled();
+  });
+
+  // ?source= is where a result group's arrow leads, so it has to win.
+  it('lets a pinned source override the filter', async () => {
+    const { first, second } = twoSources();
+    storage.setSearchSourceKeys(['a']);
+
+    await renderHome('/?q=heart&source=extension:b');
+
+    await waitFor(() => expect(second.search).toHaveBeenCalled());
+    expect(first.search).not.toHaveBeenCalled();
+  });
+
+  it('remembers the choice across a visit', async () => {
+    twoSources();
+    await renderHome();
+
+    await userEvent.click(screen.getByRole('button', { name: /All sources/i }));
+    await userEvent.click(screen.getByLabelText('AnimePahe'));
+
+    expect(storage.getSearchSourceKeys()).toEqual(['b']);
+  });
+});

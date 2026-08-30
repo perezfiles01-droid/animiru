@@ -13,6 +13,7 @@ const REPOS_KEY = 'animiru.extensions.repos';
 const SOURCES_KEY = 'animiru.extensions.sources';
 const PREFS_KEY = 'animiru.extensions.preferences';
 const SELECTED_KEY = 'animiru.extensions.selected';
+const SEARCH_SOURCES_KEY = 'animiru.searchSources';
 
 /**
  * localStorage throws rather than returning null in a private window, in an
@@ -174,12 +175,33 @@ export function setSelectedSourceKey(key) {
   return key;
 }
 
+/**
+ * Which sources a search asks.
+ *
+ * Empty means every installed source, which is the useful default: a search
+ * names a title, so there is no reason to withhold it from a source that
+ * might have it. Narrowing is the exception, so it is what gets stored.
+ */
+export function getSearchSourceKeys() {
+  const keys = read(SEARCH_SOURCES_KEY, []);
+  return Array.isArray(keys) ? keys.filter((key) => typeof key === 'string') : [];
+}
+
+export function setSearchSourceKeys(keys) {
+  const clean = Array.isArray(keys) ? keys.filter((key) => typeof key === 'string') : [];
+  write(SEARCH_SOURCES_KEY, clean);
+  return clean;
+}
+
 /** Drops everything this module owns. Used by the settings "reset" action. */
 export function clearAll() {
   write(REPOS_KEY, []);
   write(SOURCES_KEY, []);
   write(PREFS_KEY, {});
   write(SELECTED_KEY, null);
+  write(SEARCH_SOURCES_KEY, []);
 }
 
-export const STORAGE_KEYS = { REPOS_KEY, SOURCES_KEY, PREFS_KEY, SELECTED_KEY };
+export const STORAGE_KEYS = {
+  REPOS_KEY, SOURCES_KEY, PREFS_KEY, SELECTED_KEY, SEARCH_SOURCES_KEY
+};
