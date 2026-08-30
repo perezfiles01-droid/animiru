@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import MetadataScreen from '../components/MetadataScreen';
-import { getWatchOrder } from '../services/metadata';
+import { getWatchOrder, findOnSourcesHref } from '../services/metadata';
 import '../styles/Metadata.css';
 
 /**
@@ -11,6 +12,9 @@ import '../styles/Metadata.css';
  * part of the order.
  */
 export default function WatchOrder() {
+  const [searchParams] = useSearchParams();
+  const providerId = searchParams.get('source');
+
   const fetch = useCallback((id) => getWatchOrder(id), []);
 
   const render = (state) => {
@@ -22,12 +26,24 @@ export default function WatchOrder() {
           <li key={entry.id} className="watch-order-entry">
             <span className="watch-order-number" aria-hidden="true">{entry.position}</span>
 
-            {entry.poster
-              ? <img src={entry.poster} alt="" className="watch-order-poster" />
-              : <div className="watch-order-poster watch-order-blank" aria-hidden="true" />}
+            {/* Poster and title are one link, so tapping either finds the
+                title on the source you came from. */}
+            <Link
+              to={findOnSourcesHref(entry.title, providerId)}
+              className="watch-order-poster-link"
+              aria-label={`Find ${entry.title} on your sources`}
+            >
+              {entry.poster
+                ? <img src={entry.poster} alt="" className="watch-order-poster" />
+                : <div className="watch-order-poster watch-order-blank" aria-hidden="true" />}
+            </Link>
 
             <div className="watch-order-detail">
-              <h2>{entry.title}</h2>
+              <h2>
+                <Link to={findOnSourcesHref(entry.title, providerId)} className="metadata-title-link">
+                  {entry.title}
+                </Link>
+              </h2>
               {entry.titles && entry.titles.length > 1 && (
                 <p className="watch-order-alt">{entry.titles[0]}</p>
               )}

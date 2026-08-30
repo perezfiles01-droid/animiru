@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import MetadataScreen from '../components/MetadataScreen';
-import { getRecommendations } from '../services/metadata';
+import { getRecommendations, findOnSourcesHref } from '../services/metadata';
 import '../styles/Metadata.css';
 
 /**
@@ -12,6 +13,9 @@ import '../styles/Metadata.css';
  * supports.
  */
 export default function Recommendations() {
+  const [searchParams] = useSearchParams();
+  const providerId = searchParams.get('source');
+
   const fetch = useCallback((id) => getRecommendations(id), []);
 
   const render = (state) => {
@@ -21,16 +25,24 @@ export default function Recommendations() {
       <ul className="recommendations">
         {state.results.map((entry) => (
           <li key={entry.id} className="recommendation">
-            {entry.poster
-              ? <img src={entry.poster} alt="" className="recommendation-poster" />
-              : <div className="recommendation-poster recommendation-blank" aria-hidden="true" />}
+            <Link
+              to={findOnSourcesHref(entry.title, providerId)}
+              className="recommendation-poster-link"
+              aria-label={`Find ${entry.title} on your sources`}
+            >
+              {entry.poster
+                ? <img src={entry.poster} alt="" className="recommendation-poster" />
+                : <div className="recommendation-poster recommendation-blank" aria-hidden="true" />}
+            </Link>
 
             <div className="recommendation-detail">
               <h2>
                 {entry.percent !== null && (
                   <span className="recommendation-percent">{entry.percent}%</span>
                 )}
-                {entry.title}
+                <Link to={findOnSourcesHref(entry.title, providerId)} className="metadata-title-link">
+                  {entry.title}
+                </Link>
               </h2>
 
               {entry.description && (

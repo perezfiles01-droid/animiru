@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { getProvider } from '../services/providers/registry';
 import ExtensionErrorReport from '../components/ExtensionError';
 import LibraryButton from '../components/LibraryButton';
+import StatusBadge from '../components/StatusBadge';
 import '../styles/Pages.css';
 
 /**
@@ -106,7 +107,10 @@ export default function Details() {
 
         <div className="details-info">
           <h1>{item.title}</h1>
-          <p className="details-source">{provider.name}</p>
+          <p className="details-source">
+            {provider.name}
+            <StatusBadge status={item.status} />
+          </p>
 
           <div className="details-toolbar">
             <LibraryButton

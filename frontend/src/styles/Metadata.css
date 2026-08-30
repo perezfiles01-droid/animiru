@@ -132,3 +132,10 @@
 }
 
 .recommendation-genres { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0; }
+
+/* Tapping a poster or a title looks for it on your own sources. */
+.metadata-title-link { color: inherit; text-decoration: none; }
+.metadata-title-link:active { color: var(--accent-text); }
+
+.watch-order-poster-link,
+.recommendation-poster-link { display: block; }

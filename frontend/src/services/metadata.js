@@ -114,4 +114,21 @@ export async function resolveMatch({ providerId, itemId, title }) {
   };
 }
 
+/**
+ * Where to go when an AniList title is tapped.
+ *
+ * AniList entries carry no source id - they are not from a source at all -
+ * so there is nothing to link straight to. What the app can do is search
+ * for the title, scoped to the source the reader came from, since that is
+ * the one they are already using and the one that can play it.
+ *
+ * Falling back to every source when there is no originating one keeps
+ * Discover, where there is no such source, working through the same path.
+ */
+export function findOnSourcesHref(title, providerId) {
+  const query = encodeURIComponent(String(title || '').trim());
+  const scoped = providerId ? `&source=${encodeURIComponent(providerId)}` : '';
+  return `/?q=${query}${scoped}`;
+}
+
 export const METADATA_MATCH_KEY = MATCH_KEY;

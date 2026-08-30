@@ -890,3 +890,18 @@
 }
 
 .watch-episode { margin: 0.2rem 0 0; color: var(--muted); font-size: 0.95rem; }
+
+/* Whether a title is still running, beside the source it came from. */
+.status-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.status-ongoing { background: var(--success); color: #06210c; }
+.status-completed { background: var(--accent-text); color: #10182c; }
+.status-paused { background: var(--text-muted); color: #1a1a2e; }

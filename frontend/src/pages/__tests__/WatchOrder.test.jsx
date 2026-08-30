@@ -188,3 +188,47 @@ describe('the Recommendations screen', () => {
     expect(screen.getByText(/no recommendations for this title yet/i)).toBeInTheDocument();
   });
 });
+
+/**
+ * AniList entries carry no source id - they are not from a source at all -
+ * so there is nothing to link straight to. Tapping one searches for the
+ * title on the source the reader came from, which is the one already in use
+ * and the one that can actually play it.
+ */
+describe('finding a suggested title on your own sources', () => {
+  beforeEach(() => { window.localStorage.clear(); api.get.mockReset(); });
+
+  it('links the watch order poster and title to a scoped search', async () => {
+    routes({});
+    await show(<WatchOrder />);
+
+    const links = screen.getAllByRole('link', { name: /Find The Movie on your sources|The Movie/ });
+    for (const link of links) {
+      expect(link).toHaveAttribute(
+        'href', '/?q=The%20Movie&source=extension%3Aa'
+      );
+    }
+    expect(links.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('links a recommendation the same way', async () => {
+    api.get.mockImplementation(async (path) => {
+      if (path.endsWith('/search')) return { data: { results: [MATCH] } };
+      return { data: { results: [{ id: 5, title: 'Nisekoi', percent: 73, genres: [], poster: 'p' }] } };
+    });
+
+    await show(<Recommendations />, '/recommendations?source=extension:a&id=/x&title=Heart');
+
+    expect(screen.getByRole('link', { name: 'Nisekoi' }))
+      .toHaveAttribute('href', '/?q=Nisekoi&source=extension%3Aa');
+  });
+
+  // Discover has no originating source, and goes through the same path.
+  it('searches every source when there is no source to scope to', async () => {
+    routes({});
+    await show(<WatchOrder />, '/watch-order?id=/x&title=Heart');
+
+    expect(screen.getByRole('link', { name: 'The Movie' }))
+      .toHaveAttribute('href', '/?q=The%20Movie');
+  });
+});
