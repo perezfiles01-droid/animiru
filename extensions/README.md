@@ -85,7 +85,7 @@ for Mangayomi runs here unmodified.
 | HiAnime | English | 0.4.11 | [hianime.ms](https://hianime.ms) |
 | Just4Anime | English | 0.1.1 | [just4anime.online](https://just4anime.online) |
 | JustAnime | English | 0.2.8 | [justanime.to](https://justanime.to) |
-| KickAssAnime | English | 1.0.0 | [kaa.lt](https://kaa.lt) |
+| KickAssAnime | English | 1.1.0 | [kaa.to](https://kaa.to) |
 | Miruro | English | 6.1.11 | [www.miruro.to](https://www.miruro.to) |
 | MyroniX | English | 0.2.4 | [myronix.strangled.net](https://myronix.strangled.net) |
 | Playback Diagnostic | English | 0.0.2 | [example.invalid](https://example.invalid) |

@@ -201,6 +201,108 @@ describe('KickAssAnime', () => {
     });
   });
 
+  /**
+   * The 403 that made this source unusable.
+   *
+   * kaa.lt refused the server in 148ms with no page behind it - its edge
+   * turning away a hosting provider's IP, per domain. KAA runs several
+   * domains and abandons them regularly, so one refusing says nothing about
+   * the next, and a source pinned to one address is dead until someone
+   * edits it.
+   */
+  describe('when an address refuses the request', () => {
+    /** Refuses every host in `blocked`, serves the payload from the rest. */
+    function stubHosts(blocked, payload) {
+      return jest.spyOn(http, 'request').mockImplementation(async (options) => {
+        seen.push(options);
+        const { host } = new URL(options.url);
+
+        if (blocked[host] !== undefined) {
+          return { statusCode: blocked[host], headers: {}, url: options.url, body: '' };
+        }
+        return {
+          statusCode: 200, headers: {}, url: options.url, body: JSON.stringify(payload)
+        };
+      });
+    }
+
+    it('moves to the next address rather than failing', async () => {
+      stubHosts({ 'kaa.lt': 403 }, SHOWS);
+
+      const { list } = await call('getPopular', [1]);
+      expect(list.map((item) => item.name)).toEqual(['One Piece', 'Naruto']);
+    });
+
+    it('tries the addresses in turn until one answers', async () => {
+      stubHosts({ 'kaa.lt': 403, 'kaa.to': 503 }, SHOWS);
+      await call('getPopular', [1]);
+
+      const hosts = seen.map((request) => new URL(request.url).host);
+      expect(hosts.slice(0, 3)).toEqual(['kaa.lt', 'kaa.to', 'kickassanime.mx']);
+    });
+
+    // Everything after the first request - posters, the Referer a CDN
+    // checks - has to point at the domain that answered, not the dead one.
+    it('uses the address that answered for everything else', async () => {
+      stubHosts({ 'kaa.lt': 403 }, SHOWS);
+
+      const { list } = await call('getPopular', [1]);
+      expect(list[0].imageUrl).toContain('https://kaa.to/image/poster/');
+    });
+
+    it('does not re-try the dead addresses on every later request', async () => {
+      stubHosts({ 'kaa.lt': 403 }, { ...DETAIL, ...EPISODES });
+      await call('getDetail', ['one-piece-99cf']);
+
+      const refused = seen.filter((request) => request.url.includes('kaa.lt'));
+      expect(refused).toHaveLength(1);
+    });
+
+    // A 404 means the domain works and the path does not. Moving on would
+    // spend four more requests hiding a real bug in this source.
+    it('treats a 404 as an answer, not a refusal', async () => {
+      stubHosts({ 'kaa.lt': 404 }, SHOWS);
+
+      await expect(call('getPopular', [1])).rejects.toThrow(/responded 404/);
+      expect(seen).toHaveLength(1);
+    });
+
+    it('names every address it tried when they all refuse', async () => {
+      stubHosts({
+        'kaa.lt': 403, 'kaa.to': 403, 'kickassanime.mx': 403, 'kickassanimes.org': 503
+      }, SHOWS);
+
+      await expect(call('getPopular', [1]))
+        .rejects.toThrow(/refused every address tried.*kaa\.lt \(403\).*503/s);
+    });
+
+    it('survives an address that no longer resolves at all', async () => {
+      jest.spyOn(http, 'request').mockImplementation(async (options) => {
+        seen.push(options);
+        if (options.url.includes('kaa.lt')) throw new Error('Could not resolve kaa.lt');
+        return {
+          statusCode: 200, headers: {}, url: options.url, body: JSON.stringify(SHOWS)
+        };
+      });
+
+      const { list } = await call('getPopular', [1]);
+      expect(list).toHaveLength(2);
+    });
+
+    it('tries an address set in the source settings first', async () => {
+      stubHosts({}, SHOWS);
+      await runExtension({
+        code: CODE,
+        method: 'getPopular',
+        args: [1],
+        source: SOURCE,
+        preferences: { kaa_base_url: 'https://kaa.example' }
+      });
+
+      expect(new URL(seen[0].url).host).toBe('kaa.example');
+    });
+  });
+
   // Exactly what the old version did: it asked for the page and found no
   // titles in the shell that came back.
   it('names the shell when it gets HTML where JSON belongs', async () => {

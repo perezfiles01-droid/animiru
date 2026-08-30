@@ -2,12 +2,11 @@ const mangayomiSources = [{
   name: "KickAssAnime",
   id: 174839261,
   lang: "en",
-  baseUrl: "https://kaa.lt",
-  apiUrl: "https://kaa.lt/api",
-  iconUrl: "https://www.google.com/s2/favicons?sz=256&domain=https://kaa.lt",
+  baseUrl: "https://kaa.to",
+  iconUrl: "https://www.google.com/s2/favicons?sz=256&domain=https://kaa.to",
   typeSource: "single",
   itemType: 1,
-  version: "1.0.0",
+  version: "1.1.0",
   isNsfw: false,
   hasCloudflare: false,
   isManga: false,
@@ -37,8 +36,48 @@ const mangayomiSources = [{
  * spelling breaks on the next change with no clue why.
  */
 class DefaultExtension extends MProvider {
+  /**
+   * The addresses KickAssAnime answers on.
+   *
+   * KAA moves domain constantly and abandons the old one, and its edge
+   * blocks a hosting provider's IP per-domain rather than site-wide - kaa.lt
+   * refusing a request says nothing about whether kaa.to will. A list tried
+   * in turn is the difference between a dead source and a working one, and
+   * the setting goes first so a domain that appears after this file was
+   * written can be used without waiting for an update.
+   */
+  get mirrors() {
+    const override = String(this.getPreference("kaa_base_url") || "").trim();
+    const known = [
+      this.source.baseUrl,
+      "https://kaa.to",
+      "https://kaa.lt",
+      "https://kickassanime.mx",
+      "https://kickassanimes.org"
+    ];
+
+    const ordered = override ? [override, ...known] : known;
+
+    // A duplicate costs a whole request against a domain already refused.
+    const seen = new Set();
+    return ordered
+      .map((url) => String(url || "").trim().replace(/\/+$/, ""))
+      .filter((url) => url && !seen.has(url) && seen.add(url));
+  }
+
+  /**
+   * The address the current run is using.
+   *
+   * Set by the first mirror that answers, so the rest of a run - posters,
+   * episode pages, the Referer - all point at the domain that works rather
+   * than the one in the header.
+   */
+  get base() {
+    return this.activeBase || this.mirrors[0];
+  }
+
   get api() {
-    return this.source.apiUrl || `${this.source.baseUrl}/api`;
+    return `${this.base}/api`;
   }
 
   headers() {
@@ -47,20 +86,77 @@ class DefaultExtension extends MProvider {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
       Accept: "application/json",
-      Referer: `${this.source.baseUrl}/`
+      Referer: `${this.base}/`
     };
   }
 
-  async getJson(path, body) {
-    const url = path.startsWith("http") ? path : `${this.api}${path}`;
+  /** One request, against one address. */
+  async fetch(base, path, body) {
+    const url = path.startsWith("http") ? path : `${base}/api${path}`;
+    const client = new Client();
 
     const res = body === undefined
-      ? await new Client().get(url, this.headers())
-      : await new Client().post(
+      ? await client.get(url, this.headers())
+      : await client.post(
         url,
         { ...this.headers(), "Content-Type": "application/json" },
         JSON.stringify(body)
       );
+
+    return { url, res };
+  }
+
+  /**
+   * A refusal rather than an answer.
+   *
+   * 403 and 503 are the edge turning the request away and 429 is it rate
+   * limiting us; none of them says the domain is wrong, so another mirror is
+   * worth trying. A 404 is an answer - the domain works and the path does
+   * not - and moving on would hide a real bug behind four more requests.
+   */
+  isRefusal(statusCode) {
+    return statusCode === 403 || statusCode === 429 || statusCode === 503;
+  }
+
+  async getJson(path, body) {
+    // A mirror already known to answer is not re-negotiated for every
+    // request in the run.
+    const addresses = this.activeBase ? [this.activeBase] : this.mirrors;
+    const refused = [];
+    let response = null;
+    let url = "";
+
+    for (const base of addresses) {
+      let attempt;
+      try {
+        attempt = await this.fetch(base, path, body);
+      } catch (err) {
+        // A domain that no longer resolves throws rather than answering,
+        // and is exactly the case the list exists for.
+        refused.push(`${base} (${err && err.message ? err.message : "no response"})`);
+        continue;
+      }
+
+      if (this.isRefusal(attempt.res.statusCode)) {
+        refused.push(`${base} (${attempt.res.statusCode})`);
+        continue;
+      }
+
+      this.activeBase = base;
+      response = attempt.res;
+      url = attempt.url;
+      break;
+    }
+
+    if (!response) {
+      throw new Error(
+        "KickAssAnime refused every address tried: " + refused.join(", ") +
+        ". The site blocks requests from hosting providers; set another " +
+        "address in this source's settings if it has moved again."
+      );
+    }
+
+    const res = response;
 
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw new Error(`KickAssAnime responded ${res.statusCode} for ${url}`);
@@ -100,7 +196,7 @@ class DefaultExtension extends MProvider {
     if (typeof poster === "string") {
       return /^https?:/i.test(poster)
         ? poster
-        : `${this.source.baseUrl}/image/poster/${poster}.webp`;
+        : `${this.base}/image/poster/${poster}.webp`;
     }
 
     const name = poster.hq || poster.sm || poster.name || poster.url || "";
@@ -108,7 +204,7 @@ class DefaultExtension extends MProvider {
 
     return /^https?:/i.test(name)
       ? name
-      : `${this.source.baseUrl}/image/poster/${name}.webp`;
+      : `${this.base}/image/poster/${name}.webp`;
   }
 
   titleOf(row) {
@@ -259,7 +355,7 @@ class DefaultExtension extends MProvider {
         originalUrl: src,
         quality: [server?.shortName || server?.name || "KAA", server?.quality]
           .filter(Boolean).join(" · "),
-        headers: { Referer: `${this.source.baseUrl}/` }
+        headers: { Referer: `${this.base}/` }
       });
     }
 
@@ -286,6 +382,20 @@ class DefaultExtension extends MProvider {
   }
 
   getSourcePreferences() {
-    return [];
+    return [
+      {
+        key: "kaa_base_url",
+        editTextPreference: {
+          title: "KickAssAnime address",
+          summary:
+            "Tried before the built-in list. Set this if KickAssAnime moves " +
+            "to a domain this source does not know yet. Include https:// " +
+            "and no trailing slash.",
+          value: "",
+          dialogTitle: "KickAssAnime address",
+          dialogMessage: "For example: https://kaa.to"
+        }
+      }
+    ];
   }
 }
