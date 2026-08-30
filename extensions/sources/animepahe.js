@@ -2,10 +2,10 @@ const mangayomiSources = [{
   name: "AnimePahe",
   id: 1002,
   lang: "en",
-  baseUrl: "https://animepahe.ru",
-  apiUrl: "https://animepahe.ru/api",
-  iconUrl: "https://animepahe.ru/apple-touch-icon.png",
-  version: "2.2.0",
+  baseUrl: "https://animepahe.org",
+  apiUrl: "https://animepahe.org/api",
+  iconUrl: "https://animepahe.org/apple-touch-icon.png",
+  version: "2.3.0",
   itemType: 1,
   isNsfw: false,
   hasCloudflare: true,
@@ -93,7 +93,12 @@ class DefaultExtension extends MProvider {
     };
   }
 
-  async getText(url, referer) {
+  /**
+   * Returns the body together with the URL that finally answered, which is
+   * not always the one asked for - a dead or parked domain redirects the
+   * API path to its own front page and answers 200.
+   */
+  async fetch(url, referer) {
     const res = await new Client().get(url, this.headersFor(referer));
 
     if (res.statusCode < 200 || res.statusCode >= 300) {
@@ -102,23 +107,43 @@ class DefaultExtension extends MProvider {
       );
     }
 
-    return String(res.body || "");
+    return { body: String(res.body || ""), url: String(res.url || url) };
+  }
+
+  async getText(url, referer) {
+    return (await this.fetch(url, referer)).body;
   }
 
   async getJson(url) {
-    const body = await this.getText(url);
+    const { body, url: answered } = await this.fetch(url);
 
     try {
       return JSON.parse(body);
     } catch (_) {
-      // Almost always the DDoS-Guard interstitial. Saying so is the
-      // difference between a fixable message and "invalid JSON".
-      // Opening the site yourself does not help: the request comes from
-      // the Animiru server, not from the reader's device.
+      // Three different failures used to be reported as one. Calling a
+      // redirect "bot protection" sends the reader looking at the network
+      // when the address is what is wrong.
+      if (!/[?&]m=/.test(answered)) {
+        throw new Error(
+          `${this.siteUrl} redirected the request to ${answered}, so there ` +
+          "is no API there. That is what a parked or retired AnimePahe " +
+          "domain does. Set a working address in this source's settings - " +
+          "whichever one loads the real site in your browser."
+        );
+      }
+
+      if (/ddos-guard|checking your browser|just a moment|cf-browser/i.test(body)) {
+        throw new Error(
+          "AnimePahe returned a challenge page instead of JSON. Its " +
+          "DDoS-Guard bot protection is challenging the request, and the " +
+          "challenge is aimed at the Animiru server that made it, not at " +
+          "your device."
+        );
+      }
+
       throw new Error(
-        "AnimePahe returned a page instead of JSON - its DDoS-Guard bot " +
-        "protection is challenging the request. The challenge is aimed at " +
-        "the Animiru server that made it, not at your device."
+        `AnimePahe answered ${answered} with something that is not JSON. ` +
+        `It began: ${body.slice(0, 120).replace(/\s+/g, " ").trim()}`
       );
     }
   }
@@ -434,9 +459,9 @@ class DefaultExtension extends MProvider {
           summary:
             "Change this if AnimePahe moves domain and the source stops " +
             "loading. Include https:// and no trailing slash.",
-          value: "https://animepahe.ru",
+          value: "https://animepahe.org",
           dialogTitle: "AnimePahe address",
-          dialogMessage: "For example: https://animepahe.ru"
+          dialogMessage: "For example: https://animepahe.org"
         }
       }
     ];

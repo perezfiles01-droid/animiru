@@ -21,7 +21,7 @@ const CODE = fs.readFileSync(
   'utf8'
 );
 
-const SOURCE = { baseUrl: 'https://animepahe.ru', apiUrl: 'https://animepahe.ru/api' };
+const SOURCE = { baseUrl: 'https://animepahe.org', apiUrl: 'https://animepahe.org/api' };
 
 /** api?m=airing: episodes, so one title repeats once per release. */
 const AIRING = {
@@ -31,15 +31,15 @@ const AIRING = {
   data: [
     {
       id: 1, anime_id: 10, anime_title: 'Frieren', anime_session: 'frieren-session',
-      episode: 12, snapshot: 'https://i.animepahe.ru/frieren.jpg', session: 'ep12'
+      episode: 12, snapshot: 'https://i.animepahe.org/frieren.jpg', session: 'ep12'
     },
     {
       id: 2, anime_id: 10, anime_title: 'Frieren', anime_session: 'frieren-session',
-      episode: 11, snapshot: 'https://i.animepahe.ru/frieren.jpg', session: 'ep11'
+      episode: 11, snapshot: 'https://i.animepahe.org/frieren.jpg', session: 'ep11'
     },
     {
       id: 3, anime_id: 20, anime_title: 'Dandadan', anime_session: 'dandadan-session',
-      episode: 4, snapshot: 'https://i.animepahe.ru/dandadan.jpg', session: 'ep4'
+      episode: 4, snapshot: 'https://i.animepahe.org/dandadan.jpg', session: 'ep4'
     }
   ]
 };
@@ -56,7 +56,7 @@ const SEARCH = {
 const ANIME_PAGE = `
   <html><body>
     <div class="title-wrapper"><h1><span>Sousou no Frieren</span></h1></div>
-    <div class="anime-poster"><a><img data-src="https://i.animepahe.ru/poster.jpg"></a></div>
+    <div class="anime-poster"><a><img data-src="https://i.animepahe.org/poster.jpg"></a></div>
     <div class="anime-summary">
       <p class="anime-status"><strong>Status:</strong> <a href="#">Finished Airing</a></p>
     </div>
@@ -153,7 +153,7 @@ describe('AnimePahe source', () => {
 
       expect(list.map((i) => i.name)).toEqual(['Frieren', 'Dandadan']);
       expect(list[0]).toMatchObject({
-        link: 'frieren-session', imageUrl: 'https://i.animepahe.ru/frieren.jpg'
+        link: 'frieren-session', imageUrl: 'https://i.animepahe.org/frieren.jpg'
       });
       expect(hasNextPage).toBe(true);
     });
@@ -197,7 +197,7 @@ describe('AnimePahe source', () => {
 
       expect(detail).toMatchObject({
         name: 'Sousou no Frieren',
-        imageUrl: 'https://i.animepahe.ru/poster.jpg',
+        imageUrl: 'https://i.animepahe.org/poster.jpg',
         description: 'A mage outlives her party.',
         genre: ['Adventure', 'Drama'],
         link: 'frieren-session'
@@ -305,15 +305,16 @@ describe('AnimePahe source', () => {
 
       expect(seen[0].headers).toMatchObject({
         'User-Agent': expect.stringContaining('Mozilla/5.0'),
-        Referer: 'https://animepahe.ru/',
+        Referer: 'https://animepahe.org/',
         Cookie: '__ddg1_=;__ddg2_=;'
       });
     });
 
-    it('names the browser check when it gets HTML where JSON belongs', async () => {
+    it('names the browser check when the page is actually a challenge', async () => {
       jest.restoreAllMocks();
       jest.spyOn(http, 'request').mockResolvedValue({
-        statusCode: 200, headers: {}, url: 'x', body: '<html>checking your browser</html>'
+        statusCode: 200, headers: {}, body: '<html>DDoS-Guard checking your browser</html>',
+        url: 'https://animepahe.org/api?m=airing&page=1'
       });
 
       const failure = call('getPopular', [1]);
@@ -337,7 +338,7 @@ describe('AnimePahe source', () => {
 
     it('falls back to the declared address when the setting is untouched', async () => {
       await call('getPopular', [1]);
-      expect(seen[0].url).toContain('https://animepahe.ru/api');
+      expect(seen[0].url).toContain('https://animepahe.org/api');
     });
   });
 });
@@ -357,5 +358,48 @@ describe('looking like a browser', () => {
       Cookie: '__ddg1_=;__ddg2_=;'
     });
     expect(seen[0].headers['Accept-Encoding']).toBeUndefined();
+  });
+});
+
+/**
+ * The failure that was misreported on a real device: the address setting
+ * pointed at animepahe.su, which redirects the API path to its own front
+ * page and answers 200. The source called that "bot protection is
+ * challenging the request" - confidently, and about the wrong thing.
+ */
+describe('an address that is not the live site', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  const redirectedTo = (finalUrl, body) => {
+    jest.spyOn(http, 'request').mockResolvedValue({
+      statusCode: 200, headers: {}, body, url: finalUrl
+    });
+  };
+
+  it('reports a redirect to the front page as a wrong address', async () => {
+    redirectedTo('https://animepahe.su/', '<html><body>AnimePahe</body></html>');
+
+    const failure = call('getPopular', [1]);
+    await expect(failure).rejects.toThrow(/redirected the request/);
+    await expect(failure).rejects.toThrow(/parked or retired AnimePahe domain/);
+    await expect(failure).rejects.toThrow(/settings/);
+  });
+
+  // The whole point of the fix: stop blaming the network for an address.
+  it('does not call a redirect bot protection', async () => {
+    redirectedTo('https://animepahe.su/', '<html><body>AnimePahe</body></html>');
+
+    await expect(call('getPopular', [1])).rejects.not.toThrow(/bot protection/);
+  });
+
+  it('quotes what it got when the answer is neither JSON nor a challenge', async () => {
+    redirectedTo('https://animepahe.org/api?m=airing&page=1', '<html>Service unavailable</html>');
+
+    await expect(call('getPopular', [1]))
+      .rejects.toThrow(/is not JSON.*Service unavailable/s);
+  });
+
+  it('defaults to the address that actually serves the site', () => {
+    expect(extractMetadata(CODE)[0].baseUrl).toBe('https://animepahe.org');
   });
 });
