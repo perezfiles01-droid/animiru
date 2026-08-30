@@ -77,7 +77,16 @@ export const REDIRECT_URL = 'https://anilist.co/api/v2/oauth/pin';
  */
 export function authorizeUrl(clientId = getClientId()) {
   const id = encodeURIComponent(String(clientId || '').trim());
-  return `https://anilist.co/api/v2/oauth/authorize?client_id=${id}&response_type=token`;
+
+  // redirect_uri is sent even though AniList would fall back to whatever the
+  // client has registered. That fallback is the problem: a client still
+  // carrying an old redirect sends the browser to an address it cannot
+  // resolve, and the user gets a DNS error with no hint of the cause.
+  // Naming it here makes AniList refuse with a mismatch it can explain.
+  const redirect = encodeURIComponent(REDIRECT_URL);
+
+  return 'https://anilist.co/api/v2/oauth/authorize'
+    + `?client_id=${id}&response_type=token&redirect_uri=${redirect}`;
 }
 
 /** Reads the token AniList put in the fragment when it sent the user back. */

@@ -116,6 +116,10 @@ export default function TrackingSettings() {
                 <small>
                   AniList&rsquo;s own page. It shows the token for you to copy,
                   because this app has no web address a browser can return to.
+                  If you already saved a different redirect URL, change it to
+                  this one - AniList uses what is saved there, not what the
+                  app asks for, and an old value sends your browser to an
+                  address that does not exist.
                 </small>
               </li>
               <li>Paste the client ID below, then tap Connect.</li>
