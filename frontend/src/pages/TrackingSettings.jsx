@@ -14,26 +14,34 @@ export default function TrackingSettings() {
   const [clientId, setClientId] = useState(() => anilist.getClientId());
   const [user, setUser] = useState(() => anilist.getUser());
   const [autoSync, setAutoSync] = useState(() => anilist.isAutoSyncEnabled());
+  const [token, setToken] = useState('');
   const [status, setStatus] = useState(null);
 
-  /**
-   * AniList sends the token back in the URL fragment. It is read once and
-   * removed from the address bar: a token sitting in the URL is one back
-   * button or one shared link away from somewhere it should not be.
-   */
-  useEffect(() => {
-    const token = anilist.tokenFromFragment(window.location.hash);
-    if (!token) return;
-
-    window.history.replaceState(null, '', window.location.pathname);
+  const submit = (value) => {
     setStatus({ kind: 'working', message: 'Confirming with AniList...' });
 
-    anilist.connect(token)
+    anilist.connect(value)
       .then((viewer) => {
         setUser(viewer);
+        setToken('');
         setStatus({ kind: 'ok', message: `Connected as ${viewer.name}.` });
       })
       .catch((err) => setStatus({ kind: 'error', message: err.message }));
+  };
+
+  /**
+   * On the web, AniList can send the token back in the URL fragment, so it
+   * is read once and stripped from the address bar - a token sitting in a
+   * URL is one shared link away from somewhere it should not be. In the
+   * Android app the redirect cannot come back to us at all, which is what
+   * the pasted token below is for.
+   */
+  useEffect(() => {
+    const fromUrl = anilist.tokenFromFragment(window.location.hash);
+    if (!fromUrl) return;
+
+    window.history.replaceState(null, '', window.location.pathname);
+    submit(fromUrl);
   }, []);
 
   const saveClientId = (value) => {
@@ -101,9 +109,17 @@ export default function TrackingSettings() {
                 </a> and create a client.
               </li>
               <li>
-                Set its redirect URL to <code>{window.location.origin}/settings/tracking</code>
+                Set <strong>Redirect URL</strong> to exactly:
+                <br />
+                <code>{anilist.REDIRECT_URL}</code>
+                <br />
+                <small>
+                  AniList&rsquo;s own page. It shows the token for you to copy,
+                  because this app has no web address a browser can return to.
+                </small>
               </li>
-              <li>Paste the client ID below.</li>
+              <li>Paste the client ID below, then tap Connect.</li>
+              <li>Approve access, copy the code AniList shows, paste it below.</li>
             </ol>
 
             <label className="settings-field">
@@ -121,9 +137,30 @@ export default function TrackingSettings() {
               className={`btn btn-primary ${clientId ? '' : 'disabled'}`}
               href={clientId ? anilist.authorizeUrl(clientId) : undefined}
               aria-disabled={!clientId}
+              target="_blank"
+              rel="noreferrer"
             >
               Connect AniList
             </a>
+
+            <label className="settings-field">
+              <span>Token from AniList</span>
+              <input
+                type="text"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder="Paste the code AniList showed you"
+              />
+            </label>
+
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={!token.trim()}
+              onClick={() => submit(token.trim())}
+            >
+              Save token
+            </button>
           </>
         )}
 

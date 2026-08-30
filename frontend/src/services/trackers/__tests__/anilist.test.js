@@ -148,3 +148,37 @@ describe('the sync setting', () => {
     expect(anilist.isAutoSyncEnabled()).toBe(false);
   });
 });
+
+/**
+ * The Android app serves its UI from a virtual origin that exists only
+ * inside the WebView, and the authorize page opens in the real browser, so
+ * a redirect back to our own address fails there with the token stranded in
+ * the browser's address bar. AniList's PIN page shows the token instead.
+ */
+describe('coming back from AniList', () => {
+  it('redirects to a page AniList itself serves', () => {
+    expect(anilist.REDIRECT_URL).toBe('https://anilist.co/api/v2/oauth/pin');
+  });
+
+  it('does not send the user back to an address only the app can resolve', () => {
+    expect(anilist.REDIRECT_URL).not.toMatch(/appassets\.androidplatform\.net/);
+    expect(anilist.REDIRECT_URL).not.toMatch(/localhost/);
+  });
+
+  it('accepts a token pasted in by hand', async () => {
+    window.localStorage.clear();
+    global.fetch = jest.fn().mockReturnValue(ok({
+      Viewer: { id: 7, name: 'perez', avatar: {} }
+    }));
+
+    await anilist.connect('  pasted-token  ');
+
+    expect(anilist.isConnected()).toBe(true);
+    // Trimmed: a token copied on a phone routinely brings whitespace with
+    // it, and AniList rejects the header if it is there.
+    expect(global.fetch.mock.calls[0][1].headers.Authorization)
+      .toBe('Bearer pasted-token');
+
+    delete global.fetch;
+  });
+});

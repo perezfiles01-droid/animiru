@@ -55,11 +55,25 @@ export const isAutoSyncEnabled = () => read(AUTOSYNC_KEY, true) !== false;
 export const setAutoSyncEnabled = (on) => write(AUTOSYNC_KEY, Boolean(on));
 
 /**
+ * The redirect AniList sends the user back to.
+ *
+ * AniList's own PIN page, not a page of ours, and that is the whole trick.
+ * In the Android app the UI is served from a virtual origin inside the
+ * WebView (appassets.androidplatform.net), which does not exist anywhere
+ * else - and the authorize page opens in the real browser, because the
+ * shell sends external links there. A redirect back to our own address
+ * would therefore fail in the browser with the token stranded in its
+ * address bar. AniList's PIN page shows the token instead, for the user to
+ * copy back into the app, which works from any browser on any device.
+ */
+export const REDIRECT_URL = 'https://anilist.co/api/v2/oauth/pin';
+
+/**
  * Where the user is sent to approve access.
  *
- * response_type=token is the implicit grant: AniList returns the token in
- * the URL fragment, which never reaches a server - not even ours, since a
- * fragment is not sent with the request.
+ * response_type=token is the implicit grant: AniList hands back a token
+ * directly, with no secret to exchange and nothing passing through our
+ * server.
  */
 export function authorizeUrl(clientId = getClientId()) {
   const id = encodeURIComponent(String(clientId || '').trim());
