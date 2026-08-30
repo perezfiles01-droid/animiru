@@ -2,108 +2,149 @@ const mangayomiSources = [{
   name: "AnimePahe",
   id: 1002,
   lang: "en",
-  baseUrl: "https://animepahe.pw",
-  apiUrl: "https://animepahe.pw/api",
-  iconUrl: "https://animepahe.pw/apple-touch-icon.png",
-  version: "1.0.2",
+  baseUrl: "https://animepahe.ru",
+  apiUrl: "https://animepahe.ru/api",
+  iconUrl: "https://animepahe.ru/apple-touch-icon.png",
+  version: "2.0.0",
   itemType: 1,
   isNsfw: false,
-  hasCloudflare: false,
+  hasCloudflare: true,
   isMetadataCapable: true
 }];
 
+/**
+ * AnimePahe.
+ *
+ * The site sits behind DDoS-Guard, which answers a request carrying no
+ * cookie and no browser User-Agent with an interstitial rather than the
+ * page. Every request here therefore sends the two __ddg cookies the
+ * interstitial itself sets, a browser User-Agent, and a Referer - a request
+ * missing any of them comes back as HTML where JSON was expected.
+ *
+ * Four endpoints do the work:
+ *
+ *   api?m=airing                 the front page, newest releases first
+ *   api?m=search&q=              titles, at most eight, unpaged
+ *   anime/<session>              one title: poster, synopsis, genres, status
+ *   api?m=release&id=<session>   its episodes, paged
+ *
+ * A "session" is AnimePahe's id for a thing. They are not stable forever -
+ * the site rotates them - so an episode is addressed by the pair
+ * <anime session>/<episode session>, resolved at the moment it is played
+ * rather than stored.
+ *
+ * Playback goes through kwik, which serves the stream URL inside a packed
+ * script. `unpackJs` unpacks it; the sandbox has no eval, deliberately.
+ */
 class DefaultExtension extends MProvider {
+  /**
+   * AnimePahe changes domain every so often, and a source pinned to a dead
+   * domain fails with a network error that reads like a broken extension.
+   * The address is a setting so it can be corrected without editing code
+   * or waiting for the source to be updated.
+   */
+  get siteUrl() {
+    const override = String(this.getPreference("animepahe_base_url") || "").trim();
+    return (override || this.source.baseUrl).replace(/\/+$/, "");
+  }
+
   get apiBase() {
-    return this.source.apiUrl || `${this.source.baseUrl}/api`;
+    return `${this.siteUrl}/api`;
   }
 
-  buildQuery(pairs) {
-    const parts = [];
-
-    for (const [key, value] of pairs) {
-      if (value === undefined || value === null) continue;
-
-      parts.push(
-        `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`
-      );
-    }
-
-    return parts.join("&");
-  }
-
-  async getJson(url) {
-    const res = await new Client().get(url, {
-      Accept: "application/json",
-      Referer: `${this.source.baseUrl}/`
-    });
-
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw new Error(`AnimePahe responded ${res.statusCode}`);
-    }
-
-    try {
-      return JSON.parse(res.body);
-    } catch (_) {
-      throw new Error("AnimePahe returned a non-JSON response");
-    }
-  }
-
-  mapResults(data, page) {
-    const items = Array.isArray(data?.data)
-      ? data.data
-      : [];
-
-    const currentPage = Number(
-      data?.current_page ||
-      data?.currentPage ||
-      page ||
-      1
-    );
-
-    const lastPage = Number(
-      data?.last_page ||
-      data?.lastPage ||
-      currentPage
-    );
-
+  /**
+   * DDoS-Guard checks all three. The cookies are the ones its own
+   * interstitial sets, and it accepts them empty.
+   */
+  headersFor(referer) {
     return {
-      list: items
-        .map((item) => ({
-          name: item.title ||
-            item.name ||
-            "Unknown Anime",
-
-          imageUrl: item.image ||
-            item.poster ||
-            item.thumbnail ||
-            "",
-
-          link: String(
-            item.session ||
-            item.id ||
-            ""
-          )
-        }))
-        .filter((item) => item.link),
-
-      hasNextPage: currentPage < lastPage
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      Referer: referer || `${this.siteUrl}/`,
+      Cookie: "__ddg1_=;__ddg2_=;"
     };
   }
 
+  async getText(url, referer) {
+    const res = await new Client().get(url, this.headersFor(referer));
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw new Error(
+        `AnimePahe responded ${res.statusCode} for ${url}`
+      );
+    }
+
+    return String(res.body || "");
+  }
+
+  async getJson(url) {
+    const body = await this.getText(url);
+
+    try {
+      return JSON.parse(body);
+    } catch (_) {
+      // Almost always the DDoS-Guard interstitial. Saying so is the
+      // difference between a fixable message and "invalid JSON".
+      throw new Error(
+        "AnimePahe returned a page instead of JSON - the site is asking " +
+        "for a browser check. Open animepahe.ru once in a browser, then " +
+        "try again."
+      );
+    }
+  }
+
+  buildQuery(pairs) {
+    return pairs
+      .filter(([, value]) => value !== undefined && value !== null)
+      .map(
+        ([key, value]) =>
+          `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`
+      )
+      .join("&");
+  }
+
+  api(pairs) {
+    return `${this.apiBase}?${this.buildQuery(pairs)}`;
+  }
+
+  /**
+   * The airing feed lists episodes, not titles, so one title appears once
+   * per episode it released. Collapsing them keeps a page from showing the
+   * same show four times.
+   */
+  fromAiring(data, page) {
+    const rows = Array.isArray(data?.data) ? data.data : [];
+    const seen = new Set();
+    const list = [];
+
+    for (const row of rows) {
+      const link = String(row?.anime_session || "");
+      if (!link || seen.has(link)) continue;
+      seen.add(link);
+
+      list.push({
+        name: String(row?.anime_title || "Unknown Anime"),
+        imageUrl: String(row?.snapshot || ""),
+        link
+      });
+    }
+
+    const current = Number(data?.current_page) || Number(page) || 1;
+    const last = Number(data?.last_page) || current;
+
+    return { list, hasNextPage: current < last };
+  }
+
   async getPopular(page) {
-    const currentPage = Number(page) || 1;
+    // AnimePahe publishes no popularity ranking, so this is the airing
+    // feed - the same list the site's own front page shows.
+    const current = Number(page) || 1;
 
-    const url =
-      `${this.apiBase}?` +
-      this.buildQuery([
-        ["m", "filter"],
-        ["q", ""],
-        ["p", currentPage]
-      ]);
-
-    const data = await this.getJson(url);
-
-    return this.mapResults(data, currentPage);
+    return this.fromAiring(
+      await this.getJson(this.api([["m", "airing"], ["page", current]])),
+      current
+    );
   }
 
   async getLatestUpdates(page) {
@@ -111,220 +152,264 @@ class DefaultExtension extends MProvider {
   }
 
   async search(query, page, filters) {
-    const currentPage = Number(page) || 1;
+    const data = await this.getJson(
+      this.api([["m", "search"], ["q", String(query || "")]])
+    );
 
-    const url =
-      `${this.apiBase}?` +
-      this.buildQuery([
-        ["m", "search"],
-        ["q", query || ""],
-        ["p", currentPage]
-      ]);
+    const rows = Array.isArray(data?.data) ? data.data : [];
 
-    const data = await this.getJson(url);
+    return {
+      list: rows
+        .map((row) => ({
+          name: String(row?.title || "Unknown Anime"),
+          imageUrl: String(row?.poster || ""),
+          link: String(row?.session || "")
+        }))
+        .filter((item) => item.link),
 
-    return this.mapResults(data, currentPage);
+      // Search is a fixed top-eight with no paging. Claiming a next page
+      // gives the user a button that loads the same results again.
+      hasNextPage: false
+    };
+  }
+
+  /** Reads one `<p class="anime-<field>"><strong>Label:</strong> value</p>`. */
+  infoValue(doc, className) {
+    const node = doc.selectFirst(`p.${className}`);
+    if (!node) return "";
+
+    return this.plainText(node.text).replace(/^[^:]*:\s*/, "");
   }
 
   async getDetail(url) {
-    const id = String(url || "");
+    const session = String(url || "");
 
-    if (!id) {
+    if (!session) {
       throw new Error("Missing anime identifier");
     }
 
-    const metaUrl =
-      `${this.apiBase}?` +
-      this.buildQuery([
-        ["m", "show"],
-        ["id", id]
-      ]);
+    const page = await this.getText(`${this.siteUrl}/anime/${session}`);
+    const doc = new Document(page);
 
-    const meta = await this.getJson(metaUrl);
-
-    const title =
-      meta?.title ||
-      meta?.name ||
-      id;
-
-    const image =
-      meta?.image ||
-      meta?.poster ||
-      meta?.thumbnail ||
-      "";
-
-    const description = this.plainText(
-      meta?.synopsis ||
-      meta?.description ||
-      ""
+    const title = this.plainText(
+      doc.selectFirst("div.title-wrapper h1 span")?.text ||
+      doc.selectFirst("div.title-wrapper h1")?.text ||
+      session
     );
 
-    const genre = this.toList(
-      meta?.genres ||
-      meta?.genre
-    );
+    const poster = doc.selectFirst("div.anime-poster img");
+    const image = poster ? (poster.attr("data-src") || poster.getSrc || "") : "";
 
+    const synopsis = doc.selectFirst("div.anime-synopsis");
+
+    const genre = doc
+      .select("div.anime-genre ul li a")
+      .map((node) => this.plainText(node.text))
+      .filter(Boolean);
+
+    return {
+      name: title,
+      imageUrl: String(image || ""),
+      description: this.plainText(synopsis ? synopsis.text : ""),
+      genre,
+      status: this.parseStatus(this.infoValue(doc, "anime-status")),
+      link: session,
+      episodes: await this.getEpisodes(session)
+    };
+  }
+
+  async getEpisodes(session) {
     const releases = [];
 
     let page = 1;
     let lastPage = 1;
 
     do {
-      const episodeUrl =
-        `${this.apiBase}?` +
-        this.buildQuery([
-          ["m", "release"],
-          ["id", id],
-          ["pp", 24],
-          ["p", page]
-        ]);
-
       const data = await this.getJson(
-        episodeUrl
+        this.api([
+          ["m", "release"],
+          ["id", session],
+          ["sort", "episode_asc"],
+          ["page", page]
+        ])
       );
 
       if (Array.isArray(data?.data)) {
         releases.push(...data.data);
       }
 
-      lastPage = Number(
-        data?.last_page ||
-        data?.lastPage ||
-        page
-      );
+      lastPage = Number(data?.last_page) || page;
+      page += 1;
 
-      page++;
-    } while (page <= lastPage);
+      // A malformed last_page would otherwise page forever. The longest
+      // running series on the site is comfortably inside this.
+    } while (page <= lastPage && page <= 100);
 
-    const episodes = releases.map(
-      (item, index) => {
-        const number =
-          item.episode ??
-          item.number ??
-          item.ep ??
-          (index + 1);
+    const episodes = releases
+      .map((row) => {
+        const number = Number(row?.episode);
+        const episodeSession = String(row?.session || "");
 
-        const releaseId =
-          item.id ??
-          item.session ??
-          item.release_id ??
-          "";
+        if (!episodeSession) return null;
 
         return {
-          name: `Episode ${number}`,
-
-          url:
-            `${id}|${releaseId}|${number}`,
-
-          episodeNumber:
-            Number(number) ||
-            index + 1
+          name: Number.isFinite(number) ? `Episode ${number}` : "Episode",
+          url: `${session}/${episodeSession}`,
+          episodeNumber: Number.isFinite(number) ? number : 0,
+          dateUpload: row?.created_at ? String(row.created_at) : undefined
         };
-      }
-    );
+      })
+      .filter(Boolean);
 
-    episodes.sort(
-      (a, b) =>
-        a.episodeNumber -
-        b.episodeNumber
-    );
+    // Newest first, which is the order the app lists them in.
+    episodes.sort((a, b) => b.episodeNumber - a.episodeNumber);
 
-    return {
-      name: title,
-      imageUrl: image,
-      description: description,
-      genre: genre,
-      status: this.parseStatus(
-        meta?.status
-      ),
-      link: id,
-      episodes: episodes
-    };
+    return episodes;
   }
 
   async getVideoList(url) {
-    return [];
+    const path = String(url || "");
+
+    if (!path.includes("/")) {
+      throw new Error("Missing episode identifier");
+    }
+
+    const playUrl = `${this.siteUrl}/play/${path}`;
+    const doc = new Document(await this.getText(playUrl));
+
+    const buttons = doc.select("div#resolutionMenu button");
+
+    if (!buttons.length) {
+      throw new Error(
+        "AnimePahe listed no servers for this episode. Newly released " +
+        "episodes sometimes take a few minutes to appear."
+      );
+    }
+
+    const videos = [];
+    const failures = [];
+
+    for (const button of buttons) {
+      const embed = button.attr("data-src");
+      if (!embed) continue;
+
+      const resolution = button.attr("data-resolution") || "";
+      const audio = String(button.attr("data-audio") || "").toLowerCase();
+      // The button reads "SubsPlease · 1080p". Only the first part names
+      // the release group; keeping the rest repeats the resolution.
+      const fansub = this.plainText(button.text).split("\u00b7")[0].trim();
+
+      const label = [
+        resolution ? `${resolution}p` : "",
+        audio === "eng" ? "DUB" : "SUB",
+        fansub && !/^\d+p?$/.test(fansub) ? fansub : ""
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      try {
+        const stream = await this.resolveKwik(embed);
+
+        videos.push({
+          url: stream,
+          originalUrl: stream,
+          quality: label,
+          // kwik refuses a request that does not come from its own page.
+          headers: { Referer: "https://kwik.si/" }
+        });
+      } catch (err) {
+        failures.push(`${label}: ${err.message}`);
+      }
+    }
+
+    if (!videos.length) {
+      throw new Error(
+        `No AnimePahe server could be resolved. ${failures.join("; ")}`
+      );
+    }
+
+    // Highest resolution first, so the default pick is the best one.
+    videos.sort((a, b) => this.qualityRank(b.quality) - this.qualityRank(a.quality));
+
+    return videos;
+  }
+
+  qualityRank(label) {
+    const match = /(\d{3,4})p/.exec(String(label || ""));
+    return match ? Number(match[1]) : 0;
+  }
+
+  /**
+   * kwik hides the stream URL in a packed script. Unpacking it is the whole
+   * extraction - the unpacked text holds a single `source='...'`.
+   */
+  async resolveKwik(embedUrl) {
+    const body = await this.getText(embedUrl, `${this.siteUrl}/`);
+
+    // Packers close with a varying number of parentheses, so the script is
+    // taken from the eval to the end of the body and unpackJs finds its own
+    // payload inside it. Matching the closing brackets missed real pages.
+    const start = body.indexOf("eval(function(p,a,c,k,e,");
+
+    if (start === -1) {
+      throw new Error("kwik served a page with no player script");
+    }
+
+    const unpacked = unpackJs(body.slice(start));
+    const source = /source\s*=\s*['"]([^'"]+)['"]/.exec(String(unpacked || ""));
+
+    if (!source) {
+      throw new Error("kwik's player script held no stream URL");
+    }
+
+    return source[1];
   }
 
   plainText(value) {
-    const text =
-      Array.isArray(value)
-        ? value.join(" ")
-        : String(value || "");
+    const text = Array.isArray(value) ? value.join(" ") : String(value || "");
 
     return text
-      .replace(
-        /<script[\s\S]*?<\/script>/gi,
-        " "
-      )
-      .replace(
-        /<style[\s\S]*?<\/style>/gi,
-        " "
-      )
-      .replace(
-        /<[^>]*>/g,
-        " "
-      )
-      .replace(
-        /&nbsp;/gi,
-        " "
-      )
-      .replace(
-        /&amp;/gi,
-        "&"
-      )
-      .replace(
-        /&quot;/gi,
-        '"'
-      )
-      .replace(
-        /&#39;/gi,
-        "'"
-      )
-      .replace(
-        /\s+/g,
-        " "
-      )
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/\s+/g, " ")
       .trim();
   }
 
-  toList(value) {
-    if (!value) {
-      return [];
-    }
-
-    if (Array.isArray(value)) {
-      return value
-        .map((item) =>
-          String(item).trim()
-        )
-        .filter(Boolean);
-    }
-
-    return String(value)
-      .split(/[|,]/)
-      .map((item) =>
-        item.trim()
-      )
-      .filter(Boolean);
-  }
-
+  /**
+   * Mangayomi's status codes: 0 ongoing, 1 completed, 2 hiatus,
+   * 3 canceled, 5 unknown. The previous version of this source returned 2
+   * for a finished show, which displayed it as on hiatus.
+   */
   parseStatus(value) {
-    const status =
-      String(value || "")
-        .toLowerCase();
+    const status = String(value || "").toLowerCase();
 
-    if (
-      status.includes("complete") ||
-      status.includes("finished")
-    ) {
-      return 2;
-    }
+    if (status.includes("currently airing")) return 0;
+    if (status.includes("finished")) return 1;
+    if (status.includes("hiatus")) return 2;
+    if (status.includes("cancel")) return 3;
 
-    return 1;
+    return 5;
   }
 
   getSourcePreferences() {
-    return [];
+    return [
+      {
+        key: "animepahe_base_url",
+        editTextPreference: {
+          title: "AnimePahe address",
+          summary:
+            "Change this if AnimePahe moves domain and the source stops " +
+            "loading. Include https:// and no trailing slash.",
+          value: "https://animepahe.ru",
+          dialogTitle: "AnimePahe address",
+          dialogMessage: "For example: https://animepahe.ru"
+        }
+      }
+    ];
   }
 }
