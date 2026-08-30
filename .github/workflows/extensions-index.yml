@@ -1,0 +1,71 @@
+name: Extension index
+
+# Adding an extension is meant to be one thing: drop a .js file into
+# extensions/sources/. This is what makes that true - it rebuilds
+# extensions/index.json and the folder's README from the sources on every
+# push, so the repository URL users paste lists the new extension without
+# anyone editing JSON.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'extensions/sources/**'
+      - 'scripts/generate-extension-index.js'
+      - 'scripts/generate-extension-readme.js'
+      - '.github/workflows/extensions-index.yml'
+  pull_request:
+    paths:
+      - 'extensions/**'
+      - 'scripts/generate-extension-index.js'
+      - 'scripts/generate-extension-readme.js'
+  workflow_dispatch:
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The token the push step uses. Without this the checkout is
+          # detached from any credential and the commit below cannot push.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+
+      # The generator evaluates each source in the app's own sandbox, which
+      # lives in backend/, so its dependencies have to be present.
+      - name: Install backend dependencies
+        run: cd backend && npm install
+
+      # On a pull request nothing can be pushed, so the index is verified
+      # instead: a hand-edited or forgotten regeneration fails here rather
+      # than reaching main and going out to everyone who pasted the URL.
+      - name: Check the index and README are in step with the sources
+        if: github.event_name == 'pull_request'
+        run: |
+          node scripts/generate-extension-index.js --check
+          node scripts/generate-extension-readme.js --check
+
+      - name: Rebuild the index and the README
+        if: github.event_name != 'pull_request'
+        run: |
+          node scripts/generate-extension-index.js
+          node scripts/generate-extension-readme.js
+
+      - name: Commit the result
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add extensions/index.json extensions/README.md
+          if git diff --staged --quiet; then
+            echo "Index and README already match the sources."
+          else
+            git commit -m "[bot] rebuild the extension index"
+            git push
+          fi
