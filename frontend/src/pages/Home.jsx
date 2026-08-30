@@ -4,6 +4,7 @@ import AnimeCard from '../components/AnimeCard';
 import SourceTabs from '../components/SourceTabs';
 import SearchResults from '../components/SearchResults';
 import SourceFilter from '../components/SourceFilter';
+import Discover from '../components/Discover';
 import ExtensionErrorReport from '../components/ExtensionError';
 import { getProviders } from '../services/providers/registry';
 import {
@@ -186,6 +187,8 @@ export default function Home() {
           </button>
         )}
       </form>
+
+      {!query && <Discover />}
 
       {query ? (
         <section className="catalogue">

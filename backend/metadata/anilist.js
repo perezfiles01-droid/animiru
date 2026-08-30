@@ -154,6 +154,46 @@ async function search(title, { perPage = 10 } = {}) {
   return remember(key, media);
 }
 
+/**
+ * What aired in a given season.
+ *
+ * Extensions cannot answer this: a Mangayomi source returns titles,
+ * episodes and streams and has no notion of a season. AniList takes both as
+ * query arguments, so one request does what would otherwise need a filter
+ * implemented separately in every source - most of which do not have one.
+ */
+async function getSeason({ season, year, page = 1, perPage = 30 } = {}) {
+  const seasonYear = Number(year) || null;
+  const named = season ? String(season).toUpperCase() : null;
+
+  if (!seasonYear) throw new Error('A year is needed to browse a season');
+
+  const key = `season:${named || 'ANY'}:${seasonYear}:${page}`;
+  const hit = cached(key);
+  if (hit) return hit;
+
+  const data = await query(`
+    query ($season: MediaSeason, $seasonYear: Int, $page: Int, $perPage: Int) {
+      Page(page: $page, perPage: $perPage) {
+        pageInfo { hasNextPage }
+        media(
+          season: $season,
+          seasonYear: $seasonYear,
+          type: ANIME,
+          sort: POPULARITY_DESC
+        ) { ${MEDIA_FIELDS} }
+      }
+    }
+  `, { season: named, seasonYear, page: Number(page), perPage });
+
+  const results = ((data.Page && data.Page.media) || []).map(toMedia).filter(Boolean);
+
+  return remember(key, {
+    results,
+    hasNextPage: Boolean(data.Page && data.Page.pageInfo && data.Page.pageInfo.hasNextPage)
+  });
+}
+
 async function getMedia(id) {
   const key = `media:${id}`;
   const hit = cached(key);
@@ -293,6 +333,7 @@ function clearCache() {
 
 module.exports = {
   search,
+  getSeason,
   getMedia,
   getWatchOrder,
   getRecommendations,

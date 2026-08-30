@@ -243,3 +243,64 @@ describe('caching', () => {
     expect(http.request).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * Browsing a season.
+ *
+ * Extensions cannot answer this - a source has no notion of a season - so
+ * it is one AniList query rather than a filter implemented separately in
+ * every source, most of which do not have one.
+ */
+describe('what aired in a season', () => {
+  beforeEach(() => anilist.clearCache());
+  afterEach(() => jest.restoreAllMocks());
+
+  const seasonStub = () => stub(() => ({
+    data: { Page: { pageInfo: { hasNextPage: true }, media: [MEDIA[1], MEDIA[3]] } }
+  }));
+
+  it('asks AniList for that season and year', async () => {
+    seasonStub();
+    await anilist.getSeason({ season: 'winter', year: 2026 });
+
+    const { variables } = JSON.parse(http.request.mock.calls[0][0].body);
+    expect(variables).toMatchObject({ season: 'WINTER', seasonYear: 2026 });
+  });
+
+  it('returns the titles with their posters and years', async () => {
+    seasonStub();
+    const { results } = await anilist.getSeason({ season: 'winter', year: 2026 });
+
+    expect(results).toHaveLength(2);
+    expect(results[0]).toMatchObject({ title: expect.any(String), year: 2026 });
+  });
+
+  it('reports whether there is another page', async () => {
+    seasonStub();
+    expect((await anilist.getSeason({ season: 'winter', year: 2026 })).hasNextPage).toBe(true);
+  });
+
+  // "Any season" is a year on its own, which AniList accepts as a null season.
+  it('allows a year with no season', async () => {
+    seasonStub();
+    await anilist.getSeason({ year: 2026 });
+
+    const { variables } = JSON.parse(http.request.mock.calls[0][0].body);
+    expect(variables.season).toBeNull();
+    expect(variables.seasonYear).toBe(2026);
+  });
+
+  // A season without a year would return whatever aired in that season of
+  // any year, which is not a thing anyone means.
+  it('refuses a season with no year', async () => {
+    await expect(anilist.getSeason({ season: 'winter' })).rejects.toThrow(/year is needed/);
+  });
+
+  it('asks once for a season already fetched', async () => {
+    seasonStub();
+    await anilist.getSeason({ season: 'winter', year: 2026 });
+    await anilist.getSeason({ season: 'winter', year: 2026 });
+
+    expect(http.request).toHaveBeenCalledTimes(1);
+  });
+});

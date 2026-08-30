@@ -69,6 +69,15 @@ export async function searchMetadata(title) {
   }
 }
 
+export async function getSeason({ season, year, page }) {
+  try {
+    const { data } = await api.get('/metadata/season', { params: { season, year, page } });
+    return { results: data.results || [], hasNextPage: Boolean(data.hasNextPage) };
+  } catch (err) {
+    return { results: [], hasNextPage: false, error: reason(err) };
+  }
+}
+
 export async function getWatchOrder(anilistId) {
   try {
     const { data } = await api.get('/metadata/watch-order', { params: { id: anilistId } });

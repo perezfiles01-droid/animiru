@@ -41,6 +41,12 @@ router.get('/search', handle(async (req) => ({
   results: await anilist.search(req.query.title)
 })));
 
+router.get('/season', handle(async (req) => anilist.getSeason({
+  season: req.query.season,
+  year: req.query.year,
+  page: req.query.page
+})));
+
 router.get('/watch-order', handle(async (req) => ({
   entries: await anilist.getWatchOrder(req.query.id)
 })));
