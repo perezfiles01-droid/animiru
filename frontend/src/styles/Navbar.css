@@ -107,3 +107,12 @@
   }
 
 }
+
+/* Pushed to the far edge by the logo's auto margin rather than a fixed
+   position, so it cannot land on top of the title on a narrow phone. */
+.navbar-credit {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}

@@ -7,6 +7,22 @@
   --text-muted: #999;
   --border: #444;
   --success: #4caf50;
+
+  /*
+   * Tokens the newer screens were already asking for.
+   *
+   * They referenced --muted and --surface, which did not exist, so every
+   * one of those rules fell back silently. Worse, they used --accent for
+   * text - and --accent is #0f3460, a dark navy meant for backgrounds, so
+   * the fallback never applied and the text rendered navy on navy. The two
+   * metadata buttons and the recommendation percentage were invisible for
+   * exactly that reason.
+   */
+  --muted: #9aa3bd;
+  --surface: #16213e;
+  /* A light blue that can actually be read on this background, for the
+     places that want emphasis without the pink of --highlight. */
+  --accent-text: #8ea2d8;
 }
 
 * {

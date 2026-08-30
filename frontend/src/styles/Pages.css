@@ -795,7 +795,7 @@
 
 .library-page { padding: 1rem 1rem 5rem; }
 
-.library-count { color: var(--muted, #9aa3bd); margin: 0 0 1rem; }
+.library-count { color: var(--muted); margin: 0 0 1rem; }
 
 .library-card { position: relative; }
 
@@ -813,7 +813,7 @@
   display: block;
 }
 
-.library-card-blank { background: var(--surface, #161a2b); }
+.library-card-blank { background: var(--surface); }
 
 .library-card-title {
   display: block;

@@ -70,3 +70,17 @@ describe('Navbar', () => {
     expect(screen.queryByPlaceholderText(/Search anime/i)).not.toBeInTheDocument();
   });
 });
+
+describe('the app name', () => {
+  it('reads Animiru - Aveplay, with no flag', () => {
+    render(<MemoryRouter><Navbar /></MemoryRouter>);
+
+    expect(screen.getByRole('link', { name: /Animiru - Aveplay/ })).toBeInTheDocument();
+    expect(screen.queryByText('🎌')).not.toBeInTheDocument();
+  });
+
+  it('credits the developer', () => {
+    render(<MemoryRouter><Navbar /></MemoryRouter>);
+    expect(screen.getByText('Developed by: Jim')).toBeInTheDocument();
+  });
+});
