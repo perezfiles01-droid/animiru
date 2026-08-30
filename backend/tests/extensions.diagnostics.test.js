@@ -86,7 +86,13 @@ describe('explaining the failure', () => {
     ['Unexpected token \'<\', "<html>" is not valid JSON', /not JSON/i, /error page, a rate limit/],
     ['Extension timed out after 20000ms', /longer than 20000ms/i, /stopped responding/],
     ['Refusing to fetch a private address: 127.0.0.1', /own network/i, /Only public addresses/],
-    ['Extension exceeded 60 requests in one call', /more than 60 requests/i, /loop that does not end/]
+    ['Extension exceeded 60 requests in one call', /more than 60 requests/i, /loop that does not end/],
+    // What users were shown as "an error the app does not recognise", with
+    // the real cause sitting in the trace right underneath it.
+    ['Invalid URL: undefined/ongoing?page=1', /base URL that was not set/i, /this\.source\.baseUrl was undefined/],
+    ['Invalid URL: undefined/filter?sort_by=m_view&page=1', /undefined\/filter/, /index\.json entry/],
+    ['Invalid URL: null', /base URL that was not set/i, /baseUrl/],
+    ['Invalid URL: /watch/one-piece', /"\/watch\/one-piece", which is not a usable URL/, /missing scheme/]
   ])('turns %s into a cause and a fix', (message, causePattern, fixPattern) => {
     const { cause, fix } = explain(message);
     expect(cause).toMatch(causePattern);

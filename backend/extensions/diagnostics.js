@@ -40,6 +40,30 @@ const CAUSES = [
       + 'served where the .js was expected is the usual culprit.'
   }
 ,
+  // Ahead of the generic URL rule: "undefined/..." names its own cause, and
+  // reporting it as a bad URL sends the reader looking at the wrong thing.
+  {
+    match: /Invalid URL: (?:undefined|null)(\/\S*)?/,
+    cause: (m) => 'The source built a request against a base URL that was not set'
+      + `, so it asked for "${m[0].replace('Invalid URL: ', '')}".`,
+    fix: 'this.source.baseUrl was undefined. The source reads it from the '
+      + 'entry the repository declares, so check that the index.json entry '
+      + 'for this source has a baseUrl - and that the source is not '
+      + 'overwriting this.source in its own constructor.'
+  },
+  {
+    match: /Invalid URL: (\S+)/,
+    cause: (m) => `The source asked for "${m[1]}", which is not a usable URL.`,
+    fix: 'Usually a path joined onto the wrong thing, a missing scheme, or a '
+      + 'value read from the page that was empty. The trace below shows what '
+      + 'was asked for immediately before.'
+  },
+  {
+    match: /Invalid URL/,
+    cause: () => 'The source built a request URL the app could not parse.',
+    fix: 'Check where the URL is assembled - a missing base, a missing '
+      + 'scheme, or an empty value read from the page.'
+  },
   {
     match: /Cannot read properties of (?:null|undefined) \(reading '([^']+)'\)/,
     cause: (m) => `A selector matched nothing, and the code then read .${m[1]} from it.`,
