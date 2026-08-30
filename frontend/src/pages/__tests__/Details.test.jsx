@@ -160,3 +160,137 @@ describe('a source that returns no title', () => {
     expect(await screen.findByRole('heading', { name: 'Bleach' })).toBeInTheDocument();
   });
 });
+
+
+/**
+ * A title you have watched before opens differently.
+ *
+ * Not a silent resume: someone returning to a show they half-watched a month
+ * ago may well want to start it again, and a player that decides for them is
+ * what makes people scrub backwards. Both choices are named.
+ */
+describe('a title that was watched before', () => {
+  const { recordProgress } = require('../../services/history');
+
+  beforeEach(() => window.localStorage.clear());
+
+  const watched = (overrides = {}) => recordProgress({
+    providerId: SOURCE,
+    itemId: ITEM,
+    title: 'Bleach',
+    episodeId: '/e/2',
+    episodeTitle: 'Episode 2',
+    episodeNumber: 2,
+    position: 521,
+    duration: 1440,
+    ...overrides
+  });
+
+  it('offers to continue the episode that was left', async () => {
+    watched();
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails();
+
+    expect(await screen.findByText(/You were watching Episode 2/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Continue Episode 2/ })).toBeInTheDocument();
+  });
+
+  it('says where it was left, in minutes rather than seconds', async () => {
+    watched();
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails();
+
+    expect(await screen.findByText(/8:41/)).toBeInTheDocument();
+  });
+
+  it('resumes at that position', async () => {
+    watched();
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails();
+
+    expect(screen.getByRole('link', { name: /Continue Episode 2/ }))
+      .toHaveAttribute('href', expect.stringContaining('&t=521'));
+  });
+
+  // Without an explicit t=0 the player would find the same entry and resume
+  // anyway, making the choice a lie.
+  it('starts from the beginning explicitly', async () => {
+    watched();
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails();
+
+    const link = screen.getByRole('link', { name: /Start from the beginning/ });
+    expect(link).toHaveAttribute('href', expect.stringContaining('ep=%2Fe%2F1'));
+    expect(link).toHaveAttribute('href', expect.stringContaining('&t=0'));
+  });
+
+  // Two primary actions is one too many: the panel already offers both
+  // continuing and starting over.
+  it('replaces the plain Watch button rather than sitting above it', async () => {
+    watched();
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails();
+
+    await screen.findByText(/You were watching/);
+    expect(screen.queryByRole('link', { name: /▶ Watch Episode 1/ })).not.toBeInTheDocument();
+  });
+
+  it('leaves an unwatched title with its plain Watch button', async () => {
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails();
+
+    expect(screen.queryByText(/You were watching/)).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Watch Episode 1/ })).toBeInTheDocument();
+  });
+
+  // A finished episode is not resumed into its credits.
+  it('offers to watch, not continue, when the episode was finished', async () => {
+    watched({ position: 1430 });
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails();
+
+    expect(await screen.findByRole('link', { name: /Watch Episode 2/ })).toBeInTheDocument();
+    expect(screen.queryByText(/8:41/)).not.toBeInTheDocument();
+  });
+
+  describe('watched on another extension', () => {
+    const elsewhere = () => recordProgress({
+      providerId: 'extension:repo#9',
+      providerName: 'AniNeko',
+      itemId: '/other/bleach',
+      title: 'Bleach',
+      episodeId: '/aningeko/e2',
+      episodeNumber: 2,
+      position: 400,
+      duration: 1440
+    });
+
+    it('finds the episode by number', async () => {
+      elsewhere();
+      getProvider.mockReturnValue(makeProvider());
+      await renderDetails();
+
+      expect(await screen.findByText(/You were watching Episode 2/)).toBeInTheDocument();
+    });
+
+    // An episode number from another source is not necessarily the same
+    // episode, so its position is not passed off as this one's.
+    it('says where it came from and does not claim a position', async () => {
+      elsewhere();
+      getProvider.mockReturnValue(makeProvider());
+      await renderDetails();
+
+      expect(await screen.findByText(/matched by episode number/)).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /Watch Episode 2/ }))
+        .toHaveAttribute('href', expect.stringContaining('&t=0'));
+    });
+  });
+
+  it('says nothing when the remembered episode is no longer listed', async () => {
+    watched({ episodeId: '/e/99', episodeNumber: 99 });
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails();
+
+    expect(screen.queryByText(/You were watching/)).not.toBeInTheDocument();
+  });
+});

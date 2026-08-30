@@ -916,3 +916,43 @@
 .status-ongoing { background: var(--success); color: #06210c; }
 .status-completed { background: var(--accent-text); color: #10182c; }
 .status-paused { background: var(--text-muted); color: #1a1a2e; }
+
+/**
+ * The choice offered on a title that was watched before.
+ *
+ * A panel rather than a modal: there is nothing to dismiss, and the episode
+ * list stays where it was underneath.
+ */
+.continue-watching {
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.continue-watching-title {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+
+.continue-watching-at {
+  color: var(--highlight);
+}
+
+.continue-watching-note {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.continue-watching-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.continue-watching-actions .btn {
+  flex: 1 1 auto;
+  text-align: center;
+}

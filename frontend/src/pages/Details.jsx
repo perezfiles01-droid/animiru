@@ -5,6 +5,8 @@ import ExtensionErrorReport from '../components/ExtensionError';
 import LibraryButton from '../components/LibraryButton';
 import StatusBadge from '../components/StatusBadge';
 import EpisodeList from '../components/EpisodeList';
+import ContinueWatching from '../components/ContinueWatching';
+import { findProgress } from '../services/history';
 import '../styles/Pages.css';
 
 /**
@@ -91,6 +93,21 @@ export default function Details() {
     ? item.title
     : (knownTitle || item.title);
 
+  /**
+   * Where this title was left, if it was ever started.
+   *
+   * Read plainly rather than memoised: everything above it returns early
+   * while the page is loading, so a hook here would run on some renders and
+   * not others - which React rejects outright. It is a synchronous read of
+   * one localStorage key, and the page already does more work than that on
+   * every render.
+   *
+   * Looked up once the title is known, because the fallback across
+   * extensions matches on the title: doing it earlier would only ever find
+   * an entry from this exact source.
+   */
+  const watched = findProgress({ providerId: sourceId, itemId, title: displayTitle });
+
   // The show's name travels to the player: it has nothing else to identify
   // what is being watched, and tracking matches AniList on this same value.
   const watchHref = (episode) =>
@@ -160,17 +177,23 @@ export default function Details() {
             </Link>
           </div>
 
-          {episodes.length > 0 ? (
+          {episodes.length > 0 && watched ? (
+            <ContinueWatching entry={watched} episodes={episodes} watchHref={watchHref} />
+          ) : null}
+
+          {episodes.length > 0 && !watched ? (
             <div className="details-actions">
               <Link to={watchHref(episodes[0])} className="btn btn-primary">
                 ▶ Watch {episodes[0].title}
               </Link>
             </div>
-          ) : (
+          ) : null}
+
+          {episodes.length === 0 ? (
             <p className="extensions-empty">
               This source listed no episodes for this title.
             </p>
-          )}
+          ) : null}
         </div>
       </div>
 
