@@ -66,16 +66,12 @@ Sources run in a sandbox that is neither a browser nor Node: there is no
 is `new Client()`, settings are `new SharedPreferences()`. A source written
 for Mangayomi runs here unmodified.
 
-[`sources/archive-org.js`](sources/archive-org.js) is a worked example.
-
 <!-- generated: the table below is rebuilt on every push -->
 
 ## Extensions in this folder
 
-3 extensions.
+1 extension.
 
 | Extension | Language | Version | Site |
 | --- | --- | --- | --- |
 | AnimePahe | English | 1.0.2 | [animepahe.pw](https://animepahe.pw) |
-| Internet Archive | English | 1.0.0 | [archive.org](https://archive.org) |
-| Jikan + AniList | English | 4.0.0 | [graphql.anilist.co](https://graphql.anilist.co) |

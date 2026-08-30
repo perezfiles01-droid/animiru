@@ -17,8 +17,7 @@ export const KNOWN_REPOSITORIES = [
     description:
       'Maintained with this app. Its index is generated from the sources it '
       + 'holds, so anything added there appears here without this URL '
-      + 'changing. Currently the Internet Archive: public-domain and '
-      + 'freely-licensed film, free to watch, no account.',
+      + 'changing. Open it to see what it currently carries.',
     contains: 'anime'
   },
   {

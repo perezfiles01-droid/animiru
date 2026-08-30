@@ -25,8 +25,13 @@ describe('the extensions README', () => {
     );
   });
 
+  // Naming one source made every upload a failure. What matters is that each
+  // source on disk has a row, and that its row shows the version being served.
   it('lists the extensions currently in the folder', () => {
-    expect(text()).toMatch(/\| Internet Archive \| English \| 1\.0\.0 \|/);
+    for (const entry of build()) {
+      expect(text()).toContain(`| ${entry.name} | `);
+      expect(text()).toContain(`| ${entry.name} | ${languageOf(entry.lang)} | ${entry.version} |`);
+    }
   });
 
   it('says index.json is generated, since editing it by hand is lost work', () => {

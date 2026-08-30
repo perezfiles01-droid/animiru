@@ -14,37 +14,5 @@
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/animepahe.js",
     "pkgPath": "sources/animepahe.js"
-  },
-  {
-    "name": "Internet Archive",
-    "id": 1001,
-    "lang": "en",
-    "baseUrl": "https://archive.org",
-    "apiUrl": "https://archive.org",
-    "iconUrl": "https://archive.org/images/glogo.jpg",
-    "version": "1.0.0",
-    "itemType": 1,
-    "isNsfw": false,
-    "hasCloudflare": false,
-    "isManga": false,
-    "typeSource": "single",
-    "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/archive-org.js",
-    "pkgPath": "sources/archive-org.js"
-  },
-  {
-    "name": "Jikan + AniList",
-    "id": 1004,
-    "lang": "en",
-    "baseUrl": "https://graphql.anilist.co",
-    "apiUrl": "https://graphql.anilist.co",
-    "iconUrl": "https://upload.wikimedia.org/wikipedia/commons/7/7a/Jikan_logo.png",
-    "version": "4.0.0",
-    "itemType": 1,
-    "isNsfw": false,
-    "hasCloudflare": false,
-    "isManga": false,
-    "typeSource": "single",
-    "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/Jikan.js",
-    "pkgPath": "sources/Jikan.js"
   }
 ]

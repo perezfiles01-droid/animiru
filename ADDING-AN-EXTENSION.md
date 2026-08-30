@@ -81,9 +81,8 @@ string helpers, and the crypto helpers (`cryptoHandler`,
 `decryptAESCryptoJS`, `unpackJs`, `deobfuscateJsPassword`). This is
 Mangayomi's API, so a source written for Mangayomi runs here unmodified.
 
-`extensions/README.md` has the full list, and
-[`extensions/sources/archive-org.js`](extensions/sources/archive-org.js) is a
-worked example against a public JSON API.
+`extensions/README.md` has the full list, and the sources already in
+[`extensions/sources/`](extensions/sources/) are worked examples.
 
 ## Check it before you push
 

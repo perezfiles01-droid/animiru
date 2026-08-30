@@ -11,6 +11,7 @@ const {
 } = require('../../scripts/generate-extension-index');
 
 const INDEX = path.join(__dirname, '..', '..', 'extensions', 'index.json');
+const SOURCES = path.join(__dirname, '..', '..', 'extensions', 'sources');
 
 describe('generating the extension index', () => {
   it('is in step with the sources on disk', () => {
@@ -19,20 +20,34 @@ describe('generating the extension index', () => {
     expect(fs.readFileSync(INDEX, 'utf8')).toBe(serialise(build()));
   });
 
-  it('lists the Internet Archive source', () => {
+  // Named sources come and go as files are added and removed. Asserting on a
+  // particular one made every upload a test failure, so these assert the
+  // relationship between the folder and the index instead.
+  it('lists every source file on disk, exactly once', () => {
+    const files = fs.readdirSync(SOURCES).filter((f) => f.endsWith('.js')).sort();
     const entries = build();
-    expect(entries).toEqual([expect.objectContaining({
-      name: 'Internet Archive', id: 1001, itemType: 1
-    })]);
+
+    expect(entries).toHaveLength(files.length);
+    expect(entries.map((e) => e.pkgPath).sort())
+      .toEqual(files.map((f) => `sources/${f}`).sort());
+  });
+
+  it('gives every entry a unique whole-number id', () => {
+    // Two sources sharing an id overwrite each other on install, and the app
+    // shows one source where the folder holds two.
+    const ids = build().map((e) => e.id);
+    expect(ids.every((id) => Number.isInteger(id))).toBe(true);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   // Animiru resolves a relative pkgPath; Mangayomi does not. A relative-only
   // entry makes the same repository work in one app and fail in the other.
   it('points at the code with an absolute URL, so Mangayomi can resolve it', () => {
-    const [entry] = build();
-    expect(entry.sourceCodeUrl).toBe(`${RAW_BASE}/archive-org.js`);
-    expect(entry.sourceCodeUrl).toMatch(/^https:\/\//);
-    expect(entry.pkgPath).toBe('sources/archive-org.js');
+    for (const entry of build()) {
+      const file = entry.pkgPath.replace(/^sources\//, '');
+      expect(entry.sourceCodeUrl).toBe(`${RAW_BASE}/${file}`);
+      expect(entry.sourceCodeUrl).toMatch(/^https:\/\//);
+    }
   });
 
   it('fills in the defaults Mangayomi expects', () => {
@@ -98,21 +113,20 @@ describe('installing from the generated index', () => {
     // then shows nothing, which reads as a broken app rather than a bad entry.
     expect(repo.rejected || []).toEqual([]);
     expect(repo.sources).toHaveLength(JSON.parse(body).length);
-    expect(repo.sources[0]).toMatchObject({
-      name: 'Internet Archive',
-      codeUrl: `${RAW_BASE}/archive-org.js`
-    });
+    expect(repo.sources.map((s) => s.codeUrl).sort())
+      .toEqual(build().map((e) => e.sourceCodeUrl).sort());
   });
 
   it('serves the source code the entry points at', async () => {
+    const [entry] = build();
     const code = fs.readFileSync(
-      path.join(__dirname, '..', '..', 'extensions', 'sources', 'archive-org.js'), 'utf8'
+      path.join(SOURCES, entry.pkgPath.replace(/^sources\//, '')), 'utf8'
     );
     jest.spyOn(http, 'request').mockResolvedValue({
       status: 200, statusCode: 200, headers: {}, body: code
     });
 
-    const fetched = await repository.fetchSourceCode(`${RAW_BASE}/archive-org.js`, { version: '1.0.0' });
+    const fetched = await repository.fetchSourceCode(entry.sourceCodeUrl, { version: entry.version });
     expect(String(fetched.code ?? fetched)).toContain('class DefaultExtension');
   });
 });
