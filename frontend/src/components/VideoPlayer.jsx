@@ -5,6 +5,9 @@ import { toVtt } from '../services/subtitles';
 import { preferredSubtitleIndex } from '../services/providers/extension';
 import '../styles/VideoPlayer.css';
 
+/** How often playback position is reported while an episode plays. */
+const REPORT_EVERY_MS = 5000;
+
 /**
  * Plays an episode, with the servers and tracks the source offered.
  *
@@ -32,12 +35,25 @@ import '../styles/VideoPlayer.css';
  * playback would stop. A blob is same-origin and sidesteps the whole
  * question.
  */
-export default function VideoPlayer({ streams, title, poster, onServerFailed }) {
+export default function VideoPlayer({
+  streams, title, poster, onServerFailed, startAt = 0, mediaKey, onProgress
+}) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const blobUrls = useRef([]);
 
   const options = useMemo(() => streams?.options || [], [streams]);
+
+  /**
+   * Where playback is, kept outside React.
+   *
+   * The element cannot be asked: switching server tears the old source down
+   * with load(), which resets currentTime to zero before the next effect
+   * runs. Reading it there returned 0 every time, so the position was
+   * quietly lost on every switch despite the code that meant to carry it.
+   */
+  const positionRef = useRef(startAt || 0);
+  const durationRef = useRef(0);
 
   const [audioKind, setAudioKind] = useState(null);
   const [selected, setSelected] = useState(0);
@@ -171,11 +187,49 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
     startedRef.current = false;
 
     // Carry playback position across a switch, so changing server or quality
-    // does not restart the episode.
-    const resumeAt = video.currentTime || 0;
+    // does not restart the episode - and, on the first attach, resume where
+    // the last sitting ended.
+    const resumeAt = positionRef.current || 0;
 
     const onPlaying = () => { startedRef.current = true; };
     video.addEventListener('playing', onPlaying);
+
+    /**
+     * Remembers the position as it moves, and tells the page about it.
+     *
+     * Reported no more than once every few seconds: a timeupdate fires four
+     * times a second, and writing to storage that often would be wasteful
+     * for something only read when the episode is opened again.
+     */
+    let lastReported = 0;
+    const onTimeUpdate = () => {
+      positionRef.current = video.currentTime || 0;
+      durationRef.current = video.duration || 0;
+
+      const now = Date.now();
+      if (onProgress && now - lastReported >= REPORT_EVERY_MS) {
+        lastReported = now;
+        onProgress({ position: positionRef.current, duration: durationRef.current });
+      }
+    };
+
+    /**
+     * The moments worth recording exactly.
+     *
+     * A phone is backgrounded rather than closed, and pagehide is the only
+     * event that reliably fires then - waiting for the next timeupdate would
+     * lose up to five seconds, which is the difference between resuming on
+     * the line of dialogue you stopped at and resuming after it.
+     */
+    const report = () => {
+      if (!onProgress) return;
+      onProgress({ position: positionRef.current, duration: durationRef.current });
+    };
+
+    video.addEventListener('timeupdate', onTimeUpdate);
+    video.addEventListener('pause', report);
+    video.addEventListener('ended', report);
+    window.addEventListener('pagehide', report);
 
     /**
      * Starts playing once the stream is attached.
@@ -273,6 +327,11 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
      */
     return () => {
       video.removeEventListener('playing', onPlaying);
+      video.removeEventListener('timeupdate', onTimeUpdate);
+      video.removeEventListener('pause', report);
+      video.removeEventListener('ended', report);
+      window.removeEventListener('pagehide', report);
+      report();
 
       if (hlsRef.current) {
         hlsRef.current.destroy();
@@ -286,7 +345,26 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
     };
     // Keyed on the stream alone. Anything else here reloads the video every
     // time a piece of unrelated state changes.
-  }, [current, onServerFailed]);
+  }, [current, onServerFailed, onProgress]);
+
+  /**
+   * A new episode starts where it says, not where the last one stopped.
+   *
+   * Reset while rendering rather than in an effect. Effects run in the order
+   * they are declared, and the effect that attaches the stream is declared
+   * first - so it had already read the previous episode's position and
+   * queued a seek to it before a reset effect could run. Episode 2 opened
+   * seven minutes in.
+   *
+   * Doing it here means the value is correct before any effect looks at it,
+   * which is the only ordering that cannot drift.
+   */
+  const playingRef = useRef(mediaKey);
+  if (playingRef.current !== mediaKey) {
+    playingRef.current = mediaKey;
+    positionRef.current = startAt || 0;
+    durationRef.current = 0;
+  }
 
   // A different server carries different subtitles, so anything fetched for
   // the previous one is stale.

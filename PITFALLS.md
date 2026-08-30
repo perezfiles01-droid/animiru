@@ -315,6 +315,32 @@ property whose absence is invisible until someone is holding a phone.
 
 ---
 
+## Effects run in the order they are declared
+
+The player keeps its position in a ref, because the element cannot be asked:
+switching server tears the old source down with `load()`, which resets
+`currentTime` to zero before the next attach reads it - so the code that meant
+to carry the position across a switch had never worked.
+
+Resetting that ref for a new episode was first written as an effect. It was
+declared *after* the effect that attaches the stream, so on opening episode 2
+the stream effect had already read episode 1's position and queued a seek to
+it. Episode 2 opened seven minutes in. The reset now happens during render,
+guarded by a ref holding the episode being played, which is the only ordering
+that cannot drift.
+
+**Pinned by** `frontend/src/components/__tests__/VideoPlayer.test.jsx`, "does
+not carry the position into another episode" - which passed while the bug was
+live, because it re-rendered with `{...streams}`. Spreading kept the same
+option objects, so the player never reattached and the test proved nothing.
+The fix was to give the second episode genuinely different options.
+
+> Two lessons, and the second is the general one: a test that re-renders with
+> a shallow copy may not be re-rendering anything at all. Break the fix; if
+> the test still passes, the test is the thing that is broken.
+
+---
+
 ## Verification
 
 The habit that caught most of the above, and is worth keeping:

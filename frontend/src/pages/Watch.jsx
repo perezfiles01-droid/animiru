@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { syncEpisodeProgress } from '../services/trackers/sync';
+import { findProgress, recordProgress, resumePosition } from '../services/history';
 import EpisodeList from '../components/EpisodeList';
 import SourceSwitcher from '../components/SourceSwitcher';
 import VideoPlayer from '../components/VideoPlayer';
@@ -31,6 +32,18 @@ export default function Watch() {
   const [error, setError] = useState(null);
 
   const episode = episodes.find((candidate) => candidate.id === episodeId) || null;
+
+  /**
+   * The name of the show, carried in the URL from the detail page.
+   *
+   * It was never being passed, so this screen showed only "Episode 1" and
+   * the source's name - which is not enough to tell what you are watching.
+   * Worse, the same value is what tracking matches against on AniList, so
+   * with it empty every progress update searched for an empty title,
+   * matched nothing, and silently did nothing at all.
+   */
+  const showTitle = searchParams.get('title') || '';
+
 
   useEffect(() => {
     if (!provider || !itemId) return undefined;
@@ -104,15 +117,45 @@ export default function Watch() {
   const episodeTitle = episode ? episode.title : 'Episode';
 
   /**
-   * The name of the show, carried in the URL from the detail page.
+   * Where this episode should start.
    *
-   * It was never being passed, so this screen showed only "Episode 1" and
-   * the source's name - which is not enough to tell what you are watching.
-   * Worse, the same value is what tracking matches against on AniList, so
-   * with it empty every progress update searched for an empty title,
-   * matched nothing, and silently did nothing at all.
+   * Read once, when the episode is opened: after that the player owns the
+   * position, and re-reading it would fight with playback. `t` in the URL
+   * wins, so "Start from the beginning" can say so explicitly - without it,
+   * choosing to restart would silently resume again.
    */
-  const showTitle = searchParams.get('title') || '';
+  const startAt = useMemo(() => {
+    const asked = searchParams.get('t');
+    if (asked !== null) return Number(asked) || 0;
+
+    return resumePosition(findProgress({ providerId: sourceId, itemId }), episodeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceId, itemId, episodeId]);
+
+  /**
+   * Records where the user has got to.
+   *
+   * Everything the history screen shows is captured here, because this is
+   * the only place that knows all of it at once: the player knows the
+   * position, and the page knows what is being played.
+   */
+  const remember = useCallback(({ position, duration }) => {
+    if (!sourceId || !itemId) return;
+
+    recordProgress({
+      providerId: sourceId,
+      providerName: provider ? provider.name : '',
+      itemId,
+      title: showTitle,
+      poster: searchParams.get('poster') || '',
+      episodeId,
+      episodeTitle,
+      episodeNumber: episode ? episode.number : undefined,
+      position,
+      duration
+    });
+  }, [sourceId, itemId, provider, showTitle, episodeId, episodeTitle, episode, searchParams]);
+
 
   const select = (chosen) => {
     // The title has to be carried across, or changing episode drops it -
@@ -133,7 +176,15 @@ export default function Watch() {
         </header>
       )}
 
-      {streams && <VideoPlayer streams={streams} title={episodeTitle} />}
+      {streams && (
+        <VideoPlayer
+          streams={streams}
+          title={episodeTitle}
+          mediaKey={episodeId}
+          startAt={startAt}
+          onProgress={remember}
+        />
+      )}
 
       {loading && <div className="loader">Finding video...</div>}
 

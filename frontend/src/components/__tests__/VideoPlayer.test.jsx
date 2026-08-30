@@ -467,3 +467,150 @@ describe('not playing two things at once', () => {
     expect(container.querySelector('video')).not.toHaveAttribute('autoplay');
   });
 });
+
+
+/**
+ * Reporting the position, and starting from one.
+ *
+ * The element cannot be asked where it was: switching server tears the old
+ * source down with load(), which resets currentTime to zero before the next
+ * attach reads it. That is why the position is kept outside React, and why
+ * the code that meant to carry it across a switch never did.
+ */
+describe('playback position', () => {
+  const streams = {
+    options: [
+      { id: 'a', label: '1080p', server: 'Mega', url: 'https://cdn.test/a.mp4', type: 'mp4' },
+      { id: 'b', label: '720p', server: 'Doodstream', url: 'https://cdn.test/b.mp4', type: 'mp4' }
+    ]
+  };
+
+  /** Moves playback on, as the element does while playing. */
+  function playTo(container, seconds, duration = 1440) {
+    const video = container.querySelector('video');
+    Object.defineProperty(video, 'currentTime', {
+      value: seconds, configurable: true, writable: true
+    });
+    Object.defineProperty(video, 'duration', { value: duration, configurable: true });
+    video.dispatchEvent(new Event('timeupdate'));
+    return video;
+  }
+
+  it('reports where playback has got to', () => {
+    const onProgress = jest.fn();
+    const { container } = render(
+      <VideoPlayer streams={streams} title="Episode 1" mediaKey="/e/1" onProgress={onProgress} />
+    );
+
+    playTo(container, 521);
+
+    expect(onProgress).toHaveBeenCalledWith({ position: 521, duration: 1440 });
+  });
+
+  // timeupdate fires four times a second; writing to storage that often for
+  // something read once per episode would be waste.
+  it('does not report on every tick', () => {
+    const onProgress = jest.fn();
+    const { container } = render(
+      <VideoPlayer streams={streams} title="Episode 1" mediaKey="/e/1" onProgress={onProgress} />
+    );
+
+    playTo(container, 10);
+    playTo(container, 11);
+    playTo(container, 12);
+
+    expect(onProgress).toHaveBeenCalledTimes(1);
+  });
+
+  // A phone is backgrounded rather than closed, and waiting for the next
+  // tick would lose the seconds that decide where you resume.
+  it('reports exactly when playback pauses', () => {
+    const onProgress = jest.fn();
+    const { container } = render(
+      <VideoPlayer streams={streams} title="Episode 1" mediaKey="/e/1" onProgress={onProgress} />
+    );
+
+    const video = playTo(container, 100);
+    onProgress.mockClear();
+    video.dispatchEvent(new Event('pause'));
+
+    expect(onProgress).toHaveBeenCalledWith({ position: 100, duration: 1440 });
+  });
+
+  it('reports when the page goes away', () => {
+    const onProgress = jest.fn();
+    const { container } = render(
+      <VideoPlayer streams={streams} title="Episode 1" mediaKey="/e/1" onProgress={onProgress} />
+    );
+
+    playTo(container, 200);
+    onProgress.mockClear();
+    window.dispatchEvent(new Event('pagehide'));
+
+    expect(onProgress).toHaveBeenCalledWith({ position: 200, duration: 1440 });
+  });
+
+  it('seeks to where the last sitting ended', async () => {
+    const { container } = render(
+      <VideoPlayer streams={streams} title="Episode 1" mediaKey="/e/1" startAt={300} />
+    );
+
+    const video = container.querySelector('video');
+    video.dispatchEvent(new Event('loadedmetadata'));
+
+    await waitFor(() => expect(video.currentTime).toBe(300));
+  });
+
+  it('starts at the beginning when there is nothing to resume', async () => {
+    const { container } = render(
+      <VideoPlayer streams={streams} title="Episode 1" mediaKey="/e/1" />
+    );
+
+    const video = container.querySelector('video');
+    video.dispatchEvent(new Event('loadedmetadata'));
+
+    expect(video.currentTime).toBe(0);
+  });
+
+  // The whole reason the position lives outside React.
+  it('keeps the position when the server is switched', async () => {
+    const { container } = render(
+      <VideoPlayer streams={streams} title="Episode 1" mediaKey="/e/1" />
+    );
+
+    playTo(container, 400);
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Server' }), 'Doodstream');
+
+    const video = container.querySelector('video');
+    video.dispatchEvent(new Event('loadedmetadata'));
+
+    await waitFor(() => expect(video.currentTime).toBe(400));
+  });
+
+  // Carrying it into the next episode would drop the user into the middle
+  // of something they have not seen.
+  it('does not carry the position into another episode', async () => {
+    const { container, rerender } = render(
+      <VideoPlayer streams={streams} title="Episode 1" mediaKey="/e/1" />
+    );
+
+    playTo(container, 400);
+
+    // A different episode is a different stream: spreading the same object
+    // keeps the same option identities, so the player would not reattach at
+    // all and this test would pass without proving anything.
+    rerender(
+      <VideoPlayer
+        streams={{ options: [{ ...streams.options[0], url: 'https://cdn.test/e2.mp4' }] }}
+        title="Episode 2"
+        mediaKey="/e/2"
+      />
+    );
+
+    const video = container.querySelector('video');
+    Object.defineProperty(video, 'currentTime', { value: 0, writable: true });
+    video.dispatchEvent(new Event('loadedmetadata'));
+
+    expect(video.currentTime).toBe(0);
+  });
+});

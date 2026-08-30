@@ -28,8 +28,18 @@ jest.mock('../../services/providers/registry', () => ({
 beforeEach(() => getProviders.mockReturnValue([]));
 // The player needs media APIs jsdom does not implement; none of it is under
 // test here, only what it is handed.
-jest.mock('../../components/VideoPlayer', () => ({ streams, title }) => (
-  <div data-testid="player" data-options={streams.options.length}>{title}</div>
+jest.mock('../../components/VideoPlayer', () => ({ streams, title, startAt, mediaKey, onProgress }) => (
+  <div
+    data-testid="player"
+    data-options={streams.options.length}
+    data-start-at={startAt}
+    data-media-key={mediaKey}
+  >
+    {title}
+    <button type="button" onClick={() => onProgress({ position: 521, duration: 1440 })}>
+      report progress
+    </button>
+  </div>
 ));
 
 const SOURCE = 'extension:repo#1';
@@ -233,5 +243,88 @@ describe('knowing what is being watched', () => {
 
     await waitFor(() => expect(syncEpisodeProgress).toHaveBeenCalled());
     expect(syncEpisodeProgress.mock.calls[0][0]).toMatchObject({ title: 'Mushoku Tensei' });
+  });
+});
+
+
+/**
+ * Recording where the user got to, and starting there next time.
+ *
+ * The player knows the position and the page knows what is being played, so
+ * this is the only place that can write a history entry.
+ */
+describe('remembering the position', () => {
+  const { getHistory, recordProgress } = require('../../services/history');
+
+  beforeEach(() => window.localStorage.clear());
+
+  it('records the episode and position while it plays', async () => {
+    getProvider.mockReturnValue(makeProvider());
+    await renderWatch(`${PATH}&title=One%20Piece`);
+
+    await userEvent.click(screen.getByRole('button', { name: /report progress/ }));
+
+    expect(getHistory()[0]).toMatchObject({
+      title: 'One Piece',
+      providerId: SOURCE,
+      itemId: ITEM,
+      episodeId: '/e/1',
+      position: 521,
+      duration: 1440
+    });
+  });
+
+  it('names the source, so the history row can say where it played', async () => {
+    getProvider.mockReturnValue(makeProvider());
+    await renderWatch(`${PATH}&title=One%20Piece`);
+
+    await userEvent.click(screen.getByRole('button', { name: /report progress/ }));
+    expect(getHistory()[0].providerName).toBe('Example Source');
+  });
+
+  it('starts the episode where it was left', async () => {
+    recordProgress({
+      providerId: SOURCE, itemId: ITEM, title: 'One Piece',
+      episodeId: '/e/1', position: 300, duration: 1440
+    });
+
+    getProvider.mockReturnValue(makeProvider());
+    await renderWatch();
+
+    expect(screen.getByTestId('player')).toHaveAttribute('data-start-at', '300');
+  });
+
+  // Without this, "Start from the beginning" would silently resume.
+  it('starts at the beginning when the link says to', async () => {
+    recordProgress({
+      providerId: SOURCE, itemId: ITEM, title: 'One Piece',
+      episodeId: '/e/1', position: 300, duration: 1440
+    });
+
+    getProvider.mockReturnValue(makeProvider());
+    await renderWatch(`${PATH}&t=0`);
+
+    expect(screen.getByTestId('player')).toHaveAttribute('data-start-at', '0');
+  });
+
+  it('starts a different episode from the beginning', async () => {
+    recordProgress({
+      providerId: SOURCE, itemId: ITEM, title: 'One Piece',
+      episodeId: '/e/2', position: 300, duration: 1440
+    });
+
+    getProvider.mockReturnValue(makeProvider());
+    await renderWatch();
+
+    expect(screen.getByTestId('player')).toHaveAttribute('data-start-at', '0');
+  });
+
+  // The player keys its own reset on this: without it a position carries
+  // from one episode into the next.
+  it('tells the player which episode it is playing', async () => {
+    getProvider.mockReturnValue(makeProvider());
+    await renderWatch();
+
+    expect(screen.getByTestId('player')).toHaveAttribute('data-media-key', '/e/1');
   });
 });
