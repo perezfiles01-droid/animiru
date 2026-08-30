@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { syncEpisodeProgress } from '../services/trackers/sync';
+import EpisodeList from '../components/EpisodeList';
+import SourceSwitcher from '../components/SourceSwitcher';
 import VideoPlayer from '../components/VideoPlayer';
 import { getProvider } from '../services/providers/registry';
 import ExtensionErrorReport from '../components/ExtensionError';
@@ -154,21 +156,31 @@ export default function Watch() {
 
       <div className="watch-info">
         <h2>{episodeTitle}</h2>
-        {provider && <p className="details-source">{provider.name}</p>}
+        {provider && (
+          <p className="details-source">
+            {/* A dropdown rather than a label: when a source breaks
+                mid-show, moving to another one is the thing you need, and
+                going back to Home to do it loses your place. */}
+            <SourceSwitcher currentId={sourceId} title={showTitle} />
+          </p>
+        )}
 
         {episodes.length > 0 && (
-          <div className="ext-episodes">
-            {episodes.map((candidate) => (
+          <EpisodeList
+            episodes={episodes}
+            currentId={episodeId}
+            onOpen={select}
+            renderEpisode={(candidate, { className, onSelect }) => (
               <button
                 key={candidate.id}
                 type="button"
-                className={`ext-episode ${candidate.id === episodeId ? 'active' : ''}`}
-                onClick={() => select(candidate)}
+                className={className}
+                onClick={onSelect}
               >
                 {candidate.title}
               </button>
-            ))}
-          </div>
+            )}
+          />
         )}
       </div>
     </div>

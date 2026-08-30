@@ -11,13 +11,21 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import Watch from '../Watch';
-import { getProvider } from '../../services/providers/registry';
+import { getProvider, getProviders } from '../../services/providers/registry';
 import { syncEpisodeProgress } from '../../services/trackers/sync';
 
 // Bound at import, so spying on the module afterwards would not take.
 jest.mock('../../services/trackers/sync', () => ({ syncEpisodeProgress: jest.fn() }));
 
-jest.mock('../../services/providers/registry', () => ({ getProvider: jest.fn() }));
+jest.mock('../../services/providers/registry', () => ({
+  getProvider: jest.fn(),
+  // The source switcher under the player asks for the others.
+  getProviders: jest.fn()
+}));
+
+// Create React App sets resetMocks, which strips the implementation a mock
+// factory gives - so a default has to be set per test, not once at the top.
+beforeEach(() => getProviders.mockReturnValue([]));
 // The player needs media APIs jsdom does not implement; none of it is under
 // test here, only what it is handed.
 jest.mock('../../components/VideoPlayer', () => ({ streams, title }) => (

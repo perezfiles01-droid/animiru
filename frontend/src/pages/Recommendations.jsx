@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import MetadataScreen from '../components/MetadataScreen';
 import { getRecommendations, findOnSourcesHref } from '../services/metadata';
 import '../styles/Metadata.css';
@@ -13,9 +13,6 @@ import '../styles/Metadata.css';
  * supports.
  */
 export default function Recommendations() {
-  const [searchParams] = useSearchParams();
-  const providerId = searchParams.get('source');
-
   const fetch = useCallback((id) => getRecommendations(id), []);
 
   const render = (state) => {
@@ -26,7 +23,7 @@ export default function Recommendations() {
         {state.results.map((entry) => (
           <li key={entry.id} className="recommendation">
             <Link
-              to={findOnSourcesHref(entry.title, providerId)}
+              to={findOnSourcesHref(entry.title)}
               className="recommendation-poster-link"
               aria-label={`Find ${entry.title} on your sources`}
             >
@@ -40,7 +37,7 @@ export default function Recommendations() {
                 {entry.percent !== null && (
                   <span className="recommendation-percent">{entry.percent}%</span>
                 )}
-                <Link to={findOnSourcesHref(entry.title, providerId)} className="metadata-title-link">
+                <Link to={findOnSourcesHref(entry.title)} className="metadata-title-link">
                   {entry.title}
                 </Link>
               </h2>

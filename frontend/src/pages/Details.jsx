@@ -4,6 +4,7 @@ import { getProvider } from '../services/providers/registry';
 import ExtensionErrorReport from '../components/ExtensionError';
 import LibraryButton from '../components/LibraryButton';
 import StatusBadge from '../components/StatusBadge';
+import EpisodeList from '../components/EpisodeList';
 import '../styles/Pages.css';
 
 /**
@@ -166,13 +167,14 @@ export default function Details() {
       {episodes.length > 0 && (
         <section className="episode-list">
           <h3>{episodes.length} episodes</h3>
-          <div className="ext-episodes">
-            {episodes.map((episode) => (
-              <Link key={episode.id} to={watchHref(episode)} className="ext-episode">
+          <EpisodeList
+            episodes={episodes}
+            renderEpisode={(episode, { className }) => (
+              <Link key={episode.id} to={watchHref(episode)} className={className}>
                 {episode.title}
               </Link>
-            ))}
-          </div>
+            )}
+          />
         </section>
       )}
     </div>

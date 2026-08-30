@@ -1,0 +1,100 @@
+.episode-search { display: flex; gap: 0.5rem; align-items: center; margin: 0 0 0.75rem; }
+
+.episode-search input {
+  flex: 1;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.episode-suggestions {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  max-height: 60vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.episode-suggestions li + li { border-top: 1px solid var(--border); }
+
+.episode-suggestion {
+  display: block;
+  width: 100%;
+  padding: 0.8rem 0.75rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.episode-suggestion:hover { background: rgba(255, 255, 255, 0.06); }
+
+.episode-suggestion-empty { padding: 0.8rem 0.75rem; color: var(--muted); }
+
+.episode-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+.episode-pager-count { color: var(--muted); font-size: 0.9rem; white-space: nowrap; }
+
+/* Moving a show to another extension, from where you are watching it. */
+.source-switcher { position: relative; display: inline-block; }
+
+.source-switcher-toggle {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.source-switcher-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  min-width: 15rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.source-switcher-hint {
+  margin: 0.25rem 0.5rem 0.5rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.source-switcher-option {
+  display: block;
+  width: 100%;
+  padding: 0.6rem 0.5rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.source-switcher-option:hover { background: rgba(255, 255, 255, 0.06); }

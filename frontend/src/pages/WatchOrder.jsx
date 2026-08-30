@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import MetadataScreen from '../components/MetadataScreen';
 import { getWatchOrder, findOnSourcesHref } from '../services/metadata';
 import '../styles/Metadata.css';
@@ -12,9 +12,6 @@ import '../styles/Metadata.css';
  * part of the order.
  */
 export default function WatchOrder() {
-  const [searchParams] = useSearchParams();
-  const providerId = searchParams.get('source');
-
   const fetch = useCallback((id) => getWatchOrder(id), []);
 
   const render = (state) => {
@@ -29,7 +26,7 @@ export default function WatchOrder() {
             {/* Poster and title are one link, so tapping either finds the
                 title on the source you came from. */}
             <Link
-              to={findOnSourcesHref(entry.title, providerId)}
+              to={findOnSourcesHref(entry.title)}
               className="watch-order-poster-link"
               aria-label={`Find ${entry.title} on your sources`}
             >
@@ -40,7 +37,7 @@ export default function WatchOrder() {
 
             <div className="watch-order-detail">
               <h2>
-                <Link to={findOnSourcesHref(entry.title, providerId)} className="metadata-title-link">
+                <Link to={findOnSourcesHref(entry.title)} className="metadata-title-link">
                   {entry.title}
                 </Link>
               </h2>

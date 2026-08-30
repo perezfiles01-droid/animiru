@@ -198,15 +198,16 @@ describe('the Recommendations screen', () => {
 describe('finding a suggested title on your own sources', () => {
   beforeEach(() => { window.localStorage.clear(); api.get.mockReset(); });
 
-  it('links the watch order poster and title to a scoped search', async () => {
+  // Every source, not the one the reader came from: a recommendation is a
+  // show they have not watched, so their current source is no more likely
+  // to carry it than any other.
+  it('links the watch order poster and title to a search across every source', async () => {
     routes({});
     await show(<WatchOrder />);
 
     const links = screen.getAllByRole('link', { name: /Find The Movie on your sources|The Movie/ });
     for (const link of links) {
-      expect(link).toHaveAttribute(
-        'href', '/?q=The%20Movie&source=extension%3Aa'
-      );
+      expect(link).toHaveAttribute('href', '/?q=The%20Movie');
     }
     expect(links.length).toBeGreaterThanOrEqual(2);
   });
@@ -220,11 +221,10 @@ describe('finding a suggested title on your own sources', () => {
     await show(<Recommendations />, '/recommendations?source=extension:a&id=/x&title=Heart');
 
     expect(screen.getByRole('link', { name: 'Nisekoi' }))
-      .toHaveAttribute('href', '/?q=Nisekoi&source=extension%3Aa');
+      .toHaveAttribute('href', '/?q=Nisekoi');
   });
 
-  // Discover has no originating source, and goes through the same path.
-  it('searches every source when there is no source to scope to', async () => {
+  it('does the same from Discover, which has no originating source', async () => {
     routes({});
     await show(<WatchOrder />, '/watch-order?id=/x&title=Heart');
 

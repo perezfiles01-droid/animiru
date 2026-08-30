@@ -173,18 +173,28 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
     // Carry playback position across a switch, so changing server or quality
     // does not restart the episode.
     const resumeAt = video.currentTime || 0;
-    const wasPlaying = !video.paused && !video.ended;
 
     const onPlaying = () => { startedRef.current = true; };
     video.addEventListener('playing', onPlaying);
 
+    /**
+     * Starts playing once the stream is attached.
+     *
+     * This used to run only when `wasPlaying` was true - meaning "was
+     * already playing before a server switch" - so on first load nothing
+     * ever called play() and the episode sat on its poster until the play
+     * button was tapped. Opening an episode is itself the decision to watch
+     * it; asking twice is asking once too often.
+     *
+     * A refusal is still swallowed. Autoplay policy varies by browser and
+     * by whether the tap counted as a gesture, and an error banner over a
+     * video that simply needs one more tap would be worse than the tap.
+     */
     const resume = () => {
       if (resumeAt > 0) video.currentTime = resumeAt;
-      if (wasPlaying) {
-        const played = video.play();
-        // Autoplay can be refused; not an error worth surfacing.
-        if (played && typeof played.catch === 'function') played.catch(() => {});
-      }
+
+      const played = video.play();
+      if (played && typeof played.catch === 'function') played.catch(() => {});
     };
 
     /**
@@ -368,6 +378,7 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
           ref={videoRef}
           className="player-video"
           controls
+          autoPlay
           playsInline
           poster={poster}
         >

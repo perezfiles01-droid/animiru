@@ -127,17 +127,18 @@ export async function resolveMatch({ providerId, itemId, title }) {
  * Where to go when an AniList title is tapped.
  *
  * AniList entries carry no source id - they are not from a source at all -
- * so there is nothing to link straight to. What the app can do is search
- * for the title, scoped to the source the reader came from, since that is
- * the one they are already using and the one that can play it.
+ * so there is nothing to link straight to; the app searches for the title
+ * instead.
  *
- * Falling back to every source when there is no originating one keeps
- * Discover, where there is no such source, working through the same path.
+ * Every source, not the one the reader came from. Scoping to the
+ * originating source was the earlier behaviour and it was wrong in the case
+ * that matters: a recommendation is a show you have not watched, so the
+ * source you happen to be using is no more likely to carry it than any
+ * other, and hiding the fifteen that might have it to favour the one that
+ * might not is the opposite of helpful.
  */
-export function findOnSourcesHref(title, providerId) {
-  const query = encodeURIComponent(String(title || '').trim());
-  const scoped = providerId ? `&source=${encodeURIComponent(providerId)}` : '';
-  return `/?q=${query}${scoped}`;
+export function findOnSourcesHref(title) {
+  return `/?q=${encodeURIComponent(String(title || '').trim())}`;
 }
 
 export const METADATA_MATCH_KEY = MATCH_KEY;
