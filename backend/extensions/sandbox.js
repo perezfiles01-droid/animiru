@@ -126,7 +126,15 @@ async function runExtension(options = {}) {
     throw new ExtensionError(`Method not callable: ${method || '(none)'}`);
   }
 
-  const ops = createOps({ preferences: options.preferences, timeoutMs });
+  const ops = createOps({
+    preferences: options.preferences,
+    timeoutMs,
+    // Responses the device fetched after an earlier attempt was refused.
+    fetched: options.fetched,
+    // Only a caller that can actually perform a request on its own
+    // connection may be handed one.
+    allowHandoff: Boolean(options.allowHandoff)
+  });
   const started = Date.now();
   let timer = null;
 
@@ -248,6 +256,9 @@ async function runExtension(options = {}) {
     try {
       resultJson = await Promise.race([Promise.resolve(pending), deadline]);
     } catch (err) {
+      // A refusal is not a fault in the source, and reporting it as one
+      // would bury the one thing that can still complete the run.
+      if (ops.pendingHandoff) throw ops.pendingHandoff;
       if (err instanceof ExtensionError) throw err;
       const message = err && err.message ? String(err.message) : String(err);
       throw new ExtensionError(message, ops, buildDiagnostics({
@@ -255,6 +266,11 @@ async function runExtension(options = {}) {
         requests: ops.requests, logs: ops.logs, source: options.source, method
       }));
     }
+
+    // A source may catch a refused request and return a thinner result
+    // rather than failing. That result is wrong, not merely incomplete, so
+    // the handoff takes precedence over it.
+    if (ops.pendingHandoff) throw ops.pendingHandoff;
 
     const text = String(resultJson ?? 'null');
     if (text.length > MAX_RESULT_BYTES) {

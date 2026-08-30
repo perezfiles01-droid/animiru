@@ -11,6 +11,7 @@
 const crypto = require('crypto');
 const { HtmlStore } = require('./html');
 const http = require('./http');
+const { createHandoffStore, isRefusal, DeviceFetchRequired } = require('./handoff');
 
 const MAX_LOG_ENTRIES = 200;
 const MAX_LOG_LENGTH = 2000;
@@ -143,12 +144,24 @@ function defaultsFrom(declared) {
   return defaults;
 }
 
-function createOps({ preferences = {}, timeoutMs } = {}) {
+function createOps({ preferences = {}, timeoutMs, fetched, allowHandoff = false } = {}) {
   const htmlStore = new HtmlStore();
+  // Responses the device already fetched on this run's behalf, from an
+  // earlier attempt that the site refused.
+  const handoff = createHandoffStore(fetched);
   /** Filled in from the source's own getSourcePreferences(). */
   const declaredDefaults = {};
   const logs = [];
   const requests = [];
+  /**
+   * The request the device has to make, once one has been refused.
+   *
+   * Recorded here as well as thrown, because a source is free to catch the
+   * error and carry on - several do, falling back to another server - and a
+   * run that continued past a refusal would return half a result rather than
+   * asking for the one thing that would have completed it.
+   */
+  let pendingHandoff = null;
 
   const syncOps = {
     'html.parse': (html) => htmlStore.parse(html),
@@ -329,6 +342,18 @@ function createOps({ preferences = {}, timeoutMs } = {}) {
       };
       requests.push(entry);
 
+      // An answer the device already fetched for this exact request, because
+      // the site refused the server on an earlier attempt. Returned without
+      // touching the network: asking again would be refused again.
+      const already = handoff.get({ ...options, method: entry.method });
+      if (already) {
+        entry.status = already.statusCode;
+        entry.durationMs = Date.now() - started;
+        entry.bytes = already.body.length;
+        entry.viaDevice = true;
+        return already;
+      }
+
       try {
         const response = await http.request({
           ...options,
@@ -341,6 +366,24 @@ function createOps({ preferences = {}, timeoutMs } = {}) {
         entry.status = response.statusCode;
         entry.durationMs = Date.now() - started;
         entry.bytes = response.body.length;
+
+        // A refusal is about who is asking, not what was asked for, so the
+        // run stops here and the device is asked to make this one request.
+        // Only when the caller can actually do that: on the web there is no
+        // device to hand it to, and a refusal is just a refusal.
+        if (allowHandoff && isRefusal(response)) {
+          entry.handedOff = true;
+          const required = new DeviceFetchRequired({
+            method: entry.method,
+            url: entry.url,
+            headers: options.headers || {},
+            body: options.body
+          }, response.statusCode);
+
+          if (!pendingHandoff) pendingHandoff = required;
+          throw required;
+        }
+
         return response;
       } catch (err) {
         entry.error = err.message;
@@ -372,6 +415,10 @@ function createOps({ preferences = {}, timeoutMs } = {}) {
     },
     logs,
     requests,
+    /** Set once a request has been refused; read by the sandbox after the run. */
+    get pendingHandoff() {
+      return pendingHandoff;
+    },
     dispose() {
       htmlStore.dispose();
     }

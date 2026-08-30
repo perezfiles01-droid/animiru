@@ -140,6 +140,86 @@ describe('POST /api/extensions/run', () => {
   });
 });
 
+/**
+ * A refused request is not an error the caller can do nothing about: the
+ * app can make that one request from the user's own connection, which is
+ * not the datacenter address the site blocked.
+ */
+describe('POST /api/extensions/run, when the site refuses the server', () => {
+  const BLOCKED = `
+    const mangayomiSources = [{ name: "Blocked", id: 7, baseUrl: "https://site.test" }];
+    class DefaultExtension extends MProvider {
+      async search(query) {
+        const res = await new Client().get("https://site.test/find?q=" + query);
+        return { list: JSON.parse(res.body), hasNextPage: false };
+      }
+    }
+  `;
+
+  afterEach(() => jest.restoreAllMocks());
+
+  const send = (body) => request(app).post('/api/extensions/run').send({
+    code: BLOCKED, method: 'search', args: ['bleach'], ...body
+  });
+
+  it('answers 409 with the request the device should make', async () => {
+    jest.spyOn(http, 'request').mockResolvedValue({
+      statusCode: 403, headers: {}, url: 'https://site.test/find?q=bleach', body: ''
+    });
+
+    const res = await send({ allowHandoff: true });
+
+    expect(res.status).toBe(409);
+    expect(res.body.needsDeviceFetch).toMatchObject({
+      refusedWith: 403,
+      request: { method: 'GET', url: 'https://site.test/find?q=bleach' }
+    });
+    expect(res.body.needsDeviceFetch.key).toBeTruthy();
+  });
+
+  it('completes the run when the app sends back what it fetched', async () => {
+    jest.spyOn(http, 'request').mockResolvedValue({
+      statusCode: 403, headers: {}, url: 'https://site.test/find?q=bleach', body: ''
+    });
+
+    const first = await send({ allowHandoff: true });
+    const res = await send({
+      allowHandoff: true,
+      fetched: {
+        [first.body.needsDeviceFetch.key]: {
+          statusCode: 200, body: '[{"name":"Bleach"}]', headers: {}, url: ''
+        }
+      }
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.result.list).toEqual([{ name: 'Bleach' }]);
+  });
+
+  // The key the app is given has to be the key the run looks the answer up
+  // by, or every reply is ignored and the app loops asking for the same URL.
+  it('accepts the key exactly as it handed it out', async () => {
+    jest.spyOn(http, 'request').mockResolvedValue({
+      statusCode: 403, headers: {}, url: 'https://site.test/find?q=bleach', body: ''
+    });
+
+    const { body } = await send({ allowHandoff: true });
+    expect(body.needsDeviceFetch.key)
+      .toBe('GET https://site.test/find?q=bleach');
+  });
+
+  it('is an ordinary failure for a caller that cannot fetch', async () => {
+    jest.spyOn(http, 'request').mockResolvedValue({
+      statusCode: 403, headers: {}, url: 'https://site.test/find?q=bleach', body: ''
+    });
+
+    const res = await send({});
+
+    expect(res.status).toBe(422);
+    expect(res.body.needsDeviceFetch).toBeUndefined();
+  });
+});
+
 describe('GET /api/extensions/methods', () => {
   it('lists the callable methods', async () => {
     const res = await request(app).get('/api/extensions/methods');

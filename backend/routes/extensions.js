@@ -18,6 +18,7 @@ const router = express.Router();
 const repository = require('./../extensions/repository');
 const { fetchSubtitle, SubtitleError } = require('./../extensions/subtitles');
 const { runExtension, ExtensionError, CALLABLE_METHODS } = require('./../extensions');
+const { DeviceFetchRequired, requestKey } = require('./../extensions/handoff');
 
 /**
  * Running an extension means making outbound requests on a caller's behalf,
@@ -120,11 +121,31 @@ router.post('/run', async (req, res, next) => {
       source,
       preferences: body.preferences && typeof body.preferences === 'object'
         ? body.preferences
-        : {}
+        : {},
+      // A caller says whether it can make a request itself. Only the app can
+      // - it has a real browser on the user's own connection - and only it
+      // sends these two.
+      allowHandoff: Boolean(body.allowHandoff),
+      fetched: body.fetched && typeof body.fetched === 'object' ? body.fetched : undefined
     });
 
     return res.json(outcome);
   } catch (err) {
+    // Not a failure: the site refused this server, and the run can finish if
+    // the caller makes this one request from its own connection and asks
+    // again with the answer. 409 rather than an error status because there
+    // is something specific to do about it.
+    if (err instanceof DeviceFetchRequired) {
+      return res.status(409).json({
+        error: err.message,
+        needsDeviceFetch: {
+          key: requestKey(err.request),
+          request: err.request,
+          refusedWith: err.statusCode
+        }
+      });
+    }
+
     if (err instanceof ExtensionError) {
       // A failed run is worth more than its message: the diagnostics say
       // where in the source it broke, what that usually means, and what the
