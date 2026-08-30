@@ -30,5 +30,21 @@
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/archive-org.js",
     "pkgPath": "sources/archive-org.js"
+  },
+  {
+    "name": "Jikan Anime",
+    "id": 1003,
+    "lang": "en",
+    "baseUrl": "https://myanimelist.net",
+    "apiUrl": "https://api.jikan.moe/v4",
+    "iconUrl": "https://upload.wikimedia.org/wikipedia/commons/7/7a/Jikan_logo.png",
+    "version": "1.0.0",
+    "itemType": 1,
+    "isNsfw": false,
+    "hasCloudflare": false,
+    "isManga": false,
+    "typeSource": "single",
+    "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/Jikan.js",
+    "pkgPath": "sources/Jikan.js"
   }
 ]
