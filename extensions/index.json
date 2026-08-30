@@ -10,21 +10,9 @@
     "itemType": 1,
     "isNsfw": false,
     "hasCloudflare": false,
-    "isMetadataCapable": true,
+    "isManga": false,
+    "typeSource": "single",
+    "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/archive-org.js",
     "pkgPath": "sources/archive-org.js"
-  },
-  {
-    "name": "Pluto TV",
-    "id": 1002,
-    "lang": "en",
-    "baseUrl": "https://pluto.tv",
-    "apiUrl": "https://service-vod.clusters.pluto.tv",
-    "iconUrl": "https://images.pluto.tv/favicons/favicon-96x96.png",
-    "version": "1.0.0",
-    "itemType": 1,
-    "isNsfw": false,
-    "hasCloudflare": false,
-    "isMetadataCapable": true,
-    "pkgPath": "sources/plutotv.js"
   }
 ]
