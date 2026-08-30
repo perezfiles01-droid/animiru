@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import Hls from 'hls.js';
 import { subtitleUrl } from '../services/extensions/client';
+import { toVtt } from '../services/subtitles';
+import { preferredSubtitleIndex } from '../services/providers/extension';
 import '../styles/VideoPlayer.css';
 
 /**
@@ -17,6 +19,11 @@ import '../styles/VideoPlayer.css';
  * started the choice becomes theirs, because a mid-episode failure is often
  * a passing network problem and switching would throw away their position
  * for nothing.
+ *
+ * Subtitles start on. An episode without them is the exception rather than
+ * the intent, so the player picks a track - the one the source marked, else
+ * an English one - and shows it. CC turns them off, and that choice sticks
+ * across servers and episodes until it is turned back on.
  *
  * Subtitles are fetched and turned into a blob rather than pointed at
  * directly. A <track> from another origin needs crossOrigin on the <video>,
@@ -35,7 +42,10 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
   const [audioKind, setAudioKind] = useState(null);
   const [selected, setSelected] = useState(0);
   const [error, setError] = useState(null);
-  const [ccOn, setCcOn] = useState(false);
+  // On unless the user says otherwise. `ccChosen` records that they did, so
+  // moving to another server does not quietly switch subtitles back on.
+  const [ccOn, setCcOn] = useState(true);
+  const ccChosen = useRef(false);
   const [subtitleIndex, setSubtitleIndex] = useState(0);
   const [subtitleError, setSubtitleError] = useState(null);
   const [tracks, setTracks] = useState([]);
@@ -66,7 +76,9 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
   }, [options, audioKind, hasDub, hasSub]);
 
   const current = visible[selected] || visible[0] || null;
-  const subtitles = current ? current.subtitles || [] : [];
+  // Memoised because an effect keys on it: rebuilt every render, that effect
+  // would re-run every render, and it sets state.
+  const subtitles = useMemo(() => (current ? current.subtitles || [] : []), [current]);
 
   switchingRef.current = { visible, selected, dead: deadServers };
 
@@ -191,15 +203,23 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
 
     setSubtitleError(null);
     try {
-      const response = await fetch(
-        subtitleUrl(track.url, current && current.headers && current.headers.Referer)
-      );
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || `Subtitles could not be loaded (${response.status}).`);
+      // Content the source already downloaded for us needs no request, and
+      // making one against it is how a track in memory reported a 404.
+      let vtt;
+      if (track.content) {
+        vtt = toVtt(track.content);
+      } else {
+        const response = await fetch(
+          subtitleUrl(track.url, current && current.headers && current.headers.Referer)
+        );
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.error || `Subtitles could not be loaded (${response.status}).`);
+        }
+        vtt = await response.text();
       }
 
-      const blob = new Blob([await response.text()], { type: 'text/vtt' });
+      const blob = new Blob([vtt], { type: 'text/vtt' });
       const url = URL.createObjectURL(blob);
       blobUrls.current.push(url);
 
@@ -212,6 +232,21 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
       setCcOn(false);
     }
   }, [subtitles, current]);
+
+  // Turns subtitles on without being asked, once per server. Does not run
+  // for a user who has turned CC off - that choice outlives a server switch.
+  useEffect(() => {
+    if (ccChosen.current && !ccOn) return;
+    const index = preferredSubtitleIndex(subtitles);
+    if (index === -1) return;
+
+    setSubtitleIndex(index);
+    setCcOn(true);
+    loadSubtitle(index);
+    // Keyed on the track list alone. ccOn is read but deliberately not a
+    // dependency: including it would re-enable subtitles the moment a
+    // failed track switched them off, and again on every toggle.
+  }, [subtitles, loadSubtitle]);
 
   // Only the chosen track is shown; the browser will happily display two at
   // once otherwise, stacked over each other.
@@ -227,21 +262,19 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
   }, [ccOn, subtitleIndex, tracks, subtitles]);
 
   const toggleCc = () => {
+    ccChosen.current = true;
     if (ccOn) {
       setCcOn(false);
       return;
     }
-    // Default to English where the source labelled one, since that is what
-    // is usually wanted and the list is often long.
-    const preferred = subtitles.findIndex((track) => track.isEnglish);
-    const index = preferred === -1 ? 0 : preferred;
-
+    const index = Math.max(preferredSubtitleIndex(subtitles), 0);
     setSubtitleIndex(index);
     setCcOn(true);
     if (!tracks.some((entry) => entry.index === index)) loadSubtitle(index);
   };
 
   const chooseSubtitle = (index) => {
+    ccChosen.current = true;
     setSubtitleIndex(index);
     setCcOn(true);
     if (!tracks.some((entry) => entry.index === index)) loadSubtitle(index);
@@ -267,7 +300,7 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
         >
           {tracks.map((track) => (
             <track
-              key={track.url}
+              key={`${track.index}:${track.label}`}
               kind="subtitles"
               src={track.url}
               label={track.label}
@@ -301,7 +334,7 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
                 onChange={(e) => chooseSubtitle(Number(e.target.value))}
               >
                 {subtitles.map((track, index) => (
-                  <option key={track.url} value={index}>{track.label}</option>
+                  <option key={`${index}:${track.label}`} value={index}>{track.label}</option>
                 ))}
               </select>
             </label>

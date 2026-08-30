@@ -14,6 +14,7 @@
 import { CAPABILITIES } from './types';
 import { runSource } from '../extensions/client';
 import { getPreferences } from '../extensions/storage';
+import { isInlineSubtitle } from '../subtitles';
 
 /**
  * Pulls an episode or season number out of a title.
@@ -85,20 +86,50 @@ export function isDubLabel(label) {
  */
 function toTrack(track, index) {
   if (!track) return null;
-  const url = track.file || track.url || track.src;
-  if (!url) return null;
+  const value = track.file || track.url || track.src;
+  if (!value) return null;
+
+  // A source may hand over the subtitle itself rather than a link to it -
+  // see services/subtitles.js. Fetching that as a URL is what produced
+  // "The subtitle host responded 404" for a track already in memory.
+  const inline = isInlineSubtitle(value);
 
   return {
-    url,
+    url: inline ? undefined : value,
+    content: inline ? String(value) : undefined,
     label: track.label || track.lang || `Track ${index + 1}`,
     // A rough language guess from the label, for picking a sensible default.
-    isEnglish: /\beng(lish)?\b/i.test(String(track.label || ''))
+    isEnglish: /\beng(lish)?\b/i.test(String(track.label || '')),
+    // Sources mark the track they mean to be shown. Dropping this was why a
+    // source that had chosen an English track for the user got ignored.
+    isDefault: track.default === true || track.isDefault === true
   };
 }
 
 function toTracks(tracks) {
   if (!Array.isArray(tracks)) return [];
   return tracks.map(toTrack).filter(Boolean);
+}
+
+/**
+ * Which subtitle track to show when playback starts.
+ *
+ * Subtitles are on by default, so this always names one if there are any:
+ * what the source marked as default, else the first English track, else the
+ * first track offered.
+ *
+ * @returns {number} an index into `tracks`, or -1 when there are none
+ */
+export function preferredSubtitleIndex(tracks) {
+  if (!Array.isArray(tracks) || tracks.length === 0) return -1;
+
+  const marked = tracks.findIndex((track) => track && track.isDefault);
+  if (marked !== -1) return marked;
+
+  const english = tracks.findIndex((track) => track && track.isEnglish);
+  if (english !== -1) return english;
+
+  return 0;
 }
 
 /** HLS or a plain file, decided by the URL, since sources do not say. */

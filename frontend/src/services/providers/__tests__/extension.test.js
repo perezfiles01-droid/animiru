@@ -6,7 +6,7 @@
 
 import {
   createExtensionProvider, parseEpisodeNumber, parseSeasonNumber,
-  parseQualityHeight, parseServerLabel, isDubLabel
+  parseQualityHeight, parseServerLabel, isDubLabel, preferredSubtitleIndex
 } from '../extension';
 import { runSource } from '../../extensions/client';
 
@@ -263,9 +263,59 @@ describe('extension provider', () => {
 
       const [option] = (await provider.getStreams('/e/1')).options;
       expect(option.subtitles).toEqual([
-        { url: 'https://cdn.test/en.vtt', label: 'English', isEnglish: true },
-        { url: 'https://cdn.test/es.vtt', label: 'Spanish', isEnglish: false }
+        { url: 'https://cdn.test/en.vtt', content: undefined, label: 'English', isEnglish: true, isDefault: false },
+        { url: 'https://cdn.test/es.vtt', content: undefined, label: 'Spanish', isEnglish: false, isDefault: false }
       ]);
+    });
+
+    // AniKoto downloads its own subtitles - the host refuses a request
+    // without a Referer only the source knows - and returns the file itself
+    // in the field a URL would use. Fetching that as a URL is what produced
+    // "The subtitle host responded 404" for a track already in memory.
+    it('keeps subtitle content a source returned inline', async () => {
+      const srt = '1\n00:00:01,000 --> 00:00:02,000\nHello\n';
+      resolves([{ url: 'https://cdn.test/a.m3u8', quality: '1080p',
+        subtitles: [{ file: srt, label: 'English' }] }]);
+
+      const [option] = (await provider.getStreams('/e/1')).options;
+      expect(option.subtitles[0]).toMatchObject({ url: undefined, content: srt });
+    });
+
+    // Sources mark the track they mean to be shown; dropping it meant a
+    // source that had already chosen English for the user was ignored.
+    it('carries the track a source marked as default', async () => {
+      resolves([{ url: 'https://cdn.test/a.m3u8', quality: '1080p',
+        subtitles: [
+          { file: 'https://cdn.test/es.vtt', label: 'Spanish' },
+          { file: 'https://cdn.test/en.vtt', label: 'English', default: true }
+        ] }]);
+
+      const [option] = (await provider.getStreams('/e/1')).options;
+      expect(option.subtitles.map((t) => t.isDefault)).toEqual([false, true]);
+    });
+  });
+
+  describe('choosing which subtitle to show', () => {
+    it('prefers the track the source marked', () => {
+      expect(preferredSubtitleIndex([
+        { label: 'English', isEnglish: true },
+        { label: 'Spanish [forced]', isDefault: true }
+      ])).toBe(1);
+    });
+
+    it('falls back to an English track', () => {
+      expect(preferredSubtitleIndex([
+        { label: 'Spanish' }, { label: 'English', isEnglish: true }
+      ])).toBe(1);
+    });
+
+    it('shows something rather than nothing when no track is labelled', () => {
+      expect(preferredSubtitleIndex([{ label: 'Track 1' }])).toBe(0);
+    });
+
+    it('reports that there is nothing to show', () => {
+      expect(preferredSubtitleIndex([])).toBe(-1);
+      expect(preferredSubtitleIndex(undefined)).toBe(-1);
     });
 
     it('carries audio tracks through', async () => {

@@ -150,18 +150,62 @@ describe('subtitles', () => {
     expect(screen.queryByRole('button', { name: 'CC' })).not.toBeInTheDocument();
   });
 
-  it('toggles on and off', async () => {
+  // An episode without subtitles is the exception rather than the intent, so
+  // the player turns them on itself and CC is there to turn them off.
+  it('starts with subtitles on', async () => {
     respondWith();
     renderPlayer(withSubs([ENGLISH]));
 
     const cc = screen.getByRole('button', { name: 'CC' });
+    await waitFor(() => expect(cc).toHaveAttribute('aria-pressed', 'true'));
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+  });
+
+  it('toggles off and back on', async () => {
+    respondWith();
+    renderPlayer(withSubs([ENGLISH]));
+
+    const cc = screen.getByRole('button', { name: 'CC' });
+    await waitFor(() => expect(cc).toHaveAttribute('aria-pressed', 'true'));
+
+    await userEvent.click(cc);
     expect(cc).toHaveAttribute('aria-pressed', 'false');
 
     await userEvent.click(cc);
     expect(cc).toHaveAttribute('aria-pressed', 'true');
+  });
 
+  // Turning them on again on every server switch would make the button
+  // useless: the user turned them off, and meant it.
+  it('leaves subtitles off after the user turns them off', async () => {
+    respondWith();
+    const subtitled = (url, label) => ({ ...option(0, label), subtitles: [ENGLISH] });
+    renderPlayer([subtitled(0, 'Server A'), subtitled(1, 'Server B')]);
+
+    const cc = screen.getByRole('button', { name: 'CC' });
+    await waitFor(() => expect(cc).toHaveAttribute('aria-pressed', 'true'));
     await userEvent.click(cc);
-    expect(cc).toHaveAttribute('aria-pressed', 'false');
+
+    await userEvent.selectOptions(screen.getByLabelText('Server'), '1');
+
+    expect(screen.getByRole('button', { name: 'CC' }))
+      .toHaveAttribute('aria-pressed', 'false');
+  });
+
+  // AniKoto downloads its own subtitles and hands back the file itself in
+  // the field a URL would use. Fetching that produced "The subtitle host
+  // responded 404" for a track already in memory.
+  it('shows subtitle content a source returned inline, without a request', async () => {
+    respondWith();
+    renderPlayer(withSubs([{
+      content: '1\n00:00:01,000 --> 00:00:02,000\nHello\n', label: 'English', isEnglish: true
+    }]));
+
+    await waitFor(() => expect(global.URL.createObjectURL).toHaveBeenCalled());
+    expect(global.fetch).not.toHaveBeenCalled();
+
+    const [blob] = global.URL.createObjectURL.mock.calls[0];
+    expect(blob.type).toBe('text/vtt');
   });
 
   it('fetches through the backend rather than linking the host directly', async () => {
@@ -169,8 +213,6 @@ describe('subtitles', () => {
     // browser demand CORS for the video too and stop playback.
     respondWith();
     renderPlayer(withSubs([ENGLISH]));
-
-    await userEvent.click(screen.getByRole('button', { name: 'CC' }));
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     expect(global.fetch.mock.calls[0][0]).toContain('/extensions/subtitle?url=');
@@ -180,8 +222,6 @@ describe('subtitles', () => {
     respondWith();
     renderPlayer(withSubs([ENGLISH]));
 
-    await userEvent.click(screen.getByRole('button', { name: 'CC' }));
-
     await waitFor(() => expect(global.URL.createObjectURL).toHaveBeenCalled());
   });
 
@@ -189,19 +229,17 @@ describe('subtitles', () => {
     respondWith();
     renderPlayer(withSubs([SPANISH, ENGLISH]));
 
-    await userEvent.click(screen.getByRole('button', { name: 'CC' }));
-
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     expect(decodeURIComponent(global.fetch.mock.calls[0][0])).toContain('en.vtt');
   });
 
-  it('offers a track list only once subtitles are on and there is a choice', async () => {
+  it('offers a track list while subtitles are on and there is a choice', async () => {
     respondWith();
     renderPlayer(withSubs([ENGLISH, SPANISH]));
 
-    expect(screen.queryByLabelText('Subtitles')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'CC' }));
     expect(await screen.findByLabelText('Subtitles')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'CC' }));
+    expect(screen.queryByLabelText('Subtitles')).not.toBeInTheDocument();
   });
 
   it('reports why a subtitle could not be loaded, and turns CC back off', async () => {
@@ -211,8 +249,6 @@ describe('subtitles', () => {
       json: async () => ({ error: 'ASS subtitles cannot be shown in a browser.' })
     });
     renderPlayer(withSubs([{ url: 'https://cdn.test/subs.ass', label: 'English' }]));
-
-    await userEvent.click(screen.getByRole('button', { name: 'CC' }));
 
     expect(await screen.findByText(/ASS subtitles cannot be shown/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'CC' })).toHaveAttribute('aria-pressed', 'false');
