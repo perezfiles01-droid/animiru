@@ -129,8 +129,7 @@ export default function Watch() {
     if (asked !== null) return Number(asked) || 0;
 
     return resumePosition(findProgress({ providerId: sourceId, itemId }), episodeId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceId, itemId, episodeId]);
+  }, [sourceId, itemId, episodeId, searchParams]);
 
   /**
    * Records where the user has got to.

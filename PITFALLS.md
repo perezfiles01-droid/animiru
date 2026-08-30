@@ -341,6 +341,29 @@ The fix was to give the second episode genuinely different options.
 
 ---
 
+## Silencing a rule that is not loaded is itself an error
+
+Three releases in a row failed to build on one line:
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+The production build's ESLint config does not register that rule, and
+disabling an unknown rule is an error - which CI, treating warnings as errors,
+refuses. Nothing in `react-scripts test` sees it: the test runner does not lint
+the way the build does, so a full green test suite says nothing about whether
+the app compiles.
+
+Worse than the failure was not noticing it. A tag-watcher sat polling for a
+release that was never coming while three commits failed behind it.
+
+**Run `npm run build` in `frontend/` before pushing.** The tests are not a
+substitute for it, and a build failure is invisible from a passing suite.
+
+> The general form: when waiting on a build, check that the build is running.
+> Absence of a result is not progress.
+
+---
+
 ## Verification
 
 The habit that caught most of the above, and is worth keeping:
