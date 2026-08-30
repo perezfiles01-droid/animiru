@@ -4,6 +4,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!--
+      Needed to hand a downloaded APK to the system installer. On Android 8
+      and above this permission only allows asking: the user must also grant
+      "install unknown apps" for this app, which MainActivity sends them to
+      when it is missing rather than failing silently.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -23,6 +31,22 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          The installer runs in another process, and since Android 7 a
+          file:// URI handed across a process boundary throws. The APK is
+          shared as a content:// URI from here instead, scoped by
+          res/xml/file_paths.xml to the one directory it lands in.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

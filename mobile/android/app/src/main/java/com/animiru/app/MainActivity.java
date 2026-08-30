@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.webkit.DownloadListener;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -28,6 +29,9 @@ import androidx.webkit.WebViewAssetLoader;
  *      restrict on several Android versions.
  *   2. Requests to the API are subject to normal CORS rules instead of the
  *      opaque "null" origin a file:// page would send.
+ *
+ * A WebView does nothing with a download unless something is listening, so
+ * one is attached here - see AppUpdater for why that mattered.
  */
 public class MainActivity extends AppCompatActivity {
 
@@ -36,6 +40,9 @@ public class MainActivity extends AppCompatActivity {
     private static final String START_URL = APP_ORIGIN + "/index.html";
 
     private WebView webView;
+
+    /** Downloads an update and hands it to the system installer. */
+    private AppUpdater updater;
 
     /** Non-null only while a video is playing fullscreen. */
     private View customView;
@@ -66,6 +73,18 @@ public class MainActivity extends AppCompatActivity {
         });
 
         webView.setWebChromeClient(new FullscreenChromeClient());
+
+        // Without this a WebView ignores a download entirely. The Update
+        // screen's link to the APK did nothing at all, however many times it
+        // was tapped, because nothing was listening for it.
+        updater = new AppUpdater(this);
+        webView.setDownloadListener(new DownloadListener() {
+            @Override
+            public void onDownloadStart(String url, String userAgent, String contentDisposition,
+                                        String mimeType, long contentLength) {
+                updater.download(url, userAgent, contentDisposition);
+            }
+        });
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -108,6 +127,12 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (updater != null) updater.release();
+        super.onDestroy();
     }
 
     @Override
