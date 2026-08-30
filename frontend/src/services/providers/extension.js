@@ -48,6 +48,59 @@ export function parseQualityHeight(label) {
   return match ? Number(match[1]) : undefined;
 }
 
+/**
+ * Splits a source's label into the server it names and the resolution.
+ *
+ * A Mangayomi entry carries one string for both - "Vidstreaming - 1080p",
+ * "Doodstream 720p", "Server 2". Which server a stream came from is the part
+ * that matters when one refuses to play, so it is pulled out rather than
+ * shown as one opaque string.
+ */
+export function parseServerLabel(label) {
+  const text = String(label || '').trim();
+  if (!text) return { server: 'Default', quality: null };
+
+  // The resolution, wherever it sits in the string.
+  const resolution = text.match(/\b(\d{3,4}\s*p|4K|FHD|HD|SD|Auto)\b/i);
+  const quality = resolution ? resolution[0].replace(/\s+/g, '') : null;
+
+  // Whatever is left once the resolution and its separator are removed.
+  let server = text;
+  if (resolution) {
+    server = text.replace(resolution[0], '').replace(/[-–—|,:]+\s*$/, '')
+      .replace(/^\s*[-–—|,:]+/, '').trim();
+  }
+
+  return { server: server || 'Default', quality: quality || null };
+}
+
+/** True when a label names an English dub rather than subtitles. */
+export function isDubLabel(label) {
+  return /\bdub(bed)?\b/i.test(String(label || ''));
+}
+
+/**
+ * Normalises a Mangayomi track - `{file, label}` for a subtitle or an
+ * audio - into something the player can use.
+ */
+function toTrack(track, index) {
+  if (!track) return null;
+  const url = track.file || track.url || track.src;
+  if (!url) return null;
+
+  return {
+    url,
+    label: track.label || track.lang || `Track ${index + 1}`,
+    // A rough language guess from the label, for picking a sensible default.
+    isEnglish: /\beng(lish)?\b/i.test(String(track.label || ''))
+  };
+}
+
+function toTracks(tracks) {
+  if (!Array.isArray(tracks)) return [];
+  return tracks.map(toTrack).filter(Boolean);
+}
+
 /** HLS or a plain file, decided by the URL, since sources do not say. */
 function streamType(url) {
   return /\.m3u8(\?|$)/i.test(String(url || '')) ? 'hls' : 'mp4';
@@ -156,37 +209,54 @@ export function createExtensionProvider(source) {
   /**
    * Playable URLs for one episode.
    *
-   * A Mangayomi source returns a flat list where each entry is one server at
-   * one quality, so the list is deduplicated by label and ordered
-   * best-first: known heights descending, then the labels that carry no
-   * number, which are usually "Auto" or a named mirror.
+   * Every entry a source returns is one server, and several of them
+   * routinely carry the same label - ten mirrors all called "1080p". They
+   * are kept. An earlier version deduplicated on the label and so discarded
+   * every alternative, which left one option in the menu and no way off a
+   * server that would not play. Only an identical URL is dropped, since that
+   * really is the same stream twice.
+   *
+   * Subtitles and audio tracks travel with each entry: they are per-server,
+   * and one mirror having English subtitles says nothing about the next.
    */
   async function getStreams(episode) {
     const id = typeof episode === 'string' ? episode : episode.id;
     const videos = (await call('getVideoList', [id])) || [];
 
-    const seen = new Set();
+    const seenUrls = new Set();
     const options = [];
 
-    for (const video of videos) {
+    videos.forEach((video, index) => {
       const url = video.url || video.videoUrl || video.originalUrl;
-      if (!url) continue;
+      if (!url || seenUrls.has(url)) return;
+      seenUrls.add(url);
 
       const label = video.quality || video.label || 'Default';
-      if (seen.has(label)) continue;
-      seen.add(label);
+      const { server, quality } = parseServerLabel(label);
 
       options.push({
+        // What the source called it, kept whole for display.
         label,
+        server,
+        quality,
         url,
         type: streamType(url),
         height: parseQualityHeight(label),
         // Many hosts reject a request without the referer the source used,
-        // so the headers travel with the option for the player to apply.
-        headers: video.headers || undefined
+        // so the headers travel with the option.
+        headers: video.headers || undefined,
+        originalUrl: video.originalUrl || undefined,
+        subtitles: toTracks(video.subtitles),
+        audios: toTracks(video.audios),
+        isDub: isDubLabel(label),
+        // Stable across re-ordering, so the player can remember a choice.
+        id: `${index}:${server}:${quality || ''}`
       });
-    }
+    });
 
+    // Best first by resolution, but a server's own order is otherwise kept:
+    // sources list their most reliable mirror first, and that ordering is
+    // worth more than any guess made here.
     options.sort((a, b) => {
       if (a.height && b.height) return b.height - a.height;
       if (a.height) return -1;
