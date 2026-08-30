@@ -6,6 +6,7 @@ import Home from './pages/Home';
 import Library from './pages/Library';
 import WatchOrder from './pages/WatchOrder';
 import Recommendations from './pages/Recommendations';
+import TrackingSettings from './pages/TrackingSettings';
 import Details from './pages/Details';
 import Watch from './pages/Watch';
 import Settings from './pages/Settings';
@@ -37,6 +38,7 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/settings/extensions" element={<ExtensionSettings />} />
             <Route path="/settings/update" element={<UpdateSettings />} />
+            <Route path="/settings/tracking" element={<TrackingSettings />} />
           </Routes>
         </main>
         <BottomNav />

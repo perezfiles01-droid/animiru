@@ -838,3 +838,27 @@
   line-height: 1;
   cursor: pointer;
 }
+
+/* Tracking ------------------------------------------------------------- */
+
+.settings-header { display: flex; align-items: center; gap: 0.75rem; }
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+}
+
+.settings-field { display: block; margin: 0.75rem 0; }
+.settings-field span { display: block; margin-bottom: 0.35rem; font-size: 0.9rem; }
+.settings-field input { width: 100%; padding: 0.6rem; border-radius: 8px; }
+
+.settings-steps { padding-left: 1.2rem; line-height: 1.6; }
+.settings-steps code { word-break: break-all; }
+
+.tracker-connected { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.tracker-avatar { width: 2.5rem; height: 2.5rem; border-radius: 50%; }
+
+.btn.disabled { opacity: 0.5; pointer-events: none; }

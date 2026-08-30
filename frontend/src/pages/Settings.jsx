@@ -18,6 +18,12 @@ const SECTIONS = [
     summary: 'Repositories and installed sources'
   },
   {
+    to: '/settings/tracking',
+    icon: '📈',
+    title: 'Tracking',
+    summary: 'Sync progress to AniList'
+  },
+  {
     to: '/settings/update',
     icon: '⬆️',
     title: 'Update',

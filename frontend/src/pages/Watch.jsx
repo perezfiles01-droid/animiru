@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { syncEpisodeProgress } from '../services/trackers/sync';
 import VideoPlayer from '../components/VideoPlayer';
 import { getProvider } from '../services/providers/registry';
 import ExtensionErrorReport from '../components/ExtensionError';
@@ -79,6 +80,25 @@ export default function Watch() {
     load();
     return () => { cancelled = true; };
   }, [provider, episodeId]);
+
+  /**
+   * Records progress once the episode is known and its video has loaded.
+   *
+   * Keyed on the episode rather than run on every render, so moving between
+   * episodes syncs each one and re-rendering syncs none of them. Failures
+   * are deliberately silent: a tracker that interrupts playback to complain
+   * is worse than one that quietly misses an episode.
+   */
+  useEffect(() => {
+    if (!episode || !streams) return;
+
+    syncEpisodeProgress({
+      providerId: sourceId,
+      itemId,
+      title: searchParams.get('title') || '',
+      episodeNumber: episode.number
+    });
+  }, [episode, streams, sourceId, itemId, searchParams]);
 
   const title = episode ? episode.title : 'Episode';
 
