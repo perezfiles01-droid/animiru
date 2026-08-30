@@ -93,6 +93,28 @@ const CAUSES = [
       + 'a source contained. For a packed script use unpackJs(), and for an '
       + 'encrypted payload use cryptoHandler() or decryptAESCryptoJS().'
   },
+  // Ahead of the JSON rule: bot protection usually answers with an HTML
+  // challenge, so without this the block is reported as a parsing problem
+  // and the reader goes looking at the source instead of the network.
+  {
+    match: /bot protection|Cloudflare|browser check|DDoS-Guard/i,
+    cause: () => "The site's bot protection refused the request.",
+    fix: 'Extensions run on the Animiru server, not on your device, so the '
+      + 'site sees a request from a hosting provider rather than from a '
+      + 'phone or a laptop - which is what this protection exists to block. '
+      + 'Opening the site in your own browser does not help, because your '
+      + 'browser is not what made the request. Sources on sites that do not '
+      + 'screen their traffic this way are unaffected.'
+  },
+  {
+    match: /responded (403|503)\b/,
+    cause: (m) => `The site refused the request with ${m[1]}.`,
+    fix: 'A 403 or 503 arriving quickly, with no page behind it, is a site '
+      + 'refusing the server rather than a source asking for the wrong '
+      + 'thing. Extensions run on the Animiru server, so the request comes '
+      + 'from a hosting provider, which sites with bot protection block on '
+      + 'sight. If the same URL opens in your browser, that is the cause.'
+  },
   {
     match: /is not valid JSON|Unexpected token/,
     cause: () => 'The site returned something that is not JSON, where JSON was expected.',

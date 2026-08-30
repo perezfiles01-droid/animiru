@@ -287,10 +287,16 @@ describe('Re:ANIME source', () => {
       expect(seen[0].headers.headers).toBeUndefined();
     });
 
-    it('names the Cloudflare challenge rather than failing on the parse', async () => {
+    // The advice used to be "open reanime.to in a browser and try again",
+    // which cannot help: the request is made by the Animiru server, not by
+    // the reader's device, so nothing they do in their browser is seen.
+    it('blames the server the request came from, not the reader', async () => {
       stub({ '/popular': { statusCode: 403, body: '', headers: {}, url: 'x' } });
 
-      await expect(call('getPopular', [1])).rejects.toThrow(/Cloudflare challenge/);
+      const failure = call('getPopular', [1]);
+      await expect(failure).rejects.toThrow(/refused the request \(HTTP 403\)/);
+      await expect(failure).rejects.toThrow(/server Animiru runs on/);
+      await expect(failure).rejects.not.toThrow(/try again/);
     });
 
     it('recognises the challenge even when it arrives as a 200', async () => {

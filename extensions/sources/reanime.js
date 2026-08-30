@@ -5,7 +5,7 @@ const mangayomiSources = [{
   baseUrl: "https://reanime.to",
   apiUrl: "https://reanime.to",
   iconUrl: "https://reanime.to/favicon.ico",
-  version: "2.0.0",
+  version: "2.1.0",
   itemType: 1,
   isNsfw: false,
   hasCloudflare: true,
@@ -89,9 +89,13 @@ class DefaultExtension extends MProvider {
     const res = await new Client().get(url, this.headers(referer));
 
     if (res.statusCode === 403 || res.statusCode === 503) {
+      // Not "open it in a browser and retry": the request is made by the
+      // Animiru server, not by the reader's device, so nothing they do in
+      // their own browser changes what the site sees.
       throw new Error(
-        "Re:ANIME answered with a Cloudflare challenge rather than the " +
-        "page. Open reanime.to once in a browser and try again."
+        `Re:ANIME refused the request (HTTP ${res.statusCode}). Its bot ` +
+        "protection rejects requests coming from the server Animiru runs " +
+        "on, which is a hosting provider rather than a phone or a laptop."
       );
     }
 
@@ -103,7 +107,9 @@ class DefaultExtension extends MProvider {
 
     if (/just a moment|cf-browser-verification|challenge-platform/i.test(body)) {
       throw new Error(
-        "Re:ANIME served a Cloudflare browser check instead of the page."
+        "Re:ANIME served a Cloudflare browser check instead of the page. " +
+        "The check is aimed at the Animiru server that made the request, " +
+        "not at your device."
       );
     }
 

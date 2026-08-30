@@ -5,7 +5,7 @@ const mangayomiSources = [{
   baseUrl: "https://animepahe.ru",
   apiUrl: "https://animepahe.ru/api",
   iconUrl: "https://animepahe.ru/apple-touch-icon.png",
-  version: "2.0.0",
+  version: "2.1.0",
   itemType: 1,
   isNsfw: false,
   hasCloudflare: true,
@@ -86,10 +86,12 @@ class DefaultExtension extends MProvider {
     } catch (_) {
       // Almost always the DDoS-Guard interstitial. Saying so is the
       // difference between a fixable message and "invalid JSON".
+      // Opening the site yourself does not help: the request comes from
+      // the Animiru server, not from the reader's device.
       throw new Error(
-        "AnimePahe returned a page instead of JSON - the site is asking " +
-        "for a browser check. Open animepahe.ru once in a browser, then " +
-        "try again."
+        "AnimePahe returned a page instead of JSON - its DDoS-Guard bot " +
+        "protection is challenging the request. The challenge is aimed at " +
+        "the Animiru server that made it, not at your device."
       );
     }
   }

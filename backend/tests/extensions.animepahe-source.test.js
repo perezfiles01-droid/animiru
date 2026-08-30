@@ -316,7 +316,10 @@ describe('AnimePahe source', () => {
         statusCode: 200, headers: {}, url: 'x', body: '<html>checking your browser</html>'
       });
 
-      await expect(call('getPopular', [1])).rejects.toThrow(/asking for a browser check/);
+      const failure = call('getPopular', [1]);
+      await expect(failure).rejects.toThrow(/DDoS-Guard bot protection/);
+      // Not the reader's device: the request came from the server.
+      await expect(failure).rejects.toThrow(/not at your device/);
     });
   });
 

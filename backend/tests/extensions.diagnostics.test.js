@@ -199,3 +199,45 @@ describe('excerpt', () => {
     expect(excerpt(null, 3)).toBeNull();
   });
 });
+
+/**
+ * The failure the user actually hit: a source blocked by bot protection was
+ * reported as "an error the app does not recognise", with the source's own
+ * clear message printed directly beneath it.
+ */
+describe('a source blocked by the site\'s bot protection', () => {
+  const { buildDiagnostics } = require('../extensions/diagnostics');
+
+  const report = (message) => buildDiagnostics({
+    message, stack: '', code: '', requests: [], logs: [], method: 'getPopular'
+  });
+
+  it('is recognised rather than falling through to the generic case', () => {
+    const { cause } = report(
+      'Re:ANIME refused the request (HTTP 403). Its bot protection rejects '
+      + 'requests coming from the server Animiru runs on.'
+    );
+
+    expect(cause).not.toMatch(/does not recognise/);
+    expect(cause).toMatch(/bot protection/i);
+  });
+
+  it('explains that the block is aimed at the server, not the reader', () => {
+    const { fix } = report('AnimePahe: DDoS-Guard bot protection is challenging the request.');
+
+    expect(fix).toMatch(/run on the Animiru server, not on your device/);
+    expect(fix).toMatch(/Opening the site in your own browser does not help/);
+  });
+
+  it('recognises a bare 403 with no explanation attached', () => {
+    const { cause, fix } = report('Re:ANIME responded 403 for https://reanime.to/popular');
+
+    expect(cause).toMatch(/refused the request with 403/);
+    expect(fix).toMatch(/hosting provider/);
+  });
+
+  it('still does not recognise a genuinely unknown failure', () => {
+    expect(report('something nobody has seen before').cause)
+      .toMatch(/does not recognise/);
+  });
+});
