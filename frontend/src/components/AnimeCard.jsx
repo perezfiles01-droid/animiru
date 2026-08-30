@@ -11,8 +11,12 @@ import '../styles/AnimeCard.css';
  * an empty overlay is better than "⭐ undefined/100".
  */
 export default function AnimeCard({ item }) {
+  // The title travels with the link. A source whose getDetail omits a name -
+  // AnimeParadise's did - would otherwise open as "Untitled" even though the
+  // card it was tapped from knew perfectly well what it was called.
   const href = `/anime?source=${encodeURIComponent(item.providerId)}`
-    + `&id=${encodeURIComponent(item.id)}`;
+    + `&id=${encodeURIComponent(item.id)}`
+    + (item.title ? `&title=${encodeURIComponent(item.title)}` : '');
 
   return (
     <Link to={href} className="anime-card">

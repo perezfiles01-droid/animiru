@@ -411,3 +411,59 @@ describe('when a server fails', () => {
       expect(screen.queryByText(/switched to Second/)).not.toBeInTheDocument());
   });
 });
+
+/**
+ * Two soundtracks at once.
+ *
+ * Reported from a device: the previous episode's audio kept running under
+ * the new one. Destroying the hls instance was not enough - on the native
+ * path the element keeps its own src, and an element still holding a loaded
+ * source goes on decoding it.
+ */
+describe('not playing two things at once', () => {
+  const first = option({ id: 'a', url: 'https://cdn.test/one.mp4', type: 'mp4' });
+  const second = option({ id: 'b', url: 'https://cdn.test/two.mp4', type: 'mp4' });
+
+  it('silences and empties the element when the stream changes', () => {
+    const { container, rerender } = renderPlayer([first]);
+    const video = container.querySelector('video');
+
+    const pause = jest.spyOn(video, 'pause');
+    const load = jest.spyOn(video, 'load');
+
+    rerender(<VideoPlayer streams={{ options: [second] }} title="E1" />);
+
+    expect(pause).toHaveBeenCalled();
+    expect(load).toHaveBeenCalled();
+  });
+
+  it('drops the old source rather than leaving it attached', () => {
+    const { container, rerender } = renderPlayer([first]);
+    const video = container.querySelector('video');
+    const removeAttribute = jest.spyOn(video, 'removeAttribute');
+
+    rerender(<VideoPlayer streams={{ options: [second] }} title="E1" />);
+
+    expect(removeAttribute).toHaveBeenCalledWith('src');
+  });
+
+  it('tidies up the same way when the player goes away entirely', () => {
+    const { container, unmount } = renderPlayer([first]);
+    const video = container.querySelector('video');
+    const pause = jest.spyOn(video, 'pause');
+
+    unmount();
+
+    expect(pause).toHaveBeenCalled();
+  });
+
+  /**
+   * The attribute fires whenever the element has a source, including a
+   * stale one mid-teardown, which was one of the ways two soundtracks ended
+   * up running. Play is asked for explicitly instead.
+   */
+  it('carries no autoPlay attribute', () => {
+    const { container } = renderPlayer([first]);
+    expect(container.querySelector('video')).not.toHaveAttribute('autoplay');
+  });
+});

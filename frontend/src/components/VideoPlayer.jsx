@@ -189,6 +189,11 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
      * A refusal is still swallowed. Autoplay policy varies by browser and
      * by whether the tap counted as a gesture, and an error banner over a
      * video that simply needs one more tap would be worse than the tap.
+     *
+     * Play is asked for here rather than by an autoPlay attribute. The
+     * attribute fires whenever the element has a source, including a stale
+     * one mid-teardown, which is one of the ways two soundtracks ended up
+     * running at once.
      */
     const resume = () => {
       if (resumeAt > 0) video.currentTime = resumeAt;
@@ -253,12 +258,31 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
       video.addEventListener('error', () => failed('This server could not be played.'), { once: true });
     }
 
+    /**
+     * Silences and detaches the old stream before the next one attaches.
+     *
+     * Destroying the hls instance was not enough: on the native path the
+     * element keeps its own src, and an element that still holds a loaded
+     * source goes on decoding it. Switching server or episode therefore
+     * left the previous audio running underneath the new one - two sounds,
+     * one of them from a video no longer on screen.
+     *
+     * pause, then drop the source, then load(): removing the attribute
+     * alone does not stop a media element that has already buffered, and
+     * load() is what resets it.
+     */
     return () => {
       video.removeEventListener('playing', onPlaying);
+
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+
+      video.pause();
+      video.removeAttribute('src');
+      // Some engines only release the buffer when the empty source is loaded.
+      video.load();
     };
     // Keyed on the stream alone. Anything else here reloads the video every
     // time a piece of unrelated state changes.
@@ -378,7 +402,6 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
           ref={videoRef}
           className="player-video"
           controls
-          autoPlay
           playsInline
           poster={poster}
         >

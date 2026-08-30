@@ -22,6 +22,8 @@ export default function Details() {
   const [searchParams] = useSearchParams();
   const sourceId = searchParams.get('source');
   const itemId = searchParams.get('id');
+  /** What the card that led here called it, used when getDetail has no name. */
+  const knownTitle = searchParams.get('title') || '';
 
   const provider = useMemo(() => getProvider(sourceId), [sourceId]);
 
@@ -81,13 +83,21 @@ export default function Details() {
   }
   if (!item) return <div className="error">Nothing found.</div>;
 
+  /**
+   * A source that returns no name should not erase one the app already has.
+   * "Untitled" is only right when nothing anywhere knew the title.
+   */
+  const displayTitle = (item.title && item.title !== 'Untitled')
+    ? item.title
+    : (knownTitle || item.title);
+
   // The show's name travels to the player: it has nothing else to identify
   // what is being watched, and tracking matches AniList on this same value.
   const watchHref = (episode) =>
     `/watch?source=${encodeURIComponent(sourceId)}`
     + `&id=${encodeURIComponent(itemId)}`
     + `&ep=${encodeURIComponent(episode.id)}`
-    + `&title=${encodeURIComponent((item && item.title) || '')}`;
+    + `&title=${encodeURIComponent(displayTitle || '')}`;
 
   // The title travels with the link because AniList is matched on it, and
   // fetching the detail again purely to learn the title it already showed
@@ -95,7 +105,7 @@ export default function Details() {
   const metadataHref = (path) =>
     `${path}?source=${encodeURIComponent(sourceId)}`
     + `&id=${encodeURIComponent(itemId)}`
-    + `&title=${encodeURIComponent(item.title || '')}`;
+    + `&title=${encodeURIComponent(displayTitle || '')}`;
 
   return (
     <div className="details-page">
@@ -107,7 +117,7 @@ export default function Details() {
         )}
 
         <div className="details-info">
-          <h1>{item.title}</h1>
+          <h1>{displayTitle}</h1>
           <p className="details-source">
             {provider.name}
             <StatusBadge status={item.status} />
@@ -119,7 +129,7 @@ export default function Details() {
                 id: itemId,
                 providerId: sourceId,
                 providerName: provider.name,
-                title: item.title,
+                title: displayTitle,
                 poster: item.poster,
                 year: item.year
               }}

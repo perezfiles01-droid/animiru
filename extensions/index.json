@@ -86,7 +86,7 @@
     "baseUrl": "https://animeparadise.moe",
     "apiUrl": "https://api.animeparadise.moe",
     "iconUrl": "https://www.google.com/s2/favicons?sz=128&domain=https://animeparadise.moe",
-    "version": "0.3.4",
+    "version": "0.3.5",
     "itemType": 1,
     "isNsfw": false,
     "hasCloudflare": false,

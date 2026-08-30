@@ -82,9 +82,11 @@ describe('Home', () => {
     await renderHome();
 
     const link = (await screen.findByText('Bleach')).closest('a');
+    // The title rides along: a source whose getDetail returns no name would
+    // otherwise open as "Untitled" despite the card knowing what it is.
     expect(link).toHaveAttribute(
       'href',
-      '/anime?source=extension%3Arepo%231&id=%2Fa%2F1'
+      '/anime?source=extension%3Arepo%231&id=%2Fa%2F1&title=Bleach'
     );
   });
 

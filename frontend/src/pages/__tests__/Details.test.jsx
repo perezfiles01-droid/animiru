@@ -112,3 +112,51 @@ describe('Details', () => {
     expect(screen.getByText(/Extension timed out/)).toBeInTheDocument();
   });
 });
+
+/**
+ * AnimeParadise's getDetail built its object without ever setting a name,
+ * so a title that read correctly in the browse list opened as "Untitled".
+ * The source is fixed, but any source can omit it - and the app already
+ * knows the name from the card that was tapped.
+ */
+describe('a source that returns no title', () => {
+  const nameless = () => makeProvider({
+    getItem: jest.fn().mockResolvedValue({
+      id: ITEM, providerId: SOURCE, title: 'Untitled', poster: 'p', genres: [], overview: 'x'
+    })
+  });
+
+  it('falls back to the name the card knew', async () => {
+    getProvider.mockReturnValue(nameless());
+    await renderDetails(`/anime?source=${encodeURIComponent(SOURCE)}`
+      + `&id=${encodeURIComponent(ITEM)}&title=Takt%20Op.`);
+
+    expect(await screen.findByRole('heading', { name: 'Takt Op.' })).toBeInTheDocument();
+    expect(screen.queryByText('Untitled')).not.toBeInTheDocument();
+  });
+
+  it('carries that name on to the player as well', async () => {
+    getProvider.mockReturnValue(nameless());
+    await renderDetails(`/anime?source=${encodeURIComponent(SOURCE)}`
+      + `&id=${encodeURIComponent(ITEM)}&title=Takt%20Op.`);
+
+    const link = await screen.findByRole('link', { name: /Watch Episode 1/ });
+    expect(link.getAttribute('href')).toContain('title=Takt%20Op.');
+  });
+
+  // Only right when nothing anywhere knew the title.
+  it('still says Untitled when nothing knew the name', async () => {
+    getProvider.mockReturnValue(nameless());
+    await renderDetails(`/anime?source=${encodeURIComponent(SOURCE)}&id=${encodeURIComponent(ITEM)}`);
+
+    expect(await screen.findByRole('heading', { name: 'Untitled' })).toBeInTheDocument();
+  });
+
+  it('prefers the source when it does return a name', async () => {
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails(`/anime?source=${encodeURIComponent(SOURCE)}`
+      + `&id=${encodeURIComponent(ITEM)}&title=Something%20Else`);
+
+    expect(await screen.findByRole('heading', { name: 'Bleach' })).toBeInTheDocument();
+  });
+});

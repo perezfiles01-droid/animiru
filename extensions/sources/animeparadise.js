@@ -10,7 +10,7 @@ const mangayomiSources = [
       "https://www.google.com/s2/favicons?sz=128&domain=https://animeparadise.moe",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.3.4",
+    "version": "0.3.5",
     "pkgPath": "anime/src/en/animeparadise.js",
   },
 ];
@@ -111,6 +111,10 @@ class DefaultExtension extends MProvider {
     var jsonData = res.data;
     var details = {};
     var chapters = [];
+    // Was never set, so the app had nothing to show but "Untitled". Search
+    // uses item.title on the same objects, and the detail response carries
+    // the same field.
+    details.name = jsonData.title || jsonData.origin?.title || "";
     details.imageUrl = jsonData.posterImage.original;
     details.description = jsonData.synopsys;
     details.genre = jsonData.genres;
