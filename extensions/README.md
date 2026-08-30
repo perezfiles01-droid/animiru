@@ -78,4 +78,4 @@ for Mangayomi runs here unmodified.
 | --- | --- | --- | --- |
 | AnimePahe | English | 1.0.2 | [animepahe.pw](https://animepahe.pw) |
 | Internet Archive | English | 1.0.0 | [archive.org](https://archive.org) |
-| Jikan Anime | English | 1.0.0 | [myanimelist.net](https://myanimelist.net) |
+| Jikan + AniList | English | 2.0.0 | [myanimelist.net](https://myanimelist.net) |
