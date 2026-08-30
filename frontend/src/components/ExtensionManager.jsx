@@ -108,11 +108,64 @@ export default function ExtensionManager() {
 
   return (
     <div className="extensions">
-      <p className="settings-help">
-        An extension repository is a URL to an <code>index.json</code> listing
-        sources. Sources run on the Animiru server, and what you install here
-        is remembered on this device only.
-      </p>
+      <section className="extensions-panel">
+        <h2 className="extensions-panel-title">
+          Installed
+          <span className="extensions-count">{installed.length}</span>
+        </h2>
+
+        {installed.length === 0 ? (
+          <p className="extensions-empty">
+            Nothing installed yet. Add a repository below, then install a
+            source from it.
+          </p>
+        ) : (
+          <ul className="extensions-list">
+            {installed.map((source) => (
+              <li key={source.key} className="extensions-item">
+                {source.iconUrl && (
+                  <img
+                    src={source.iconUrl}
+                    alt=""
+                    className="extensions-icon"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                )}
+
+                <div className="extensions-item-text">
+                  <span className="extensions-name">
+                    {source.name}
+                    {source.isNsfw && <span className="extensions-tag">18+</span>}
+                  </span>
+                  <span className="extensions-meta">
+                    {String(source.lang || '').toUpperCase()} · v{source.version}
+                  </span>
+                </div>
+
+                <div className="extensions-item-actions">
+                  <label className="extensions-toggle">
+                    <input
+                      type="checkbox"
+                      checked={source.enabled !== false}
+                      onChange={(e) => handleToggle(source.key, e.target.checked)}
+                    />
+                    Enabled
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-small"
+                    onClick={() => handleUninstall(source.key)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <h2 className="extensions-panel-title extensions-add-title">Add sources</h2>
 
       <div className="extensions-known">
         {KNOWN_REPOSITORIES.map((known) => {
@@ -195,7 +248,7 @@ export default function ExtensionManager() {
                   className="btn btn-link btn-danger"
                   onClick={() => handleRemoveRepo(repoUrl)}
                 >
-                  Remove
+                  Remove repository
                 </button>
               </span>
             </header>
@@ -242,17 +295,6 @@ export default function ExtensionManager() {
                     </div>
 
                     <div className="extensions-item-actions">
-                      {current && (
-                        <label className="extensions-toggle">
-                          <input
-                            type="checkbox"
-                            checked={current.enabled !== false}
-                            onChange={(e) => handleToggle(source.key, e.target.checked)}
-                          />
-                          Enabled
-                        </label>
-                      )}
-
                       {outdated ? (
                         <button
                           type="button"
@@ -262,13 +304,7 @@ export default function ExtensionManager() {
                           Update to v{source.version}
                         </button>
                       ) : current ? (
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-small"
-                          onClick={() => handleUninstall(source.key)}
-                        >
-                          Uninstall
-                        </button>
+                        <span className="extensions-installed-note">Already installed</span>
                       ) : (
                         <button
                           type="button"

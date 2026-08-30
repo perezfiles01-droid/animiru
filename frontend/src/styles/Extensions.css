@@ -333,3 +333,55 @@
     flex-direction: column;
   }
 }
+
+/**
+ * The installed panel.
+ *
+ * Separate from the repository listings because the questions are different:
+ * what do I have, versus what could I add. Answering the first by scanning
+ * several repository catalogues for rows marked installed was the hassle
+ * this removes.
+ */
+
+.extensions-panel {
+  margin-bottom: 28px;
+}
+
+.extensions-panel-title {
+  align-items: center;
+  display: flex;
+  font-size: 15px;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.extensions-count {
+  background-color: var(--accent);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: normal;
+  padding: 1px 8px;
+}
+
+.extensions-add-title {
+  margin-bottom: 12px;
+}
+
+.extensions-panel .extensions-list {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.extensions-panel .extensions-item:first-child {
+  border-top: none;
+}
+
+/* In a repository listing an installed source is stated, not actioned:
+   enabling and removing belong to the Installed panel, and offering them
+   twice put two different actions behind the same word. */
+.extensions-installed-note {
+  color: var(--text-muted);
+  font-size: 13px;
+}

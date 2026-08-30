@@ -46,6 +46,50 @@ describe('ExtensionManager', () => {
     expect(screen.getByText('No repositories yet.')).toBeInTheDocument();
   });
 
+  describe('the installed panel', () => {
+    it('says plainly when nothing is installed', () => {
+      render(<ExtensionManager />);
+      expect(screen.getByText(/Nothing installed yet/)).toBeInTheDocument();
+    });
+
+    it('lists what is installed with its language and version', () => {
+      storage.installSource(source({ lang: 'en', version: '1.2.0' }));
+      render(<ExtensionManager />);
+
+      expect(screen.getByText('EN · v1.2.0')).toBeInTheDocument();
+    });
+
+    it('counts them, so the answer needs no scrolling', () => {
+      storage.installSource(source({ key: 'a', name: 'A' }));
+      storage.installSource(source({ key: 'b', name: 'B' }));
+      render(<ExtensionManager />);
+
+      const panel = screen.getByText('Installed').closest('h2');
+      expect(panel).toHaveTextContent('2');
+    });
+
+    it('removes one from the panel itself', async () => {
+      storage.installSource(source());
+      fetchRepository.mockResolvedValue(catalogue());
+      render(<ExtensionManager />);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
+
+      expect(storage.getInstalledSources()).toEqual([]);
+      expect(await screen.findByText(/Nothing installed yet/)).toBeInTheDocument();
+    });
+
+    it('disables one without removing it', async () => {
+      storage.installSource(source());
+      render(<ExtensionManager />);
+
+      await userEvent.click(screen.getAllByLabelText('Enabled')[0]);
+
+      expect(storage.isInstalled(source().key)).toBe(true);
+      expect(storage.getEnabledSources()).toHaveLength(0);
+    });
+  });
+
   describe('one-tap repositories', () => {
     it('offers the known repositories without typing a URL', () => {
       render(<ExtensionManager />);
@@ -113,7 +157,7 @@ describe('ExtensionManager', () => {
     expect(storage.getRepositories()).toEqual([REPO]);
   });
 
-  it('installs a source and then offers to uninstall it', async () => {
+  it('installs a source, and then says so rather than offering it again', async () => {
     storage.addRepository(REPO);
     fetchRepository.mockResolvedValue(catalogue());
     render(<ExtensionManager />);
@@ -121,20 +165,23 @@ describe('ExtensionManager', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Install' }));
 
     expect(storage.isInstalled(source().key)).toBe(true);
-    expect(screen.getByRole('button', { name: 'Uninstall' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Enabled')).toBeChecked();
+    expect(screen.getByText('Already installed')).toBeInTheDocument();
+    // Enabling and removing live in the Installed panel, not here - the same
+    // action offered in two places is how two buttons ended up labelled
+    // "Remove" while doing different things.
+    expect(screen.queryByRole('button', { name: 'Uninstall' })).not.toBeInTheDocument();
   });
 
-  it('disables a source without uninstalling it', async () => {
+  it('removes a repository under a name that says what it removes', async () => {
     storage.addRepository(REPO);
     storage.installSource(source());
     fetchRepository.mockResolvedValue(catalogue());
     render(<ExtensionManager />);
 
-    await userEvent.click(await screen.findByLabelText('Enabled'));
-
-    expect(storage.isInstalled(source().key)).toBe(true);
-    expect(storage.getEnabledSources()).toHaveLength(0);
+    expect(await screen.findByRole('button', { name: 'Remove repository' }))
+      .toBeInTheDocument();
+    // The source's own Remove is a different action in a different panel.
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument();
   });
 
   it('offers an update when the repository lists a newer version', async () => {
@@ -181,7 +228,7 @@ describe('ExtensionManager', () => {
     fetchRepository.mockResolvedValue(catalogue());
     render(<ExtensionManager />);
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Remove repository' }));
 
     await waitFor(() => expect(storage.getRepositories()).toEqual([]));
     expect(storage.getInstalledSources()).toEqual([]);
