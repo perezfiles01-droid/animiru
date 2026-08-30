@@ -7,6 +7,7 @@ import Details from './pages/Details';
 import Watch from './pages/Watch';
 import Settings from './pages/Settings';
 import ExtensionSettings from './pages/ExtensionSettings';
+import UpdateSettings from './pages/UpdateSettings';
 import './styles/App.css';
 
 /**
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="/watch" element={<Watch />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/settings/extensions" element={<ExtensionSettings />} />
+            <Route path="/settings/update" element={<UpdateSettings />} />
           </Routes>
         </main>
         <BottomNav />
