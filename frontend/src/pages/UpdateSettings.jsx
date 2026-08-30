@@ -19,12 +19,14 @@ export default function UpdateSettings() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [restored, setRestored] = useState(null);
+  const [downloading, setDownloading] = useState(false);
   const fileInput = useRef(null);
 
   const handleCheck = async () => {
     setChecking(true);
     setError(null);
     setResult(null);
+    setDownloading(false);
     try {
       setResult(await checkForUpdate());
     } catch (err) {
@@ -131,20 +133,26 @@ export default function UpdateSettings() {
               <a
                 className="btn btn-primary"
                 href={result.downloadUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+                // Deliberately not target="_blank". In the Android app the
+                // download is caught by the WebView's download handler,
+                // which needs an ordinary navigation; a new window was
+                // dropped outright and the button did nothing at all.
+                onClick={() => setDownloading(true)}
               >
-                Download {result.version}
+                {downloading ? `Downloading ${result.version}...` : `Download ${result.version}`}
               </a>
             ) : (
-              <a
-                className="btn btn-secondary"
-                href={result.url}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
+              <a className="btn btn-secondary" href={result.url}>
                 Open the release
               </a>
+            )}
+
+            {downloading && (
+              <p className="update-status">
+                The download is running - progress appears in your
+                notifications. When it finishes the installer opens; tap
+                Install, then Open.
+              </p>
             )}
 
             <p className="settings-help update-safety">
@@ -152,6 +160,13 @@ export default function UpdateSettings() {
               installed sources. Android preserves app storage across an
               update when the package and signing key match, and that is
               where they live.
+            </p>
+
+            <p className="settings-help">
+              The app cannot restart itself: Android stops it when its
+              package is replaced, so the installer's own Open button is the
+              way back in. If Android asks for permission to install unknown
+              apps, grant it and tap Download again.
             </p>
           </div>
         )}

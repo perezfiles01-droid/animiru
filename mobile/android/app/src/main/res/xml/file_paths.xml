@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Where the FileProvider may hand out URIs from.
+
+  Only the app's own external files directory, and only the downloads folder
+  inside it. That is where the update APK lands; nothing else needs sharing,
+  and a provider scoped wider would expose files it has no reason to.
+-->
+<paths>
+    <external-files-path name="updates" path="Download/" />
+</paths>
