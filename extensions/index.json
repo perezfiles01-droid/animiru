@@ -28,8 +28,8 @@
     "hasCloudflare": false,
     "isManga": false,
     "typeSource": "single",
-    "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/anikoto (1).js",
-    "pkgPath": "sources/anikoto (1).js"
+    "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/anikoto.js",
+    "pkgPath": "sources/anikoto.js"
   },
   {
     "name": "AniLight",
