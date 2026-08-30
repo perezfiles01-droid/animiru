@@ -1,8 +1,12 @@
 package com.animiru.app;
 
 import android.annotation.SuppressLint;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Message;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -14,6 +18,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
@@ -70,6 +75,26 @@ public class MainActivity extends AppCompatActivity {
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 return assetLoader.shouldInterceptRequest(request.getUrl());
             }
+
+            /**
+             * Keeps the app's own pages in the WebView and sends everything
+             * else to the browser.
+             *
+             * Without this a link to GitHub would load over the app, with no
+             * way back but the system gesture, and the user would be left
+             * browsing a website inside what looks like Animiru.
+             *
+             * A download is the exception. This runs before the download
+             * listener, so sending an APK to the browser here would hand the
+             * update to the browser's downloader and skip the app's own
+             * install flow entirely. Those navigations are left alone, and
+             * the WebView passes them to the listener instead.
+             */
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (isDownload(request.getUrl())) return false;
+                return openExternally(request.getUrl());
+            }
         });
 
         webView.setWebChromeClient(new FullscreenChromeClient());
@@ -107,6 +132,14 @@ public class MainActivity extends AppCompatActivity {
         // relaxation exists so a user can reach a server they run themselves.
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
+        // A WebView drops window.open and target="_blank" unless it is told
+        // to support multiple windows - silently, with no error anywhere. The
+        // download link used one, so tapping it did nothing at all. Rather
+        // than opening a second WebView, FullscreenChromeClient hands the
+        // request to the browser, which is what such a link means in an app.
+        settings.setSupportMultipleWindows(true);
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+
         if (savedInstanceState == null) {
             webView.loadUrl(START_URL);
         } else {
@@ -127,6 +160,40 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    /**
+     * Whether a URL is something to download rather than to open.
+     *
+     * Only the extension is available at this point - no response, so no
+     * Content-Type - which is enough for the one case that matters.
+     */
+    private static boolean isDownload(Uri url) {
+        if (url == null) return false;
+        String path = url.getPath();
+        return path != null && path.toLowerCase().endsWith(".apk");
+    }
+
+    /**
+     * Opens a URL outside the app.
+     *
+     * @return true when the WebView should not load it itself
+     */
+    private boolean openExternally(Uri url) {
+        if (url == null) return false;
+
+        // The app's own pages stay in the WebView; everything else leaves.
+        if (APP_ORIGIN.equals(url.getScheme() + "://" + url.getAuthority())) {
+            return false;
+        }
+
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, url));
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, "Nothing on this device can open that link",
+                    Toast.LENGTH_LONG).show();
+        }
+        return true;
     }
 
     @Override
@@ -150,6 +217,38 @@ public class MainActivity extends AppCompatActivity {
      * fullscreen is where a 1080p stream is actually worth watching.
      */
     private final class FullscreenChromeClient extends WebChromeClient {
+
+        /**
+         * Handles a link that asks for a new window.
+         *
+         * Enabling multiple windows is not enough on its own: without this,
+         * the request is still dropped and target="_blank" still does
+         * nothing. There is no second WebView to open into, so the URL is
+         * handed to the browser instead - which is what such a link means
+         * inside an app.
+         *
+         * The target URL is not passed to this callback, so the usual trick
+         * applies: give the platform a throwaway WebView, read the URL from
+         * the navigation it immediately attempts, and discard it.
+         */
+        @Override
+        public boolean onCreateWindow(WebView view, boolean isDialog,
+                                      boolean isUserGesture, Message resultMsg) {
+            final WebView probe = new WebView(view.getContext());
+            probe.setWebViewClient(new WebViewClient() {
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest request) {
+                    openExternally(request.getUrl());
+                    v.destroy();
+                    return true;
+                }
+            });
+
+            WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
+            transport.setWebView(probe);
+            resultMsg.sendToTarget();
+            return true;
+        }
 
         @Override
         public void onShowCustomView(View view, CustomViewCallback callback) {
