@@ -45,4 +45,19 @@ dependencies {
     // but the update flow breaks on an older core and depending on it
     // explicitly says which version that is.
     implementation 'androidx.core:core:1.13.1'
+
+    // Kotlin 1.8 merged kotlin-stdlib-jdk7 and -jdk8 into kotlin-stdlib.
+    // androidx.core brings the merged 1.8 stdlib while appcompat still asks
+    // for the split 1.6 artifacts, and having both on the classpath fails
+    // the build with a wall of duplicate classes. Raising the split
+    // artifacts to the same version makes them empty shims that defer to the
+    // merged one, which is JetBrains' own remedy.
+    constraints {
+        implementation('org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22') {
+            because 'aligns with the kotlin-stdlib that androidx.core requires'
+        }
+        implementation('org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22') {
+            because 'aligns with the kotlin-stdlib that androidx.core requires'
+        }
+    }
 }
