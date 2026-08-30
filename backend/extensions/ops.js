@@ -96,8 +96,57 @@ function unpackJs(code) {
  * @param {number} [options.timeoutMs] wall-clock budget for one HTTP request
  * @returns {{sync:Function, async:Function, logs:Array, requests:Array, dispose:Function}}
  */
+/**
+ * Reads the default value out of each entry of a getSourcePreferences()
+ * array, in the shapes Mangayomi defines.
+ *
+ * @param {Array} declared
+ * @returns {Object} key -> default value
+ */
+function defaultsFrom(declared) {
+  const defaults = {};
+  if (!Array.isArray(declared)) return defaults;
+
+  for (const item of declared) {
+    if (!item || typeof item !== 'object') continue;
+    const key = String(item.key ?? '');
+    if (!key) continue;
+
+    const list = item.listPreference;
+    if (list && Array.isArray(list.entryValues)) {
+      const index = Number(list.valueIndex);
+      const value = list.entryValues[Number.isInteger(index) ? index : 0];
+      if (value !== undefined) defaults[key] = value;
+      continue;
+    }
+
+    const multi = item.multiSelectListPreference;
+    if (multi && Array.isArray(multi.values)) {
+      // An array, not a string: sources index into it.
+      defaults[key] = multi.values.slice();
+      continue;
+    }
+
+    // Mangayomi spells a boolean two ways and sources use both.
+    const toggle = item.switchPreferenceCompat || item.checkBoxPreference;
+    if (toggle && toggle.value !== undefined) {
+      // Read back as the string the app stores, which is what sources
+      // compare against: `pref === "true"`.
+      defaults[key] = String(!!toggle.value);
+      continue;
+    }
+
+    const text = item.editTextPreference;
+    if (text && text.value !== undefined) defaults[key] = text.value;
+  }
+
+  return defaults;
+}
+
 function createOps({ preferences = {}, timeoutMs } = {}) {
   const htmlStore = new HtmlStore();
+  /** Filled in from the source's own getSourcePreferences(). */
+  const declaredDefaults = {};
   const logs = [];
   const requests = [];
 
@@ -226,10 +275,27 @@ function createOps({ preferences = {}, timeoutMs } = {}) {
     'crypto.unpackJs': (code) => unpackJs(String(code)),
 
     'pref.get': (key) => {
-      const value = preferences[String(key)];
-      return value === undefined ? null : value;
+      const name = String(key);
+      const value = preferences[name];
+      if (value !== undefined) return value;
+      // A setting the user has never opened still has a value: the one the
+      // source declared in getSourcePreferences(). Returning null instead
+      // sends sources down branches they were never meant to take - a
+      // server chooser picking no server, a subtitle switch reading as off
+      // - so the app looks broken on a fresh install.
+      const fallback = declaredDefaults[name];
+      return fallback === undefined ? null : fallback;
     },
-    'pref.all': () => ({ ...preferences }),
+    'pref.all': () => ({ ...declaredDefaults, ...preferences }),
+
+    /**
+     * Records the defaults a source declares, so pref.get can fall back to
+     * them. Called by the driver once, before the requested method runs.
+     */
+    'pref.declareDefaults': (values) => {
+      Object.assign(declaredDefaults, defaultsFrom(values));
+      return null;
+    },
 
     log: (level, message) => {
       if (logs.length < MAX_LOG_ENTRIES) {
@@ -312,4 +378,4 @@ function createOps({ preferences = {}, timeoutMs } = {}) {
   };
 }
 
-module.exports = { createOps, MAX_REQUESTS_PER_RUN, MAX_LOG_ENTRIES };
+module.exports = { createOps, defaultsFrom, MAX_REQUESTS_PER_RUN, MAX_LOG_ENTRIES };

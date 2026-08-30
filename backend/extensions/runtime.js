@@ -341,6 +341,12 @@ const RUNTIME_SOURCE = `
   globalThis.SharedPreferences = SharedPreferences;
   globalThis.MProvider = MProvider;
 
+  // Used by the driver, not by sources: hands the host the defaults a
+  // source declared so pref.get can fall back to them.
+  globalThis.__declarePreferenceDefaults = function (declared) {
+    sync('pref.declareDefaults', [declared || []]);
+  };
+
   globalThis.base64Encode = base64.encode;
   globalThis.base64Decode = base64.decode;
   globalThis.base64 = base64;

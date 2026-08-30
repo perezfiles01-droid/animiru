@@ -197,6 +197,17 @@ async function runExtension(options = {}) {
         }
         instance.source = merged;
 
+        // The defaults a source declares are part of how it behaves, not
+        // just decoration for a settings screen: it reads them back on
+        // every run and expects the declared value, not null, before the
+        // user has touched anything. Failing to declare them is not fatal
+        // - a source may not have any - so a throw here is ignored.
+        try {
+          if (typeof instance.getSourcePreferences === 'function') {
+            __declarePreferenceDefaults(instance.getSourcePreferences());
+          }
+        } catch (e) { /* a source with no usable declaration keeps its nulls */ }
+
         var fn = instance[__invocation.method];
         if (typeof fn !== 'function') {
           throw new Error('Extension does not implement ' + __invocation.method + '()');

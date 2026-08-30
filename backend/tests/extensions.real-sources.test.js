@@ -124,4 +124,56 @@ describe('real Mangayomi sources', () => {
       expect(result.list[0]).toMatchObject({ name: 'One Piece' });
     });
   });
+
+  // Every one of these sources reads settings the user has never opened -
+  // a preferred server, an audio track, an auto-subtitles switch - and
+  // expects the value it declared, not null.
+  describe('declared preference defaults', () => {
+    async function preferenceRead(name, key) {
+      stubHttp();
+      const { result } = await runExtension({
+        code: `${load(name)}
+          ;(function () {
+            const Base = DefaultExtension;
+            DefaultExtension = class extends Base {
+              async getPopular() { return this.getPreference(${JSON.stringify(key)}); }
+            };
+          })();`,
+        method: 'getPopular', args: [1], source: entry(name)
+      });
+      return result;
+    }
+
+    it.each([
+      ['anikoto', 'anikoto_pref_server', 'list'],
+      ['anikoto', 'anikoto_pref_audio', 'sub_dub'],
+      ['anikoto', 'anikoto_pref_ep_thumbnails', 'false'],
+      ['just4anime', 'j4a_pref_quality', 'max'],
+      ['just4anime', 'j4a_pref_auto_subs', 'false'],
+      ['miruro', 'miruro_lang', 'english']
+    ])('%s reads %s as %s before the user sets it', async (name, key, expected) => {
+      expect(await preferenceRead(name, key)).toBe(expected);
+    });
+
+    // Miruro indexes into this one, so it has to stay an array.
+    it('keeps a multi-select default as a list', async () => {
+      expect(await preferenceRead('miruro', 'miruro_audio')).toEqual(['sub']);
+    });
+
+    it('still lets the user override a declared default', async () => {
+      stubHttp();
+      const { result } = await runExtension({
+        code: `${load('miruro')}
+          ;(function () {
+            const Base = DefaultExtension;
+            DefaultExtension = class extends Base {
+              async getPopular() { return this.getPreference('miruro_lang'); }
+            };
+          })();`,
+        method: 'getPopular', args: [1], source: entry('miruro'),
+        preferences: { miruro_lang: 'romaji' }
+      });
+      expect(result).toBe('romaji');
+    });
+  });
 });
