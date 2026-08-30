@@ -70,4 +70,58 @@ describe('real Mangayomi sources', () => {
       }
     });
   });
+
+  // Miruro asks AniList's GraphQL API for its catalogue, declaring
+  // Content-Type: application/json. Form-encoding that body made AniList
+  // reject the query; the source catches its own errors and returns an
+  // empty list, so the failure surfaced as "Miruro returned no titles"
+  // with nothing at all to point at.
+  describe('miruro against AniList', () => {
+    function anilistStub() {
+      const calls = [];
+      jest.spyOn(http, 'request').mockImplementation(async (options) => {
+        calls.push(options);
+        // Answers only a body AniList would actually accept.
+        let parsed;
+        try {
+          parsed = JSON.parse(options.body);
+        } catch (e) {
+          return { status: 400, statusCode: 400, headers: {}, body: '{"errors":[{"message":"Syntax Error"}]}' };
+        }
+        if (!parsed || typeof parsed.query !== 'string') {
+          return { status: 400, statusCode: 400, headers: {}, body: '{"errors":[]}' };
+        }
+        return {
+          status: 200, statusCode: 200, headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ data: { Page: {
+            pageInfo: { hasNextPage: true },
+            media: [{ id: 21, title: { romaji: 'One Piece', english: 'One Piece' },
+                      coverImage: { large: 'https://img.test/op.jpg' } }]
+          } } })
+        };
+      });
+      return { calls };
+    }
+
+    it('sends the GraphQL query as JSON', async () => {
+      const { calls } = anilistStub();
+      await runExtension({
+        code: load('miruro'), method: 'getPopular', args: [1], source: entry('miruro')
+      });
+
+      const graphql = calls.find((c) => String(c.url).includes('graphql.anilist.co'));
+      expect(graphql).toBeDefined();
+      expect(() => JSON.parse(graphql.body)).not.toThrow();
+      expect(JSON.parse(graphql.body)).toMatchObject({ query: expect.stringContaining('POPULARITY_DESC') });
+    });
+
+    it('returns titles', async () => {
+      anilistStub();
+      const { result } = await runExtension({
+        code: load('miruro'), method: 'getPopular', args: [1], source: entry('miruro')
+      });
+      expect(result.list).toHaveLength(1);
+      expect(result.list[0]).toMatchObject({ name: 'One Piece' });
+    });
+  });
 });
