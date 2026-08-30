@@ -35,7 +35,7 @@ describe('backup', () => {
 
     const restored = importSettings(json);
 
-    expect(restored).toEqual({ repositories: 1, sources: 1 });
+    expect(restored).toEqual({ repositories: 1, sources: 1, library: 0 });
     expect(storage.getRepositories()).toEqual(['https://repo.test/index.json']);
     expect(storage.getInstalledSource(source().key)).toMatchObject({ name: 'Example' });
     expect(storage.getPreferences(source().key)).toEqual({ quality: '1080p' });
@@ -89,5 +89,102 @@ describe('backup', () => {
 
     expect(storage.getRepositories()).toEqual(['https://ok.test/i.json']);
     expect(storage.getInstalledSources()).toHaveLength(1);
+  });
+});
+
+/**
+ * Version 1 carried repositories, sources and preferences, which was all
+ * there was. The app has since grown a library, remembered AniList matches
+ * and a tracker connection - all of it lost on exactly the reinstall a
+ * backup exists to survive.
+ */
+describe('everything else the app keeps', () => {
+  const { BACKUP_KEYS } = require('../backup');
+  const library = require('../../library');
+
+  beforeEach(() => window.localStorage.clear());
+
+  const saved = () => ({
+    id: '/anime/frieren', providerId: 'extension:a',
+    providerName: 'AniNeko', title: 'Frieren', poster: 'https://i.test/f.jpg'
+  });
+
+  it('carries the library across a restore', () => {
+    library.addToLibrary(saved());
+
+    const json = exportSettings();
+    window.localStorage.clear();
+    const counts = importSettings(json);
+
+    expect(library.getLibrary()).toHaveLength(1);
+    expect(library.getLibrary()[0].title).toBe('Frieren');
+    expect(counts.library).toBe(1);
+  });
+
+  it('carries the AniList connection, so a restore need not reconnect', () => {
+    window.localStorage.setItem('animiru.anilist.token', '"tok"');
+    window.localStorage.setItem('animiru.anilist.clientId', '"49814"');
+
+    const json = exportSettings();
+    window.localStorage.clear();
+    importSettings(json);
+
+    expect(window.localStorage.getItem('animiru.anilist.token')).toBe('"tok"');
+    expect(window.localStorage.getItem('animiru.anilist.clientId')).toBe('"49814"');
+  });
+
+  it('carries a corrected AniList match, so it need not be corrected again', () => {
+    window.localStorage.setItem('animiru.anilistMatches', '{"extension:a:/x":42}');
+
+    const json = exportSettings();
+    window.localStorage.clear();
+    importSettings(json);
+
+    expect(window.localStorage.getItem('animiru.anilistMatches'))
+      .toBe('{"extension:a:/x":42}');
+  });
+
+  // Writing whatever a file names would let an edited backup put arbitrary
+  // values into the app's storage.
+  it('ignores a key it does not know', () => {
+    const json = JSON.parse(exportSettings());
+    json.other = { ...json.other, 'evil.key': '"payload"' };
+
+    importSettings(JSON.stringify(json));
+
+    expect(window.localStorage.getItem('evil.key')).toBeNull();
+  });
+
+  it('clears what was there before, rather than merging', () => {
+    const json = exportSettings();
+    library.addToLibrary(saved());
+
+    importSettings(json);
+
+    expect(library.getLibrary()).toEqual([]);
+  });
+
+  // A round trip through the raw stored string means a value this module
+  // does not interpret still survives intact.
+  it('keeps every key it claims to keep', () => {
+    for (const key of BACKUP_KEYS) window.localStorage.setItem(key, `"v-${key}"`);
+
+    const json = exportSettings();
+    window.localStorage.clear();
+    importSettings(json);
+
+    for (const key of BACKUP_KEYS) {
+      expect(window.localStorage.getItem(key)).toBe(`"v-${key}"`);
+    }
+  });
+
+  it('still restores a version 1 backup, which has no other section', () => {
+    const old = JSON.stringify({
+      format: 'animiru.backup', version: 1,
+      repositories: ['https://r.test/index.json'], sources: [], preferences: {}
+    });
+
+    expect(() => importSettings(old)).not.toThrow();
+    expect(importSettings(old).library).toBe(0);
   });
 });

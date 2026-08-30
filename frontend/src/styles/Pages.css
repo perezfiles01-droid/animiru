@@ -862,3 +862,20 @@
 .tracker-avatar { width: 2.5rem; height: 2.5rem; border-radius: 50%; }
 
 .btn.disabled { opacity: 0.5; pointer-events: none; }
+
+/* Backup ---------------------------------------------------------------- */
+
+.update-backup-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0.75rem 0; }
+
+.update-backup-text textarea,
+.update-backup-restore textarea {
+  width: 100%;
+  margin: 0.5rem 0;
+  padding: 0.6rem;
+  border-radius: 8px;
+  /* Monospace so a truncated paste is visible rather than reflowed away. */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+}
+
+.update-backup-restore summary { cursor: pointer; padding: 0.5rem 0; }

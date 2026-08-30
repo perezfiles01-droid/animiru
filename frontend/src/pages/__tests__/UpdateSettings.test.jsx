@@ -10,7 +10,7 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import UpdateSettings from '../UpdateSettings';
@@ -112,5 +112,94 @@ describe('the download link', () => {
 
     expect(await screen.findByText(/latest version/)).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Download/ })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * The backup buttons did nothing at all in the Android app: the export link
+ * was intercepted before it could download, and the file input is inert in
+ * a WebView with no file chooser. So the copy and paste path exists as the
+ * one that depends on none of that.
+ */
+describe('backing up by copy and paste', () => {
+  const storage = require('../../services/extensions/storage');
+  const library = require('../../services/library');
+
+  const withClipboard = (impl) => {
+    Object.assign(navigator, { clipboard: { writeText: impl } });
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    storage.addRepository('https://r.test/index.json');
+    library.addToLibrary({
+      id: '/a', providerId: 'extension:a', title: 'Frieren', poster: ''
+    });
+  });
+
+  it('puts the backup on the clipboard', async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    withClipboard(writeText);
+
+    render(<MemoryRouter><UpdateSettings /></MemoryRouter>);
+    await userEvent.click(screen.getByRole('button', { name: /Copy backup/i }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(writeText.mock.calls[0][0]).toContain('animiru.backup');
+    expect(await screen.findByText(/Copied\./)).toBeInTheDocument();
+  });
+
+  // A button that silently copies nothing is the failure this replaces, so
+  // the text is on screen either way.
+  it('shows the backup to copy by hand when the clipboard is refused', async () => {
+    withClipboard(jest.fn().mockRejectedValue(new Error('denied')));
+
+    render(<MemoryRouter><UpdateSettings /></MemoryRouter>);
+    await userEvent.click(screen.getByRole('button', { name: /Copy backup/i }));
+
+    expect(await screen.findByText(/Could not reach the clipboard/)).toBeInTheDocument();
+    // The whole point: the backup is still on screen to select by hand.
+    expect(screen.getByLabelText('Backup contents').value).toContain('animiru.backup');
+  });
+
+  it('restores from pasted text', async () => {
+    withClipboard(jest.fn().mockResolvedValue(undefined));
+
+    render(<MemoryRouter><UpdateSettings /></MemoryRouter>);
+    await userEvent.click(screen.getByRole('button', { name: /Copy backup/i }));
+
+    const backup = await screen.findByLabelText('Backup contents');
+    const json = backup.value;
+
+    window.localStorage.clear();
+
+    await userEvent.click(screen.getByText(/Restore by pasting/i));
+    fireEvent.change(screen.getByLabelText('Backup to restore'), { target: { value: json } });
+    await userEvent.click(screen.getByRole('button', { name: /^Restore$/i }));
+
+    expect(await screen.findByText(/Restored/)).toBeInTheDocument();
+    expect(library.getLibrary()).toHaveLength(1);
+  });
+
+  it('says what is wrong with text that is not a backup', async () => {
+    render(<MemoryRouter><UpdateSettings /></MemoryRouter>);
+
+    await userEvent.click(screen.getByText(/Restore by pasting/i));
+    fireEvent.change(screen.getByLabelText('Backup to restore'), { target: { value: 'not json' } });
+    await userEvent.click(screen.getByRole('button', { name: /^Restore$/i }));
+
+    expect(await screen.findByText(/not valid JSON/i)).toBeInTheDocument();
+  });
+
+  it('offers nothing to restore until something is pasted', async () => {
+    render(<MemoryRouter><UpdateSettings /></MemoryRouter>);
+    await userEvent.click(screen.getByText(/Restore by pasting/i));
+
+    expect(screen.getByRole('button', { name: /^Restore$/i })).toBeDisabled();
+  });
+
+  it('warns that the backup carries account access', () => {
+    render(<MemoryRouter><UpdateSettings /></MemoryRouter>);
+    expect(screen.getByText(/AniList token.*keep it somewhere private/s)).toBeInTheDocument();
   });
 });

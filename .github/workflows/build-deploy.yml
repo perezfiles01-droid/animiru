@@ -98,14 +98,60 @@ jobs:
           echo "Staged assets:"
           ls -la mobile/android/app/src/main/assets
 
+      # Without a stable key every build is signed differently, Android
+      # refuses to install one over another, and the only way forward is
+      # uninstalling - which deletes the user's library and settings.
+      - name: Restore the signing key
+        id: signing
+        env:
+          KEYSTORE: ${{ secrets.ANIMIRU_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then
+            echo "::warning::ANIMIRU_KEYSTORE_BASE64 is not set. This build is \
+          signed with a throwaway debug key and will NOT install over an \
+          existing Animiru without uninstalling it first."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/animiru.jks"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
       - name: Build APK (Debug)
+        env:
+          ANIMIRU_KEYSTORE_PATH: ${{ steps.signing.outputs.signed == 'true' && format('{0}/animiru.jks', runner.temp) || '' }}
+          ANIMIRU_KEYSTORE_PASSWORD: ${{ secrets.ANIMIRU_KEYSTORE_PASSWORD }}
+          ANIMIRU_KEY_ALIAS: animiru
         run: |
           cd mobile/android
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
 
+      # Proves the key actually reached the APK. A misnamed secret would
+      # otherwise produce a debug-signed build that looks fine here and fails
+      # to install on a device, which is the failure being fixed.
+      - name: Verify the APK carries the stable signature
+        if: steps.signing.outputs.signed == 'true'
+        run: |
+          APK=mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          EXPECTED=$(keytool -list -keystore "$RUNNER_TEMP/animiru.jks" \
+            -storepass "${{ secrets.ANIMIRU_KEYSTORE_PASSWORD }}" 2>/dev/null \
+            | grep -o 'SHA-256: .*' | cut -d' ' -f2)
+          ACTUAL=$(keytool -printcert -jarfile "$APK" 2>/dev/null \
+            | grep -o 'SHA256: .*' | head -1 | cut -d' ' -f2)
+          echo "expected $EXPECTED"
+          echo "actual   $ACTUAL"
+          if [ -z "$ACTUAL" ] || [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::The APK is not signed with the stable key, so it \
+          will not install over an existing Animiru."
+            exit 1
+          fi
+
       - name: Build APK (Release)
         continue-on-error: true
+        env:
+          ANIMIRU_KEYSTORE_PATH: ${{ steps.signing.outputs.signed == 'true' && format('{0}/animiru.jks', runner.temp) || '' }}
+          ANIMIRU_KEYSTORE_PASSWORD: ${{ secrets.ANIMIRU_KEYSTORE_PASSWORD }}
+          ANIMIRU_KEY_ALIAS: animiru
         run: |
           cd mobile/android
           ./gradlew --no-daemon assembleRelease
@@ -146,8 +192,10 @@ jobs:
           **Animiru — Android build**
 
           This APK is a WebView shell hosting the compiled React app. It is
-          signed with the Android debug key, so Android will warn on install
-          and it is not suitable for Play Store distribution.
+          signed with a self-signed key, so Android will warn on install
+          and it is not suitable for Play Store distribution. It installs
+          over a previous Animiru without uninstalling, keeping your
+          library and settings.
 
           **Install**
           1. Download `animiru-app.apk` below

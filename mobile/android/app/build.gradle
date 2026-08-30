@@ -14,17 +14,49 @@ android {
         versionName "1.0.0"
     }
 
+    /**
+     * A stable signing key, supplied by CI.
+     *
+     * Android refuses to install an update whose signature differs from the
+     * installed app, and the only way past that is uninstalling - which
+     * deletes app storage, and with it the library, sources and settings the
+     * WebView keeps. Every build used to be signed with the debug key, and
+     * CI holds no keystore, so the Android plugin generated a fresh one on
+     * each runner: every release was signed differently and no update could
+     * ever install over the last. That is the bug this fixes.
+     *
+     * Absent - a local build, a fork without the secret - signing falls back
+     * to the debug key, so `./gradlew assembleDebug` still works. Such
+     * builds simply cannot update each other, which was already true.
+     */
+    signingConfigs {
+        stable {
+            def store = System.getenv('ANIMIRU_KEYSTORE_PATH')
+            if (store && file(store).exists()) {
+                storeFile file(store)
+                storePassword System.getenv('ANIMIRU_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANIMIRU_KEY_ALIAS') ?: 'animiru'
+                keyPassword System.getenv('ANIMIRU_KEY_PASSWORD')
+                        ?: System.getenv('ANIMIRU_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
     buildTypes {
         debug {
             debuggable true
             minifyEnabled false
+            // The published APK is this one, so it is the build that has to
+            // carry the stable key.
+            signingConfig signingConfigs.stable.storeFile != null
+                    ? signingConfigs.stable
+                    : signingConfigs.debug
         }
 
         release {
-            // Signed with the debug key so `assembleRelease` produces an
-            // installable APK without a checked-in keystore. Replace with a
-            // real signingConfig before any store distribution.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.stable.storeFile != null
+                    ? signingConfigs.stable
+                    : signingConfigs.debug
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

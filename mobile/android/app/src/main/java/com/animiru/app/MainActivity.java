@@ -10,7 +10,19 @@ import android.os.Message;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
+import android.content.ContentValues;
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Environment;
+import android.provider.MediaStore;
+import android.util.Base64;
 import android.webkit.DownloadListener;
+import android.webkit.ValueCallback;
+import android.widget.Toast;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import java.io.OutputStream;
+import java.net.URLDecoder;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -53,6 +65,24 @@ public class MainActivity extends AppCompatActivity {
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
     private int savedOrientation;
+
+    /**
+     * The pending <input type="file"> callback.
+     *
+     * A WebView will not open a file picker on its own: without
+     * onShowFileChooser the input is inert and tapping it does nothing at
+     * all, which is what "Import settings" did.
+     */
+    private ValueCallback<Uri[]> pendingFileCallback;
+
+    private final ActivityResultLauncher<String[]> filePicker =
+            registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+                if (pendingFileCallback == null) return;
+                // A cancelled picker must still answer, or the input stays
+                // wedged and never opens again.
+                pendingFileCallback.onReceiveValue(uri == null ? null : new Uri[]{uri});
+                pendingFileCallback = null;
+            });
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -107,6 +137,14 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onDownloadStart(String url, String userAgent, String contentDisposition,
                                         String mimeType, long contentLength) {
+                // Not everything downloaded is an update. Handing a settings
+                // backup to the updater was one of two reasons Export did
+                // nothing: the data: URL never reached here, and would have
+                // been treated as an APK if it had.
+                if (url != null && url.startsWith("data:")) {
+                    saveDataUrl(url, contentDisposition);
+                    return;
+                }
                 updater.download(url, userAgent, contentDisposition);
             }
         });
@@ -168,10 +206,77 @@ public class MainActivity extends AppCompatActivity {
      * Only the extension is available at this point - no response, so no
      * Content-Type - which is enough for the one case that matters.
      */
+    /**
+     * Navigations the download listener should see rather than the browser.
+     *
+     * A data: URL is here because that is how the app saves a settings
+     * backup. Sending it to the browser - which is what happened before -
+     * cannot work: no external app will open a data: URL, so the Export
+     * button did nothing at all.
+     */
     private static boolean isDownload(Uri url) {
         if (url == null) return false;
+        if ("data".equalsIgnoreCase(url.getScheme())) return true;
         String path = url.getPath();
         return path != null && path.toLowerCase().endsWith(".apk");
+    }
+
+    /** Filename from a Content-Disposition, or a dated default. */
+    private static String backupFileName(String contentDisposition) {
+        if (contentDisposition != null) {
+            int at = contentDisposition.indexOf("filename=");
+            if (at >= 0) {
+                String name = contentDisposition.substring(at + 9).replace("\"", "").trim();
+                if (!name.isEmpty()) return name;
+            }
+        }
+        return "animiru-backup.json";
+    }
+
+    /**
+     * Writes a data: URL into the public Downloads folder.
+     *
+     * MediaStore rather than a file path: from Android 10 an app cannot
+     * write to shared storage directly, and a backup the user cannot find
+     * afterwards is no better than one that was never saved.
+     */
+    private void saveDataUrl(String url, String contentDisposition) {
+        try {
+            int comma = url.indexOf(',');
+            if (comma < 0) throw new IllegalArgumentException("malformed data URL");
+
+            String meta = url.substring(0, comma);
+            String payload = url.substring(comma + 1);
+
+            byte[] bytes = meta.contains(";base64")
+                    ? Base64.decode(payload, Base64.DEFAULT)
+                    : URLDecoder.decode(payload, "UTF-8").getBytes("UTF-8");
+
+            String name = backupFileName(contentDisposition);
+
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, "application/json");
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+
+            Uri target = getContentResolver()
+                    .insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (target == null) throw new IllegalStateException("no download entry");
+
+            try (OutputStream out = getContentResolver().openOutputStream(target)) {
+                if (out == null) throw new IllegalStateException("no stream");
+                out.write(bytes);
+            }
+
+            Toast.makeText(this, "Saved " + name + " to Downloads", Toast.LENGTH_LONG).show();
+        } catch (Exception err) {
+            // Said out loud rather than swallowed: a save that fails in
+            // silence is indistinguishable from a button that does nothing,
+            // which is the bug this replaces. The Copy button is the way
+            // through when this cannot work.
+            Toast.makeText(this, "Could not save the backup - use Copy backup instead",
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     /**
@@ -217,6 +322,35 @@ public class MainActivity extends AppCompatActivity {
      * fullscreen is where a 1080p stream is actually worth watching.
      */
     private final class FullscreenChromeClient extends WebChromeClient {
+
+        /**
+         * Opens the system file picker for <input type="file">.
+         *
+         * Without this the input is inert - the WebView drops the request
+         * and nothing happens, which is exactly what "Import settings" did.
+         */
+        @Override
+        public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
+                                         FileChooserParams params) {
+            // An earlier request that never resolved would leave the input
+            // permanently wedged, so it is answered before being replaced.
+            if (pendingFileCallback != null) pendingFileCallback.onReceiveValue(null);
+            pendingFileCallback = callback;
+
+            String[] types = params != null ? params.getAcceptTypes() : null;
+            if (types == null || types.length == 0 || types[0].isEmpty()) {
+                types = new String[]{"*/*"};
+            }
+
+            try {
+                filePicker.launch(types);
+                return true;
+            } catch (Exception err) {
+                pendingFileCallback = null;
+                callback.onReceiveValue(null);
+                return false;
+            }
+        }
 
         /**
          * Handles a link that asks for a new window.
