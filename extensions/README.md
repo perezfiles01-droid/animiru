@@ -74,5 +74,5 @@ for Mangayomi runs here unmodified.
 
 | Extension | Language | Version | Site |
 | --- | --- | --- | --- |
-| AnimePahe | English | 2.1.0 | [animepahe.ru](https://animepahe.ru) |
-| Re:ANIME | English | 2.1.0 | [reanime.to](https://reanime.to) |
+| AnimePahe | English | 2.2.0 | [animepahe.ru](https://animepahe.ru) |
+| Re:ANIME | English | 2.2.0 | [reanime.to](https://reanime.to) |

@@ -341,3 +341,21 @@ describe('AnimePahe source', () => {
     });
   });
 });
+
+describe('looking like a browser', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('sends the client hints and fetch metadata alongside the __ddg cookies', async () => {
+    seen.length = 0;
+    stub();
+    await call('getPopular', [1]);
+
+    expect(seen[0].headers).toMatchObject({
+      'Accept-Language': expect.stringContaining('en'),
+      'Sec-Fetch-Mode': 'navigate',
+      'Upgrade-Insecure-Requests': '1',
+      Cookie: '__ddg1_=;__ddg2_=;'
+    });
+    expect(seen[0].headers['Accept-Encoding']).toBeUndefined();
+  });
+});

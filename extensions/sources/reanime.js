@@ -5,7 +5,7 @@ const mangayomiSources = [{
   baseUrl: "https://reanime.to",
   apiUrl: "https://reanime.to",
   iconUrl: "https://reanime.to/favicon.ico",
-  version: "2.1.0",
+  version: "2.2.0",
   itemType: 1,
   isNsfw: false,
   hasCloudflare: true,
@@ -70,12 +70,38 @@ class DefaultExtension extends MProvider {
     return (override || this.source.baseUrl).replace(/\/+$/, "");
   }
 
-  headers(referer) {
+  /**
+   * The header set a real browser sends. Bot protection compares these
+   * against what a browser would send, and a request carrying only a
+   * User-Agent stands out precisely because everything else is missing.
+   *
+   * This clears the lightest tier of screening and nothing above it: the
+   * heavier tiers fingerprint the TLS handshake, which happens before any
+   * of these are read and which no header can change.
+   */
+  browserHeaders(referer) {
     return {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      Accept: "text/html,application/xhtml+xml",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+      "Sec-Ch-Ua-Mobile": "?0",
+      "Sec-Ch-Ua-Platform": '"Windows"',
+      "Sec-Fetch-Dest": "document",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-Site": referer ? "same-origin" : "none",
+      "Sec-Fetch-User": "?1",
+      "Upgrade-Insecure-Requests": "1"
+    };
+  }
+
+  headers(referer) {
+    return {
+      ...this.browserHeaders(referer),
+      Accept:
+        "text/html,application/xhtml+xml,application/xml;q=0.9," +
+        "image/avif,image/webp,*/*;q=0.8",
       Referer: referer || `${this.siteUrl}/`
     };
   }

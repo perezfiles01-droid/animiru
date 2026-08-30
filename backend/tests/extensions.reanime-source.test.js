@@ -321,3 +321,48 @@ describe('Re:ANIME source', () => {
     });
   });
 });
+
+/**
+ * A request carrying only a User-Agent stands out precisely because
+ * everything else a browser sends is missing. These pin the set so it
+ * cannot be quietly dropped.
+ */
+describe('looking like a browser', () => {
+  const seenHere = [];
+
+  beforeEach(() => {
+    seenHere.length = 0;
+    jest.spyOn(http, 'request').mockImplementation(async (options) => {
+      seenHere.push(options);
+      return { statusCode: 200, body: GRID_KNOWN, headers: {}, url: options.url };
+    });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  const browse = () =>
+    runExtension({ code: CODE, method: 'getPopular', args: [1], source: SOURCE });
+
+  it('sends the client hints and fetch metadata a browser sends', async () => {
+    await browse();
+
+    expect(seenHere[0].headers).toMatchObject({
+      'Accept-Language': expect.stringContaining('en'),
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Upgrade-Insecure-Requests': '1'
+    });
+  });
+
+  it('asks for HTML rather than anything at all', async () => {
+    await browse();
+    expect(seenHere[0].headers.Accept).toMatch(/^text\/html/);
+  });
+
+  // axios negotiates and decompresses this itself; forcing it risks a body
+  // the client cannot decode, which reads as a broken site.
+  it('leaves Accept-Encoding to the HTTP layer', async () => {
+    await browse();
+    expect(seenHere[0].headers['Accept-Encoding']).toBeUndefined();
+  });
+});
