@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
+import BottomNav from './components/BottomNav';
 import Home from './pages/Home';
 import Details from './pages/Details';
 import Watch from './pages/Watch';
@@ -28,9 +29,7 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
-        <footer className="footer">
-          <p>&copy; 2024 Animiru. Watch anime online.</p>
-        </footer>
+        <BottomNav />
       </div>
     </Router>
   );
