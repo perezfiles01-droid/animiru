@@ -15,8 +15,10 @@ export const KNOWN_REPOSITORIES = [
     name: 'Animiru sources',
     url: 'https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/index.json',
     description:
-      'Maintained with this app. Currently one source, the Internet Archive: '
-      + 'public-domain and freely-licensed film, free to watch, no account.',
+      'Maintained with this app. Its index is generated from the sources it '
+      + 'holds, so anything added there appears here without this URL '
+      + 'changing. Currently the Internet Archive: public-domain and '
+      + 'freely-licensed film, free to watch, no account.',
     contains: 'anime'
   },
   {

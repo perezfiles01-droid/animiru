@@ -68,3 +68,51 @@ describe('refusing a source that would install badly', () => {
     expect(problemsWith(null, 'x.js')).toEqual([expect.stringMatching(/does not declare an object/)]);
   });
 });
+
+/**
+ * The generated file is only useful if the app can actually install from it,
+ * so this runs it through the real repository parser rather than inspecting
+ * the JSON and calling that proof.
+ */
+describe('installing from the generated index', () => {
+  const http = require('../extensions/http');
+  const repository = require('../extensions/repository');
+
+  const INDEX_URL =
+    'https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/index.json';
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    repository.clearCache();
+  });
+
+  it('is accepted whole, with no entry dropped', async () => {
+    const body = fs.readFileSync(INDEX, 'utf8');
+    jest.spyOn(http, 'request').mockResolvedValue({
+      status: 200, statusCode: 200, headers: { 'content-type': 'application/json' }, body
+    });
+
+    const repo = await repository.fetchIndex(INDEX_URL);
+
+    // A rejected entry is the failure that matters: it installs cleanly and
+    // then shows nothing, which reads as a broken app rather than a bad entry.
+    expect(repo.rejected || []).toEqual([]);
+    expect(repo.sources).toHaveLength(JSON.parse(body).length);
+    expect(repo.sources[0]).toMatchObject({
+      name: 'Internet Archive',
+      codeUrl: `${RAW_BASE}/archive-org.js`
+    });
+  });
+
+  it('serves the source code the entry points at', async () => {
+    const code = fs.readFileSync(
+      path.join(__dirname, '..', '..', 'extensions', 'sources', 'archive-org.js'), 'utf8'
+    );
+    jest.spyOn(http, 'request').mockResolvedValue({
+      status: 200, statusCode: 200, headers: {}, body: code
+    });
+
+    const fetched = await repository.fetchSourceCode(`${RAW_BASE}/archive-org.js`, { version: '1.0.0' });
+    expect(String(fetched.code ?? fetched)).toContain('class DefaultExtension');
+  });
+});
