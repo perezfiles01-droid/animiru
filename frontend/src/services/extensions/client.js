@@ -79,3 +79,17 @@ export async function fetchCallableMethods() {
   const { data } = await api.get('/extensions/methods');
   return data.methods;
 }
+
+/**
+ * The URL a <track> element should point at for a subtitle.
+ *
+ * Not the source's own URL: a browser refuses a cross-origin track unless
+ * the host sends CORS headers, and subtitle hosts do not. Routed through
+ * the backend, which also converts SubRip to the WebVTT browsers require.
+ */
+export function subtitleUrl(url, referer) {
+  const base = api.defaults.baseURL || '';
+  const params = new URLSearchParams({ url });
+  if (referer) params.set('referer', referer);
+  return `${base}/extensions/subtitle?${params.toString()}`;
+}

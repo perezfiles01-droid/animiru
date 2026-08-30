@@ -16,6 +16,7 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 
 const repository = require('./../extensions/repository');
+const { fetchSubtitle, SubtitleError } = require('./../extensions/subtitles');
 const { runExtension, ExtensionError, CALLABLE_METHODS } = require('./../extensions');
 
 /**
@@ -133,6 +134,39 @@ router.post('/run', async (req, res, next) => {
         requests: err.requests,
         diagnostics: err.diagnostics
       });
+    }
+    return next(err);
+  }
+});
+
+/**
+ * Serve a subtitle file to the player.
+ *
+ * A browser refuses a cross-origin <track> unless the host sends CORS
+ * headers, and a subtitle host has no reason to. The file arrives here, is
+ * converted to WebVTT if it is SubRip, and goes out with headers a <track>
+ * will accept.
+ *
+ * GET /api/extensions/subtitle?url=...&referer=...
+ */
+router.get('/subtitle', async (req, res, next) => {
+  const { url, referer } = req.query;
+
+  if (!url || typeof url !== 'string') {
+    return fail(res, 400, 'A subtitle URL is required');
+  }
+
+  try {
+    const { vtt } = await fetchSubtitle(url, referer ? { Referer: referer } : undefined);
+
+    res.set('Content-Type', 'text/vtt; charset=utf-8');
+    // Subtitles for a given episode do not change, and refetching one on
+    // every seek would be wasteful.
+    res.set('Cache-Control', 'public, max-age=3600');
+    return res.send(vtt);
+  } catch (err) {
+    if (err instanceof SubtitleError) {
+      return fail(res, err.status, err.message);
     }
     return next(err);
   }
