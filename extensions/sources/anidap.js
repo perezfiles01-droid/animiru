@@ -1,0 +1,818 @@
+const mangayomiSources = [
+  {
+    "name": "Anidap",
+    "id": 543219876,
+    "lang": "en",
+    "baseUrl": "https://anidap.lol",
+    "iconUrl": "https://www.google.com/s2/favicons?sz=256&domain=https://anidap.se",
+    "typeSource": "single",
+    "itemType": 1,
+    "version": "1.6.0",
+    "pkgPath": "anime/src/en/anidap.js",
+    "isManga": false,
+    "isNsfw": false,
+    "hasCloudflare": false,
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "sourceCodeUrl": "https://raw.githubusercontent.com/Mallyd11/mangayomi-anime-extensions/refs/heads/main/javascript/anime/src/en/anidap.js",
+    "apiUrl": "",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": "",
+  },
+];
+
+// chad.anidap.lol is the dedicated REST API subdomain (site moved from anidap.se to anidap.lol)
+var CHAD = "https://chad.anidap.lol/rest/api";
+
+// Canonical server ordering for the quality picker. Kiwi leads — it is the
+// default and the only server enabled out of the box; the rest only appear
+// once the user ticks them in "Servers shown in quality picker".
+// Mochi is deliberately absent: it is MP4-only and reserved for download mode.
+var SERVER_ORDER = [
+  "kiwi", "beep", "mimi", "yuki", "uwu", "miku",
+  "sora", "loli", "zone", "shiro", "kami", "vee",
+];
+
+// ─── URL transform helpers ────────────────────────────────────────────────────
+//
+// Derived from anidap.lol/assets/api-9brnPJZ5.js (bundle as of 2026-07-14).
+//
+// Providers with complex transforms:
+//   beep  → path extraction    → bd.24stream.xyz/media{path}
+//   yuki  → uwu CDN proxy      → {cdn}.aniwatchtv.site/uwu/{encoded}
+//   uwu   → uwu CDN proxy      → {cdn}.aniwatchtv.site/uwu/{encoded}
+//   miku  → uwu CDN proxy      → {cdn}.aniwatchtv.site/uwu/{encoded}
+//   shiro → crs proxy (xorHex) → crs.24stream.xyz/media/{hex}&origin=kem.clvd.xyz
+//   kami  → crs proxy (xorHex) → crs.24stream.xyz/media/{hex}&origin=krussdomi.com
+//   vee   → crs proxy (xorHex) → crs.24stream.xyz/media/{hex}&origin=animeonsen.xyz
+//   mimi  → preprocessing only → hawk.aniwatchtv.site/media/{rest}
+//   mochi → string replace     → mp4.24stream.xyz/storage
+//   kiwi, loli, sora, zone, beep (if already bd.*) — identity after preprocessing
+//
+// Preprocessing (applied to ALL providers before provider-specific transform):
+//   vivibebe.site/public/stream/ → hawk.aniwatchtv.site/media/
+
+// XOR-with-137 hex encoder — used by crs.24stream.xyz proxy (b() in site JS)
+function _xorHex137(url) {
+  var r = "";
+  for (var i = 0; i < url.length; i++) {
+    var b = url.charCodeAt(i) ^ 137;
+    r += (b < 16 ? "0" : "") + b.toString(16);
+  }
+  return r;
+}
+
+// URL-safe base64 encoder (avoids btoa dependency) — for uwu CDN proxy
+function _b64url(bytes) {
+  var t = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  var r = "";
+  for (var i = 0; i < bytes.length; i += 3) {
+    var b0 = bytes[i];
+    var b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
+    var b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    r += t[b0 >> 2];
+    r += t[((b0 & 3) << 4) | (b1 >> 4)];
+    r += i + 1 < bytes.length ? t[((b1 & 15) << 2) | (b2 >> 6)] : "=";
+    r += i + 2 < bytes.length ? t[b2 & 63] : "=";
+  }
+  while (r.charAt(r.length - 1) === "=") r = r.slice(0, -1);
+  return r.replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+// N() from site JS: XOR-encodes (url + \0 + origin) with fixed key → base64url
+var _UWU_KEY = "10b06cdc1ca48c9fb0b94af97cc040cf";
+var _UWU_CDN = [
+  "https://cx.aniwatchtv.site",
+  "https://nsx.aniwatchtv.site",
+  "https://pro.aniwatchtv.site",
+  "https://rl2.aniwatchtv.site",
+  "https://rrl.aniwatchtv.site"
+];
+var _uwuCounter = 0;
+
+function _encodeUwu(url, origin) {
+  var urlB = [], origB = [];
+  for (var i = 0; i < url.length;    i++) urlB.push(url.charCodeAt(i) & 255);
+  for (var i = 0; i < origin.length; i++) origB.push(origin.charCodeAt(i) & 255);
+  var combined = new Uint8Array(urlB.length + 1 + origB.length);
+  for (var i = 0; i < urlB.length; i++)  combined[i] = urlB[i];
+  combined[urlB.length] = 0;
+  for (var i = 0; i < origB.length; i++) combined[urlB.length + 1 + i] = origB[i];
+  for (var i = 0; i < combined.length; i++)
+    combined[i] ^= _UWU_KEY.charCodeAt(i % _UWU_KEY.length);
+  return _b64url(combined);
+}
+
+function _uwuTransform(url, origin) {
+  var cdn = _UWU_CDN[_uwuCounter % _UWU_CDN.length];
+  _uwuCounter++;
+  return cdn + "/uwu/" + _encodeUwu(url, origin);
+}
+
+// ─── Slug cache ───────────────────────────────────────────────────────────────
+//
+// The slug (e.g. "attack-on-titan-xyz12") is fetched from the Cloudflare-
+// protected anidap.se/info/{id}.data endpoint.  Caching it in memory means the
+// Cloudflare hit only happens once per show per app session — subsequent
+// getVideoList() calls find the slug here immediately.
+//
+// Chapter URLs are stored as "{anilistId}|{epNum}" (NO slug).  This keeps them
+// backward-compatible with history entries created by earlier extension versions,
+// preventing duplicate episodes from appearing in the library.
+var _slugCache = {};
+
+// ─── getVideoList cache ───────────────────────────────────────────────────────
+//
+// Mangayomi calls getVideoList() for both playback AND download of the same
+// episode. Without caching this doubles the chad API request count, reliably
+// hitting the per-IP rate limit (429) on the second call and returning an empty
+// stream list — which is why "nothing happens" on download.
+//
+// The cache keeps the last result per chapter URL for up to 5 minutes.
+// mochi Authorization tokens expire in 3 days so a 5-min cache is safe.
+var _vlCache   = {};
+var _vlCacheTs = {};
+var VL_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// ─── AniList GraphQL (browse / search / metadata) ────────────────────────────
+
+var PAGE_MEDIA_QUERY = [
+  "query PageMedia($page:Int,$perPage:Int,$search:String,$sort:[MediaSort]){",
+  "Page(page:$page,perPage:$perPage){",
+  "pageInfo{currentPage hasNextPage}",
+  "media(type:ANIME,isAdult:false,search:$search,sort:$sort){",
+  "id title{romaji english native} coverImage{large medium}",
+  "}}}"
+].join("");
+
+// Returns episodes that recently aired (TIME_DESC) — matches anidap.se "Recent Episodes".
+// perPage is set higher than needed to absorb adult/duplicate filtering.
+var RECENT_EPISODES_QUERY = [
+  "query RecentEp($page:Int,$perPage:Int,$before:Int){",
+  "Page(page:$page,perPage:$perPage){",
+  "pageInfo{currentPage hasNextPage}",
+  "airingSchedules(notYetAired:false,airingAt_lesser:$before,sort:[TIME_DESC]){",
+  "media{id isAdult title{romaji english native} coverImage{large medium}}",
+  "}}}"
+].join("");
+
+var MEDIA_DETAIL_QUERY = [
+  "query MediaDetail($id:Int){",
+  "Media(id:$id,type:ANIME){",
+  "id title{romaji english native}",
+  "description(asHtml:false)",
+  "coverImage{extraLarge large medium}",
+  "episodes format genres status",
+  "}}"
+].join("");
+
+// ─── Extension ───────────────────────────────────────────────────────────────
+
+class DefaultExtension extends MProvider {
+  constructor() {
+    super();
+    this.client = new Client();
+  }
+
+  get ua() {
+    return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36";
+  }
+
+  getPreference(key) {
+    return new SharedPreferences().get(key);
+  }
+
+  getBaseUrl() {
+    var url = this.getPreference("anidap_base_url");
+    // Auto-migrate: anidap.se is now a static landing page — always use anidap.lol.
+    // Stored preferences from old installs still say anidap.se, so override them here.
+    if (!url || url === "https://anidap.se") return "https://anidap.lol";
+    return url;
+  }
+
+  // Headers for requests to anidap.se (Remix .data routes).
+  // hasCloudflare is false — we bypass CF the same way HiAnime does: by
+  // sending a realistic browser UA + Referer so the request scores low enough
+  // on CF's bot detection to pass without any challenge.  Mangayomi's WebView
+  // cookie-sharing mechanism was tried but proved unreliable for this site
+  // (cf_clearance was never transferred to the HTTP client).
+  get siteHeaders() {
+    return {
+      "User-Agent": this.ua,
+      "Accept": "application/json, */*",
+      "Referer": this.getBaseUrl() + "/",
+    };
+  }
+
+  // Headers for requests to chad.anidap.se (no Cloudflare)
+  get chadHeaders() {
+    return {
+      "User-Agent": this.ua,
+      "Accept": "application/json",
+      "Origin": this.getBaseUrl(),
+      "Referer": this.getBaseUrl() + "/",
+    };
+  }
+
+  // ── AniList GraphQL ────────────────────────────────────────────────────────
+
+  async gql(query, variables) {
+    // Retry up to 3 times on 5xx — AniList occasionally returns transient 500s
+    // that resolve immediately on the next request.
+    var lastErr;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      var res = await this.client.post(
+        "https://graphql.anilist.co",
+        { "Content-Type": "application/json", "Accept": "application/json" },
+        { query: query, variables: variables }
+      );
+      if (res.statusCode === 200) {
+        var json = JSON.parse(res.body);
+        if (json.errors && json.errors.length) throw new Error(json.errors[0].message);
+        return json.data;
+      }
+      lastErr = new Error("AniList HTTP " + res.statusCode);
+      // Don't retry client errors (4xx) — they won't change on retry.
+      if (res.statusCode < 500) throw lastErr;
+    }
+    throw lastErr;
+  }
+
+  titleByPref(title) {
+    var pref = this.getPreference("anidap_title_lang");
+    if (!title) return "";
+    if (pref === "english") return title.english || title.romaji || "";
+    if (pref === "native")  return title.native  || title.romaji || "";
+    return title.romaji || title.english || "";
+  }
+
+  parseMedia(media) {
+    var self = this;
+    var list = [];
+    (media || []).forEach(function(m) {
+      if (!m || !m.id || !m.title) return;
+      var name = self.titleByPref(m.title);
+      if (!name) return;
+      list.push({
+        name: name,
+        link: "/info/" + String(m.id),
+        imageUrl: (m.coverImage && (m.coverImage.large || m.coverImage.medium)) || "",
+      });
+    });
+    return list;
+  }
+
+  get supportsLatest() { return true; }
+
+  async getPopular(page) {
+    var data = await this.gql(PAGE_MEDIA_QUERY, { page: page, perPage: 24, sort: ["POPULARITY_DESC"] });
+    var p = (data && data.Page) || {};
+    return { list: this.parseMedia(p.media), hasNextPage: !!(p.pageInfo && p.pageInfo.hasNextPage) };
+  }
+
+  async getLatestUpdates(page) {
+    // Use AniList's airing schedule (sorted newest-first) to mirror the
+    // "Recent Episodes" feed on anidap.se.  UPDATED_AT_DESC was sorting by
+    // when AniList metadata changed — not when episodes actually aired.
+    var self = this;
+    var now  = Math.floor(Date.now() / 1000);
+    var data = await this.gql(RECENT_EPISODES_QUERY, { page: page, perPage: 40, before: now });
+    var p    = (data && data.Page) || {};
+
+    // Deduplicate: same series can have multiple airing schedule entries.
+    var seen = {};
+    var list = [];
+    (p.airingSchedules || []).forEach(function(sched) {
+      var m = sched && sched.media;
+      if (!m || m.isAdult || seen[m.id]) return;
+      seen[m.id] = true;
+      var name = self.titleByPref(m.title);
+      if (!name) return;
+      list.push({
+        name: name,
+        link: "/info/" + String(m.id),
+        imageUrl: (m.coverImage && (m.coverImage.large || m.coverImage.medium)) || "",
+      });
+    });
+
+    return { list: list, hasNextPage: !!(p.pageInfo && p.pageInfo.hasNextPage) };
+  }
+
+  async search(query, page, filters) {
+    try {
+      var vars = { page: page, perPage: 24 };
+      if (query && query.length > 0) { vars.search = query; vars.sort = ["SEARCH_MATCH"]; }
+      else { vars.sort = ["POPULARITY_DESC"]; }
+      var data = await this.gql(PAGE_MEDIA_QUERY, vars);
+      var p = (data && data.Page) || {};
+      return { list: this.parseMedia(p.media), hasNextPage: !!(p.pageInfo && p.pageInfo.hasNextPage) };
+    } catch (e) {
+      return { list: [], hasNextPage: false };
+    }
+  }
+
+  statusCode(s) {
+    switch ((s || "").toUpperCase()) {
+      case "RELEASING":        return 0;
+      case "FINISHED":         return 1;
+      case "NOT_YET_RELEASED": return 4;
+      case "CANCELLED":        return 5;
+      default:                 return 5;
+    }
+  }
+
+  // ── Slug resolution ────────────────────────────────────────────────────────
+  //
+  // The site uses a unique slug per anime (e.g. "one-punch-man-season-3-i5r8m")
+  // required for all chad.anidap.se API calls.  It is embedded in the Remix
+  // turbo-stream response at /info/{anilistId}.data as a flat serialised array.
+  //
+  // anidap.se is Cloudflare-protected.  If this request fails, Mangayomi shows
+  // a "bypass Cloudflare" dialog.  Complete the challenge in the webview —
+  // Mangayomi then retries with the cf_clearance cookie it extracted.
+  //
+  // IMPORTANT: siteHeaders must NOT set User-Agent.  The cf_clearance cookie is
+  // cryptographically bound to the UA that solved the challenge (the WebView's
+  // UA).  If the HTTP client sends a different UA, CF rejects the cookie and the
+  // bypass loop never escapes.
+
+  extractSlug(arr) {
+    if (!Array.isArray(arr)) return null;
+    for (var i = 0; i < arr.length - 1; i++) {
+      if (arr[i] === "id" &&
+          typeof arr[i + 1] === "string" &&
+          arr[i + 1].indexOf("-") >= 0 &&
+          !/^\d+$/.test(arr[i + 1])) {
+        return arr[i + 1];
+      }
+    }
+    return null;
+  }
+
+  async getSlug(anilistId) {
+    // Return from cache — avoids repeated Cloudflare hits for the same show.
+    var cached = _slugCache[String(anilistId)];
+    if (cached) return cached;
+
+    // The ONLY public endpoint that maps AniList ID → slug is the CF-protected
+    // anidap.se/info/{id}.data route.  chad.anidap.se has no search, no anime,
+    // and no lookup endpoint that accepts numeric AniList IDs (confirmed: all
+    // such routes return 404).
+    //
+    // siteHeaders intentionally omits User-Agent.  The cf_clearance cookie is
+    // cryptographically bound to the UA used in the WebView challenge.  If the
+    // HTTP client sends a different UA the cookie is rejected and the bypass
+    // loop never escapes.  Omitting User-Agent lets Mangayomi's HTTP client use
+    // the same default UA as its WebView.
+    try {
+      var res = await this.client.get(
+        this.getBaseUrl() + "/info/" + anilistId + ".data",
+        this.siteHeaders
+      );
+      if (res.statusCode === 200 && res.body) {
+        var arr  = JSON.parse(res.body);
+        var slug = this.extractSlug(arr);
+        if (slug) { _slugCache[String(anilistId)] = slug; return slug; }
+      }
+    } catch (e) { /* CF blocked or parse error */ }
+
+    return null;
+  }
+
+  // ── chad.anidap.se REST API ────────────────────────────────────────────────
+
+  async chadEpisodes(slug) {
+    var res = await this.client.get(CHAD + "/episodes?id=" + slug, this.chadHeaders);
+    if (res.statusCode !== 200 || !res.body) return [];
+    var data = JSON.parse(res.body);
+    return Array.isArray(data) ? data : [];
+  }
+
+  async chadServers(slug, epNum) {
+    var res = await this.client.get(
+      CHAD + "/servers?id=" + slug + "&epNum=" + epNum,
+      this.chadHeaders
+    );
+    if (res.statusCode !== 200 || !res.body) return { subProviders: [], dubProviders: [] };
+    return JSON.parse(res.body);
+  }
+
+  async chadSources(slug, epNum, type, providerId) {
+    var res = await this.client.get(
+      CHAD + "/sources?id=" + slug +
+        "&epNum=" + epNum +
+        "&type=" + type +
+        "&providerId=" + providerId,
+      this.chadHeaders
+    );
+    if (res.statusCode !== 200 || !res.body) return null;
+    var data = JSON.parse(res.body);
+    // Treat error responses as null
+    if (data && data.error) return null;
+    return data;
+  }
+
+  // Fetch direct download links from the site's own download button endpoint.
+  // Uses AniList ID directly — no slug, no Cloudflare.
+  // Response shape: { sub: { download: { "Kiwi-Stream-1080p": "https://…", … } }, dub: … | null }
+  async chadDownload(anilistId, epNum) {
+    try {
+      var res = await this.client.get(
+        CHAD + "/download?id=" + anilistId + "&epNum=" + epNum,
+        this.chadHeaders
+      );
+      if (res.statusCode !== 200 || !res.body) return null;
+      var data = JSON.parse(res.body);
+      return (data && !data.error) ? data : null;
+    } catch (e) { return null; }
+  }
+
+  // ── URL transformation ─────────────────────────────────────────────────────
+  //
+  // Mirrors the HOST_HANDLERS map from anidap.lol/assets/api-9brnPJZ5.js.
+  // See module-level helpers (_xorHex137, _uwuTransform) for the encoding.
+
+  transformUrl(url, providerId) {
+    if (!url) return url;
+
+    // Preprocessing — applied before any provider-specific transform
+    url = url.replace(
+      "https://vivibebe.site/public/stream/",
+      "https://hawk.aniwatchtv.site/media/"
+    );
+
+    switch (providerId) {
+      // Path extraction → bd.24stream.xyz/media (strips /r2 prefix)
+      case "beep":
+        if (url.startsWith("https://bd.24stream.xyz/media")) return url;
+        if (url.startsWith("/"))
+          return "https://bd.24stream.xyz/media" + url.replace("/r2", "");
+        return "https://bd.24stream.xyz/media" +
+          url.replace(/https?:\/\/[^/]+/, "").replace("/r2", "");
+
+      // String replace — same target as before
+      case "mochi":
+        return url.replace(
+          "https://tools.fast4speed.rsvp",
+          "https://mp4.24stream.xyz/storage"
+        );
+
+      // uwu CDN proxy (rotating CDN, compound base64url encoding)
+      case "yuki": return _uwuTransform(url, "https://megaplay.buzz");
+      case "uwu":  return _uwuTransform(url, "https://kwik.cx/");
+      case "miku": return _uwuTransform(url, "https://allanime.uns.bio");
+
+      // crs proxy (XOR-137 hex encoding + origin hint)
+      case "shiro":
+        return "https://crs.24stream.xyz/media/" + _xorHex137(url) +
+          "&origin=https://kem.clvd.xyz/";
+      case "kami":
+        return "https://crs.24stream.xyz/media/" + _xorHex137(url) +
+          "&origin=https://krussdomi.com";
+      case "vee":
+        if (url.startsWith("https://cdn.animeonsen.xyz")) return url;
+        return "https://crs.24stream.xyz/media/" + _xorHex137(url) +
+          "&origin=https://www.animeonsen.xyz/";
+
+      // Identity after preprocessing: kiwi, mimi, loli, sora, and any unknown provider
+      default: return url;
+    }
+  }
+
+  // ── Detail ─────────────────────────────────────────────────────────────────
+
+  async getDetail(url) {
+    var anilistId = parseInt(url.replace(/[^0-9]/g, ""), 10);
+    if (!anilistId) throw new Error("Cannot parse AniList ID: " + url);
+
+    var data = await this.gql(MEDIA_DETAIL_QUERY, { id: anilistId });
+    var m = (data && data.Media) || {};
+
+    var name        = this.titleByPref(m.title || {});
+    var imageUrl    = (m.coverImage && (m.coverImage.extraLarge || m.coverImage.large)) || "";
+    var description = (m.description || "").replace(/<[^>]*>/g, "").replace(/\n{3,}/g, "\n\n").trim();
+    var genre       = m.genres || [];
+    var status      = this.statusCode(m.status);
+    var isMovie     = m.format === "MOVIE";
+
+    // Fetch slug from CF-protected info.data.  After the webview bypass, this
+    // call succeeds and the slug is cached for all subsequent getVideoList() calls.
+    var slug = await this.getSlug(anilistId);
+
+    var chapters = [];
+
+    if (slug) {
+      var episodes = await this.chadEpisodes(slug);
+      episodes.forEach(function(ep) {
+        var num    = ep.number;
+        var title  = (ep.titles && ep.titles.en) || ("Episode " + num);
+        var chName = isMovie ? title : ("E" + num + " — " + title);
+        chapters.push({
+          name: chName,
+          // URL is "{anilistId}|{epNum}" — NO slug embedded.
+          // getVideoList() resolves the slug via _slugCache (populated above),
+          // so no extra Cloudflare hit is needed during playback/download.
+          // Keeping the URL slug-free means it matches history entries created
+          // by earlier extension versions, preventing duplicate chapters.
+          url: anilistId + "|" + num,
+          thumbnailUrl: ep.img || null,
+          description: ep.description || null,
+          isFiller: ep.isFiller || false,
+        });
+      });
+    } else {
+      // Fallback: numbered stubs from AniList episode count.
+      // Streams will be unavailable until Cloudflare is bypassed.
+      var epCount = m.episodes || 0;
+      for (var j = 1; j <= epCount; j++) {
+        chapters.push({
+          name: isMovie ? name : ("Episode " + j),
+          url: anilistId + "|" + j,
+        });
+      }
+    }
+
+    chapters.reverse(); // newest first
+
+    return {
+      name: name,
+      imageUrl: imageUrl,
+      description: description,
+      genre: genre,
+      status: status,
+      link: this.getBaseUrl() + "/info/" + anilistId,
+      chapters: chapters,
+    };
+  }
+
+  // ── Video list ─────────────────────────────────────────────────────────────
+
+  async getVideoList(url) {
+    // Chapter URL format: "{anilistId}|{epNum}"
+    // (older versions embedded the slug as a third segment — still handled below)
+    var parts     = url.split("|");
+    var anilistId = parts[0] || "";
+    var epNum     = parts[1] || "";
+
+    var audioPref  = this.getPreference("anidap_audio_pref");
+    var dlMode     = this.getPreference("anidap_download_mode") || "off";
+
+    // Enabled servers (multi-select). Empty/unset means Kiwi only.
+    // Ordered by SERVER_ORDER so Kiwi is tried first whenever it is enabled.
+    var serverSel = this.getPreference("anidap_servers");
+    if (!serverSel || !serverSel.length) serverSel = ["kiwi"];
+    var serverList = [];
+    for (var soi = 0; soi < SERVER_ORDER.length; soi++) {
+      if (serverSel.indexOf(SERVER_ORDER[soi]) >= 0) serverList.push(SERVER_ORDER[soi]);
+    }
+    for (var ssi = 0; ssi < serverSel.length; ssi++) {
+      if (serverList.indexOf(serverSel[ssi]) < 0) serverList.push(serverSel[ssi]);
+    }
+
+    // Cache key includes mode + server list so changing either gives fresh results.
+    var cacheKey = url + "|" + dlMode + "|" + serverList.join(",");
+    var _now = Date.now();
+    if (_vlCache[cacheKey] && _now - (_vlCacheTs[cacheKey] || 0) < VL_CACHE_TTL_MS) {
+      return _vlCache[cacheKey];
+    }
+
+    if (!anilistId || !epNum) return [];
+
+    // Resolve slug — hits _slugCache first (populated by getDetail), so the
+    // Cloudflare-protected endpoint is only called if the cache is cold.
+    // Also handles legacy URLs that still have the slug as parts[2].
+    var slug = parts[2] || await this.getSlug(anilistId);
+    if (!slug) return [];
+
+    var servers      = await this.chadServers(slug, epNum);
+    var subProviders = servers.subProviders || [];
+    var dubProviders = servers.dubProviders || [];
+
+    // ── Stream helpers ─────────────────────────────────────────────────────
+
+    // Last-resort provider when none of the enabled servers carry this episode:
+    // the API default, else the first non-mochi entry. Mochi is MP4-only and is
+    // skipped for HLS playback.
+    function fallbackProvider(list) {
+      var fallback = null;
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].id === "mochi") continue;
+        if (list[i].default) return list[i];
+        if (!fallback) fallback = list[i];
+      }
+      return fallback;
+    }
+
+    // Build provider ordering for one audio type.
+    //
+    //   Playback mode  → ONLY the servers enabled in settings, in serverList
+    //                    order (Kiwi first). Nothing else reaches the quality
+    //                    picker. If none of them serve this episode, one
+    //                    fallback provider is used so playback still works.
+    //
+    //   Download mode  → mochi first (confirmed MP4), then all others. The
+    //                    allow-list is not applied here — downloads need mochi.
+    function buildCategories(type, providers) {
+      if (dlMode !== "on") {
+        var ordered = [];
+        for (var si = 0; si < serverList.length; si++) {
+          for (var pi = 0; pi < providers.length; pi++) {
+            if (providers[pi].id === "mochi") continue; // MP4-only, download mode handles it
+            if (providers[pi].id === serverList[si]) ordered.push(providers[pi]);
+          }
+        }
+        if (ordered.length === 0) {
+          var fb = fallbackProvider(providers);
+          if (fb) ordered = [fb];
+        }
+        return ordered.map(function(p) { return { type: type, provider: p }; });
+      }
+      // Download mode: mochi first (confirmed MP4), then all other providers.
+      var mochi = [];
+      var rest  = [];
+      for (var i = 0; i < providers.length; i++) {
+        if (providers[i].id === "mochi") mochi.push(providers[i]);
+        else                             rest.push(providers[i]);
+      }
+      var ordered = mochi.concat(rest);
+      return ordered.map(function(p) { return { type: type, provider: p }; });
+    }
+
+    var subCats = buildCategories("sub", subProviders);
+    var dubCats = buildCategories("dub", dubProviders);
+
+    // Preferred audio type goes first.
+    var categories = (audioPref === "dub")
+      ? dubCats.concat(subCats)
+      : subCats.concat(dubCats);
+
+    var streams = [];
+    var seen    = {};
+
+    // ── Download mode: prepend site download-endpoint links ────────────────
+    //
+    // chad.anidap.se/rest/api/download uses the AniList ID directly (no slug,
+    // no Cloudflare) and returns the same links the site's download button uses.
+    // These are put first so Mangayomi's downloader auto-selects one.
+    // The /sources streams that follow act as a fallback.
+    if (dlMode === "on") {
+      var dlData = await this.chadDownload(anilistId, epNum);
+      if (dlData) {
+        var dlTypes = (audioPref === "dub") ? ["dub", "sub"] : ["sub", "dub"];
+        for (var dti = 0; dti < dlTypes.length; dti++) {
+          var dlAudio     = dlTypes[dti];
+          var dlAudioData = dlData[dlAudio];
+          // Support both { download: { label: url } } and { label: url } shapes.
+          var dlLinks = (dlAudioData && dlAudioData.download)
+            ? dlAudioData.download
+            : (dlAudioData && typeof dlAudioData === "object" ? dlAudioData : null);
+          if (!dlLinks) continue;
+          var dlKeys = Object.keys(dlLinks);
+          for (var dki = 0; dki < dlKeys.length; dki++) {
+            var dlLabel = dlKeys[dki];
+            var dlUrl   = dlLinks[dlLabel];
+            if (!dlUrl || typeof dlUrl !== "string") continue;
+            var dlKey = dlUrl + "|" + dlAudio;
+            if (seen[dlKey]) continue;
+            seen[dlKey] = true;
+            streams.push({
+              url: dlUrl,
+              originalUrl: dlUrl,
+              quality: dlLabel + " [" + dlAudio.toUpperCase() + "] DOWNLOAD",
+              headers: { "User-Agent": this.ua, "Referer": this.getBaseUrl() + "/" },
+              subtitles: [],
+            });
+          }
+        }
+      }
+    }
+
+    // ── Provider streams ───────────────────────────────────────────────────
+
+    for (var ci = 0; ci < categories.length; ci++) {
+      var cat = categories[ci];
+      if (!cat.provider) continue;
+
+      try {
+        var srcData = await this.chadSources(slug, epNum, cat.type, cat.provider.id);
+        if (!srcData) continue;
+
+        var sources = srcData.sources || [];
+        var tracks  = srcData.tracks  || [];
+
+        // Forward Referer and Origin from the API response — CDNs check
+        // these for hotlink protection; without them the CDN returns 403.
+        var apiHdrs = srcData.headers || {};
+        var streamHdrs = { "User-Agent": this.ua };
+        if (apiHdrs.Referer) streamHdrs.Referer = apiHdrs.Referer;
+        if (apiHdrs.Origin)  streamHdrs.Origin  = apiHdrs.Origin;
+
+        var subtitles = [];
+        (tracks || []).forEach(function(t) {
+          if (!t) return;
+          var file = t.url || t.file;
+          if (!file) return;
+          // Skip thumbnail sprite tracks — their cue text is "thumb.jpg#xywh=…"
+          // which Mangayomi renders as garbled on-screen text.
+          var kind  = (t.kind  || "").toLowerCase();
+          var label = (t.label || "").toLowerCase();
+          if (kind === "thumbnails" || kind === "chapters" || kind === "metadata") return;
+          if (label.indexOf("thumbnail") >= 0) return;
+          if (file.indexOf("#xywh=") >= 0) return;
+          if (/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(file)) return;
+          subtitles.push({ file: file, label: t.label || t.lang || "Unknown" });
+        });
+
+        for (var k = 0; k < sources.length; k++) {
+          var src    = sources[k];
+          var srcUrl = src && src.url;
+          if (!srcUrl) continue;
+
+          srcUrl = this.transformUrl(srcUrl, cat.provider.id);
+
+          var quality = (src.quality || "Auto") +
+            " [" + cat.type.toUpperCase() + "] " +
+            cat.provider.id.toUpperCase();
+          var key = srcUrl + "|" + cat.type;
+          if (seen[key]) continue;
+          seen[key] = true;
+
+          streams.push({
+            url: srcUrl,
+            originalUrl: srcUrl,
+            quality: quality,
+            headers: streamHdrs,
+            subtitles: subtitles,
+          });
+        }
+      } catch (e) { /* skip this provider on error */ }
+    }
+
+    // Store in cache before returning so a follow-up download call is free.
+    _vlCache[cacheKey]   = streams;
+    _vlCacheTs[cacheKey] = Date.now();
+    return streams;
+  }
+
+  // ── Preferences ────────────────────────────────────────────────────────────
+
+  getFilterList() { return []; }
+
+  getSourcePreferences() {
+    return [
+      {
+        key: "anidap_base_url",
+        editTextPreference: {
+          title: "Override base URL",
+          summary: "Site moved to anidap.lol — reset this if you set anidap.se before",
+          value: "https://anidap.lol",
+          dialogTitle: "Override base URL",
+          dialogMessage: "",
+        },
+      },
+      {
+        key: "anidap_title_lang",
+        listPreference: {
+          title: "Preferred title language",
+          summary: "",
+          valueIndex: 1,
+          entries: ["Romaji", "English", "Native"],
+          entryValues: ["romaji", "english", "native"],
+        },
+      },
+      {
+        key: "anidap_audio_pref",
+        listPreference: {
+          title: "Default audio",
+          summary: "Both sub and dub are always available in the quality picker. This sets which one the player selects automatically.",
+          valueIndex: 0,
+          entries: ["Sub (default)", "Dub (default)"],
+          entryValues: ["sub", "dub"],
+        },
+      },
+      {
+        key: "anidap_servers",
+        multiSelectListPreference: {
+          title: "Servers shown in quality picker",
+          summary: "Only the ticked servers appear during playback. Kiwi is the default and is always tried first. Tick more only if Kiwi buffers or lacks an episode.",
+          values: ["kiwi"],
+          entries: ["Kiwi (default)", "Beep", "MIMI", "Yuki", "UWU", "Miku", "Sora", "Loli", "Zone", "Shiro", "Kami", "Vee"],
+          entryValues: ["kiwi", "beep", "mimi", "yuki", "uwu", "miku", "sora", "loli", "zone", "shiro", "kami", "vee"],
+        },
+      },
+      {
+        key: "anidap_download_mode",
+        listPreference: {
+          title: "Download mode",
+          summary: "OFF: normal playback (HLS). ON: direct download links appear first — Mangayomi auto-selects one when you tap the download button. Switch back to OFF to resume normal playback.",
+          valueIndex: 0,
+          entries: ["OFF — Playback", "ON — Download"],
+          entryValues: ["off", "on"],
+        },
+      },
+    ];
+  }
+}
