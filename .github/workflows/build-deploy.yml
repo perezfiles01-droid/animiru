@@ -133,14 +133,21 @@ jobs:
         if: steps.signing.outputs.signed == 'true'
         run: |
           APK=mobile/android/app/build/outputs/apk/debug/app-debug.apk
+
+          # Matched by shape rather than by label. keytool writes the
+          # keystore's as "Certificate fingerprint (SHA-256): AB:CD:..." and
+          # the APK's as "SHA256: AB:CD:...", so no single label works - and
+          # a label that matches neither yields an empty string that compares
+          # unequal to everything, failing a build that was correctly signed.
+          # A 32-byte colon-hex run is unambiguous in either output.
+          fingerprint() { grep -oE '([0-9A-F]{2}:){31}[0-9A-F]{2}' | head -1; }
+
           EXPECTED=$(keytool -list -keystore "$RUNNER_TEMP/animiru.jks" \
-            -storepass "${{ secrets.ANIMIRU_KEYSTORE_PASSWORD }}" 2>/dev/null \
-            | grep -o 'SHA-256: .*' | cut -d' ' -f2)
-          ACTUAL=$(keytool -printcert -jarfile "$APK" 2>/dev/null \
-            | grep -o 'SHA256: .*' | head -1 | cut -d' ' -f2)
+            -storepass "${{ secrets.ANIMIRU_KEYSTORE_PASSWORD }}" 2>/dev/null | fingerprint)
+          ACTUAL=$(keytool -printcert -jarfile "$APK" 2>/dev/null | fingerprint)
           echo "expected $EXPECTED"
           echo "actual   $ACTUAL"
-          if [ -z "$ACTUAL" ] || [ "$EXPECTED" != "$ACTUAL" ]; then
+          if [ -z "$EXPECTED" ] || [ -z "$ACTUAL" ] || [ "$EXPECTED" != "$ACTUAL" ]; then
             echo "::error::The APK is not signed with the stable key, so it \
           will not install over an existing Animiru."
             exit 1
