@@ -11,6 +11,13 @@ import '../styles/VideoPlayer.css';
  * not send. So the servers are all listed and switching is one tap, because
  * moving to another mirror is the only fix available from here.
  *
+ * A server that fails before playback begins is left behind automatically:
+ * there is nothing to lose by moving on, and a dead frame with an error
+ * under it asks the user to do what the app can do itself. Once playback has
+ * started the choice becomes theirs, because a mid-episode failure is often
+ * a passing network problem and switching would throw away their position
+ * for nothing.
+ *
  * Subtitles are fetched and turned into a blob rather than pointed at
  * directly. A <track> from another origin needs crossOrigin on the <video>,
  * and setting that would make the browser demand CORS for the video too -
@@ -33,6 +40,20 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
   const [subtitleError, setSubtitleError] = useState(null);
   const [tracks, setTracks] = useState([]);
 
+  // Servers already known not to work, so a fallback does not return to one
+  // and the list can say which are dead.
+  const [deadServers, setDeadServers] = useState([]);
+  const [autoSwitched, setAutoSwitched] = useState(null);
+  // Whether anything has played. Before it has, a failure is safe to skip;
+  // after it, switching costs the user their position.
+  const startedRef = useRef(false);
+
+  // The failure handler needs the current server list and what has already
+  // failed, but must not make the playback effect depend on them: recording
+  // a dead server would then tear down and reload the video, resetting the
+  // very flag that decides whether switching is safe.
+  const switchingRef = useRef({ visible: [], selected: 0, dead: [] });
+
   /** Whether the source offers both, which decides if the choice is shown. */
   const hasDub = options.some((option) => option.isDub);
   const hasSub = options.some((option) => !option.isDub);
@@ -47,6 +68,8 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
   const current = visible[selected] || visible[0] || null;
   const subtitles = current ? current.subtitles || [] : [];
 
+  switchingRef.current = { visible, selected, dead: deadServers };
+
   const releaseBlobs = useCallback(() => {
     blobUrls.current.forEach((url) => URL.revokeObjectURL(url));
     blobUrls.current = [];
@@ -60,11 +83,15 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
     if (!video || !current) return undefined;
 
     setError(null);
+    startedRef.current = false;
 
     // Carry playback position across a switch, so changing server or quality
     // does not restart the episode.
     const resumeAt = video.currentTime || 0;
     const wasPlaying = !video.paused && !video.ended;
+
+    const onPlaying = () => { startedRef.current = true; };
+    video.addEventListener('playing', onPlaying);
 
     const resume = () => {
       if (resumeAt > 0) video.currentTime = resumeAt;
@@ -75,10 +102,35 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
       }
     };
 
-    /** A server that cannot play is reported so another can be offered. */
+    /**
+     * A server that cannot play.
+     *
+     * Before playback has begun there is nothing to lose, so the next
+     * untried server is used automatically. Afterwards the user decides:
+     * a failure mid-episode is often transient, and switching would discard
+     * their position to fix something that may right itself.
+     */
     const failed = (reason) => {
-      setError(reason);
       if (onServerFailed) onServerFailed(current, reason);
+      setDeadServers((dead) => (dead.includes(current.id) ? dead : [...dead, current.id]));
+
+      if (startedRef.current) {
+        setError(reason);
+        return;
+      }
+
+      const { visible: servers, selected: index, dead } = switchingRef.current;
+      const nextIndex = servers.findIndex((option, position) => (
+        position !== index && option.id !== current.id && !dead.includes(option.id)
+      ));
+
+      if (nextIndex === -1) {
+        setError(`${reason} No other server worked either.`);
+        return;
+      }
+
+      setAutoSwitched({ from: current.server, to: servers[nextIndex].server });
+      setSelected(nextIndex);
     };
 
     // Safari and most Android WebViews play HLS natively, and doing so keeps
@@ -107,11 +159,14 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
     }
 
     return () => {
+      video.removeEventListener('playing', onPlaying);
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
     };
+    // Keyed on the stream alone. Anything else here reloads the video every
+    // time a piece of unrelated state changes.
   }, [current, onServerFailed]);
 
   // A different server carries different subtitles, so anything fetched for
@@ -270,7 +325,10 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
               Server
               <select
                 value={selected}
-                onChange={(e) => setSelected(Number(e.target.value))}
+                onChange={(e) => {
+                  setAutoSwitched(null);
+                  setSelected(Number(e.target.value));
+                }}
               >
                 {visible.map((option, index) => (
                   // Keyed by id, not label: mirrors share labels, and a
@@ -278,6 +336,7 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
                   <option key={option.id} value={index}>
                     {option.server}
                     {option.quality ? ` · ${option.quality}` : ''}
+                    {deadServers.includes(option.id) ? ' (failed)' : ''}
                   </option>
                 ))}
               </select>
@@ -286,14 +345,20 @@ export default function VideoPlayer({ streams, title, poster, onServerFailed }) 
         </div>
       </div>
 
+      {autoSwitched && !error && (
+        <p className="player-notice">
+          {autoSwitched.from} did not play — switched to {autoSwitched.to}.
+        </p>
+      )}
+
       {subtitleError && <p className="player-error">{subtitleError}</p>}
       {error && (
         <div className="player-error">
           <p>{error}</p>
-          {visible.length > 1 && (
+          {visible.filter((option) => !deadServers.includes(option.id)).length > 0 && (
             <p className="player-error-hint">
-              Try another server — {visible.length - 1} other
-              {visible.length === 2 ? '' : 's'} available.
+              Try another server — {visible.filter((o) => !deadServers.includes(o.id)).length}{' '}
+              still untried.
             </p>
           )}
         </div>

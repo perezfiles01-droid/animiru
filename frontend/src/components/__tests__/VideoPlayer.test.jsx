@@ -18,6 +18,20 @@ jest.mock('hls.js', () => ({
   default: { isSupported: () => false, Events: {}, ErrorTypes: {} }
 }));
 
+/**
+ * Fires the media element's error event, which is how a dead server
+ * announces itself for a non-HLS source.
+ */
+function failCurrentServer(container) {
+  const video = container.querySelector('video');
+  video.dispatchEvent(new Event('error'));
+}
+
+/** Marks playback as started, after which a failure is no longer skipped. */
+function startPlayback(container) {
+  container.querySelector('video').dispatchEvent(new Event('playing'));
+}
+
 jest.mock('../../services/extensions/client', () => ({
   subtitleUrl: (url, referer) =>
     `http://api.test/extensions/subtitle?url=${encodeURIComponent(url)}`
@@ -215,5 +229,85 @@ describe('subtitles', () => {
 
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     expect(global.fetch.mock.calls[0][0]).toContain('referer=');
+  });
+});
+
+
+describe('when a server fails', () => {
+  const servers = () => [
+    option({ id: 'a', server: 'First', type: 'mp4', url: 'https://cdn.test/a.mp4' }),
+    option({ id: 'b', server: 'Second', type: 'mp4', url: 'https://cdn.test/b.mp4' }),
+    option({ id: 'c', server: 'Third', type: 'mp4', url: 'https://cdn.test/c.mp4' })
+  ];
+
+  it('moves to the next server by itself before anything has played', async () => {
+    // Nothing to lose at this point, and a dead frame with an error under it
+    // asks the user to do what the app can do itself.
+    const { container } = renderPlayer(servers());
+
+    failCurrentServer(container);
+
+    expect(await screen.findByText(/First did not play — switched to Second/))
+      .toBeInTheDocument();
+  });
+
+  it('marks a server that failed, so it is not chosen again unknowingly', async () => {
+    const { container } = renderPlayer(servers());
+    failCurrentServer(container);
+
+    await screen.findByText(/switched to Second/);
+    expect(screen.getByRole('option', { name: /First · 1080p \(failed\)/ }))
+      .toBeInTheDocument();
+  });
+
+  it('does not switch once playback has started', async () => {
+    // Mid-episode failures are often transient, and switching would discard
+    // the viewer's position to fix something that may right itself.
+    const { container } = renderPlayer(servers());
+
+    startPlayback(container);
+    failCurrentServer(container);
+
+    expect(await screen.findByText(/could not be played/)).toBeInTheDocument();
+    expect(screen.queryByText(/switched to/)).not.toBeInTheDocument();
+  });
+
+  it('offers the remaining servers when it stops automatically', async () => {
+    const { container } = renderPlayer(servers());
+    startPlayback(container);
+    failCurrentServer(container);
+
+    expect(await screen.findByText(/still untried/)).toBeInTheDocument();
+  });
+
+  it('says so when nothing else is left to try', async () => {
+    const { container } = renderPlayer([
+      option({ id: 'only', server: 'Only', type: 'mp4', url: 'https://cdn.test/a.mp4' })
+    ]);
+
+    failCurrentServer(container);
+
+    expect(await screen.findByText(/No other server worked either/)).toBeInTheDocument();
+  });
+
+  it('tells the page which server failed', async () => {
+    const onServerFailed = jest.fn();
+    const { container } = renderPlayer(servers(), { onServerFailed });
+
+    failCurrentServer(container);
+
+    await waitFor(() => expect(onServerFailed).toHaveBeenCalled());
+    expect(onServerFailed.mock.calls[0][0]).toMatchObject({ server: 'First' });
+  });
+
+  it('clears the switch notice when a server is chosen by hand', async () => {
+    const { container } = renderPlayer(servers());
+    failCurrentServer(container);
+    await screen.findByText(/switched to Second/);
+
+    await userEvent.selectOptions(screen.getByLabelText('Server'), '2');
+
+    await waitFor(() =>
+      expect(screen.queryByText(/switched to Second/)).not.toBeInTheDocument());
   });
 });
