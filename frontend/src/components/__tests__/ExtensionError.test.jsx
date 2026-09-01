@@ -124,3 +124,38 @@ describe('ExtensionErrorReport', () => {
     expect(screen.queryByText(/selectFirst\(\) returns null/)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Which build produced the failure.
+ *
+ * The same error was reported three times running while the fix sat
+ * unmerged in the repository, because nothing on screen distinguished "the
+ * fix does not work" from "this build does not have the fix". A screenshot
+ * has to answer that on its own.
+ */
+describe('naming the build that failed', () => {
+  const openWith = async (build) => {
+    const error = errorWith();
+    error.diagnostics.build = build;
+    render(<ExtensionErrorReport error={error} />);
+    await userEvent.click(screen.getByText(/Show details/i));
+  };
+
+  it('names the backend build the failure came from', async () => {
+    await openWith({ shortCommit: 'ce1651f', branch: 'main' });
+    expect(screen.getByText(/ce1651f/)).toBeInTheDocument();
+  });
+
+  it('names the branch that build came from', async () => {
+    await openWith({ shortCommit: 'ce1651f', branch: 'main' });
+    expect(screen.getByText(/main/)).toBeInTheDocument();
+  });
+
+  // A backend too old to stamp its build reads as unknown - never as
+  // though the build were current. That is the case this exists for: it is
+  // exactly what a deployment predating this change will send.
+  it('says unknown when the failure carries no build', async () => {
+    await openWith(undefined);
+    expect(screen.getByText(/Backend: unknown/)).toBeInTheDocument();
+  });
+});

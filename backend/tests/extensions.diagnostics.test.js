@@ -10,7 +10,7 @@
  */
 
 const { runExtension, ExtensionError } = require('../extensions');
-const { explain, locate, excerpt } = require('../extensions/diagnostics');
+const { explain, locate, excerpt, buildDiagnostics } = require('../extensions/diagnostics');
 const http = require('../extensions/http');
 
 /** Runs a source and returns the diagnostics from its failure. */
@@ -280,5 +280,41 @@ describe('a source blocked by the site\'s bot protection', () => {
   it('still does not recognise a genuinely unknown failure', () => {
     expect(report('something nobody has seen before').cause)
       .toMatch(/does not recognise/);
+  });
+});
+
+/**
+ * Every failure report says which build produced it.
+ *
+ * Three sessions in a row ended with a fix in the repository and the same
+ * failure still on the user's screen, because the branch had never been
+ * merged. Nothing in the report distinguished "the fix does not work" from
+ * "this build does not have the fix", so the same cause was diagnosed three
+ * times from screenshots that could not identify themselves.
+ */
+describe('stamping the build onto a failure', () => {
+  const GIT = ['VERCEL_GIT_COMMIT_SHA', 'GIT_COMMIT_SHA', 'VERCEL_GIT_COMMIT_REF'];
+  const saved = {};
+
+  beforeEach(() => {
+    for (const key of GIT) { saved[key] = process.env[key]; delete process.env[key]; }
+  });
+  afterEach(() => {
+    for (const key of GIT) {
+      if (saved[key] === undefined) delete process.env[key]; else process.env[key] = saved[key];
+    }
+  });
+
+  it('carries the commit that served the request', () => {
+    process.env.VERCEL_GIT_COMMIT_SHA = 'ce1651fc2997da2294adfd3de80e5ffb47a0fad8';
+
+    const report = buildDiagnostics({ message: 'timeout of 14955ms exceeded' });
+
+    expect(report.build.shortCommit).toBe('ce1651f');
+  });
+
+  // A local run must not read as a deployment.
+  it('says unknown rather than guessing', () => {
+    expect(buildDiagnostics({ message: 'x' }).build.shortCommit).toBe('unknown');
   });
 });

@@ -14,6 +14,8 @@
  * the site blocked the fetch, not that the markup moved.
  */
 
+const { buildInfo } = require('../build-info');
+
 /** Where the sandbox compiles extension source, as it appears in a stack. */
 const EXTENSION_FRAME = /animiru:extension:(\d+):(\d+)/;
 
@@ -263,6 +265,10 @@ function buildDiagnostics({ message, stack, code, requests = [], logs = [], sour
   return {
     message: String(message || 'Unknown error'),
     method: method || null,
+    // The build that produced this failure, carried with it. Looking it up
+    // afterwards answers a different question: what is deployed now, rather
+    // than what served this request.
+    build: buildInfo(),
     source: {
       name: source.name || null,
       version: source.version || null,
