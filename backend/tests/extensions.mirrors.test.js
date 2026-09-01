@@ -87,20 +87,57 @@ describe('when the home cannot be reached', () => {
     expect((await run({})).baseUrl).toBe('https://two.test');
   });
 
-  // Three whole runs is already most of the run budget.
-  it('gives up after three, however many are listed', async () => {
-    const asked = serve({ 'home.test': down(), 'one.test': down(), 'two.test': down() });
+  /*
+   * This replaces a check that asserted it stopped after exactly three.
+   * Three was the wrong limit in both directions - too few for a source
+   * naming seventeen domains, and too many when each attempt took a fresh
+   * timeout of its own - so the behaviour deliberately changed and its
+   * check changed with it. What is asserted now is the limit that is real.
+   */
+  it('tries every home listed, not a fixed few', async () => {
+    const asked = serve({
+      'home.test': down(), 'one.test': down(), 'two.test': down(), 'three.test': down()
+    });
 
     await expect(run({})).rejects.toThrow();
-    expect(asked).toEqual(['home.test', 'one.test', 'two.test']);
+    expect(asked).toEqual(['home.test', 'one.test', 'two.test', 'three.test']);
+  });
+
+  // A dead domain fails in milliseconds, so a spent budget means homes that
+  // hung. Starting another whole run on what is left produces a timeout
+  // rather than an answer.
+  it('stops when the budget is spent rather than starting a run it cannot finish', async () => {
+    const slow = () => new Promise((resolve, reject) => {
+      setTimeout(() => reject(down()), 120);
+    });
+    const asked = [];
+    jest.spyOn(http, 'request').mockImplementation(({ url }) => {
+      asked.push(new URL(url).host);
+      return slow();
+    });
+
+    await expect(run({ timeoutMs: 6050 })).rejects.toThrow(/Ran out of time|timeout/);
+    expect(asked).toEqual(['home.test']);
+  });
+
+  // The first attempt is always made: a caller who set an unusually small
+  // budget still wants one honest try rather than an instant refusal.
+  it('always makes one attempt, however little time it was given', async () => {
+    const asked = serve({ 'home.test': '["Naruto"]' });
+    expect((await run({ timeoutMs: 1 })).result.list[0].name).toBe('Naruto');
+    expect(asked).toEqual(['home.test']);
   });
 
   // The home's failure is the one worth reporting; the rest are consolation.
+  // Every listed home is down here on purpose: one that merely answered
+  // emptily would be returned instead, since an empty answer beats an error
+  // the user can do nothing about.
   it('reports the first failure, not the last', async () => {
     serve({
       'home.test': Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }),
       'one.test': down(),
-      'two.test': down()
+      'two.test': down(),
+      'three.test': down()
     });
 
     await expect(run({})).rejects.toThrow(/ECONNRESET/);

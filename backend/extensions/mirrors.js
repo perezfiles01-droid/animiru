@@ -19,14 +19,32 @@ const { runExtension, ExtensionError } = require('./sandbox');
 const { DeviceFetchRequired } = require('./handoff');
 
 /**
- * How many homes one run may try.
+ * How long one rotation may spend, across every home it tries.
  *
- * Each attempt is a whole run, so the budget is real: three at fifteen
- * seconds apiece already approaches the run's own deadline. A source with
- * eight mirrors does not get eight tries; it gets the first three that have
- * not already been ruled out.
+ * A fixed count was the wrong limit. Three attempts is too few for a source
+ * naming seventeen domains - "until one works" stops well short of working -
+ * and too many when each attempt is allowed its own full timeout, since
+ * three of those in series outlast any request the app is willing to wait
+ * for.
+ *
+ * Time is the real constraint, so time is what is budgeted. Homes are tried
+ * until one produces something or the budget is spent, and each attempt is
+ * given only what remains rather than a fresh allowance of its own. A dead
+ * domain usually fails in milliseconds - DNS does not resolve, the
+ * connection is refused - so a spent budget means homes that hung, and
+ * seventeen fast failures cost less than one slow one.
  */
-const MAX_ATTEMPTS = 3;
+const ROTATION_BUDGET_MS = 45000;
+
+/**
+ * The least time an attempt is worth starting with.
+ *
+ * Beginning a whole run with two seconds left produces a timeout rather
+ * than an answer, and spends the last of the budget doing it. The first
+ * attempt is always made regardless: a caller who set an unusually small
+ * budget still wants one honest try.
+ */
+const MIN_ATTEMPT_MS = 6000;
 
 /**
  * The methods where an empty answer means the home is no good.
@@ -116,8 +134,7 @@ async function runWithMirrors(options = {}) {
   const excluded = Array.isArray(options.excludeBaseUrls)
     ? options.excludeBaseUrls.filter((value) => typeof value === 'string' && value)
     : [];
-  const candidates = homes(options.source, options.preferredBaseUrl, excluded);
-  const attempts = candidates.slice(0, MAX_ATTEMPTS);
+  const attempts = homes(options.source, options.preferredBaseUrl, excluded);
 
   /*
    * Every home ruled out, and nothing left to try.
@@ -140,9 +157,29 @@ async function runWithMirrors(options = {}) {
   let firstError = null;
   let firstEmpty = null;
 
+  /*
+   * One deadline for the whole rotation, not one per home.
+   *
+   * Each attempt is handed what is left of it, so trying another home can
+   * never extend how long the caller waits - which is what makes trying
+   * every home affordable.
+   */
+  const deadline = Date.now() + (Number(options.timeoutMs) || ROTATION_BUDGET_MS);
+  let ranOut = false;
+
   for (const baseUrl of attempts.length ? attempts : [undefined]) {
+    const remaining = deadline - Date.now();
+    if (tried.length && remaining < MIN_ATTEMPT_MS) {
+      ranOut = true;
+      break;
+    }
+
     try {
-      const outcome = await runExtension({ ...options, baseUrl });
+      const outcome = await runExtension({
+        ...options,
+        baseUrl,
+        timeoutMs: Math.max(remaining, MIN_ATTEMPT_MS)
+      });
       tried.push({ baseUrl, ok: true });
 
       if (isUsable(options.method, outcome.result)) {
@@ -165,7 +202,23 @@ async function runWithMirrors(options = {}) {
   if (firstEmpty) return { ...firstEmpty, mirrorsTried: tried };
   if (firstError) throw firstError;
 
+  // Reached only when the budget ran out before any home answered either
+  // way. Saying so distinguishes "they were all slow" from "they were all
+  // wrong", which are different problems with different fixes.
+  if (ranOut) {
+    throw new ExtensionError(
+      `Ran out of time trying homes for ${options.method}() - ${tried.length} tried`
+    );
+  }
+
   throw new ExtensionError(`No usable home for ${options.method}()`);
 }
 
-module.exports = { runWithMirrors, homes, isUsable, MAX_ATTEMPTS, EMPTY_IS_FAILURE };
+module.exports = {
+  runWithMirrors,
+  homes,
+  isUsable,
+  ROTATION_BUDGET_MS,
+  MIN_ATTEMPT_MS,
+  EMPTY_IS_FAILURE
+};
