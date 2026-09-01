@@ -8,6 +8,7 @@
 
 import api from '../api';
 import { fetchOnDevice, isAvailable } from './deviceFetch';
+import { getSourceHome, setSourceHome } from './storage';
 
 /** Unwraps the backend's error shape so callers see a usable message. */
 function describe(err, fallback) {
@@ -72,9 +73,26 @@ function deviceFetchNeeded(err) {
  *
  * @returns {Promise<{result:*, logs:Object[], requests:Object[], durationMs:number}>}
  */
-export async function runSource({ codeUrl, code, version, method, args, source, preferences }) {
+export async function runSource({
+  codeUrl, code, version, method, args, source, preferences, excludeBaseUrls
+}) {
   const canFetchOnDevice = isAvailable();
   const fetched = {};
+
+  /*
+   * Which of the source's homes worked last time.
+   *
+   * A source may name several domains running the same software, and the
+   * backend keeps no per-user state - it runs, and it forgets. So this is
+   * the only thing that can remember, and without it a source whose usual
+   * home is down would fall through to a mirror on every single screen,
+   * paying the failed attempt each time.
+   *
+   * Absent or stale is harmless: the rotation starts from the source's own
+   * home, as it does the first time.
+   */
+  const sourceKey = source && source.key;
+  const preferredBaseUrl = sourceKey ? getSourceHome(sourceKey) : null;
 
   for (let round = 0; round <= MAX_DEVICE_FETCHES; round += 1) {
     try {
@@ -89,11 +107,21 @@ export async function runSource({ codeUrl, code, version, method, args, source, 
         // Saying so only when it is true: the backend turns a refusal into
         // an instruction to fetch, and on the web nobody could follow it.
         allowHandoff: canFetchOnDevice,
-        fetched
+        fetched,
+        preferredBaseUrl: preferredBaseUrl || undefined,
+        // Homes already found wanting on this episode: the player tried
+        // every server one of them gave and none would play.
+        excludeBaseUrls: Array.isArray(excludeBaseUrls) && excludeBaseUrls.length
+          ? excludeBaseUrls
+          : undefined
       }, {
         // Scraping several pages is slower than the app-wide default allows.
         timeout: 45000
       });
+
+      // Remember where it worked, so the next screen starts there.
+      if (sourceKey && data && data.baseUrl) setSourceHome(sourceKey, data.baseUrl);
+
       return data;
     } catch (err) {
       const needed = deviceFetchNeeded(err);

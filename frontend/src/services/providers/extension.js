@@ -222,14 +222,17 @@ export function createExtensionProvider(source) {
    * carries the requests it made, and when a source returns nothing that
    * trace is the only evidence of why.
    */
-  async function run(method, args) {
+  async function run(method, args, options = {}) {
     return runSource({
       codeUrl: source.codeUrl,
       version: source.version,
       method,
       args,
       source,
-      preferences: getPreferences(source.key)
+      preferences: getPreferences(source.key),
+      // Homes already found wanting on this episode. Asking one of them
+      // again returns the same streams that would not play.
+      excludeBaseUrls: options.excludeBaseUrls
     });
   }
 
@@ -354,9 +357,12 @@ export function createExtensionProvider(source) {
    * Subtitles and audio tracks travel with each entry: they are per-server,
    * and one mirror having English subtitles says nothing about the next.
    */
-  async function getStreams(episode) {
+  // Destructured rather than taken as an options object: this function
+  // already builds a local named `options` - the list of streams it
+  // returns - and a second one shadows it.
+  async function getStreams(episode, { excludeBaseUrls } = {}) {
     const id = typeof episode === 'string' ? episode : episode.id;
-    const outcome = await run('getVideoList', [id]);
+    const outcome = await run('getVideoList', [id], { excludeBaseUrls });
     const videos = outcome.result || [];
 
     const seenUrls = new Set();
@@ -425,7 +431,10 @@ export function createExtensionProvider(source) {
       });
     }
 
-    return { options };
+    // Which of the source's homes produced these. When none of them play,
+    // the screen names it as one to skip and asks again - without it, the
+    // next attempt would go back to the same home for the same streams.
+    return { options, home: outcome.baseUrl || null };
   }
 
   const capabilities = [CAPABILITIES.SEARCH, CAPABILITIES.PLAYBACK];

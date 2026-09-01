@@ -197,3 +197,88 @@ describe('when neither the server nor the device can reach the site', () => {
     expect(err.diagnostics.fix).toMatch(/Other sources are unaffected/i);
   });
 });
+
+/**
+ * Remembering which of a source's homes worked.
+ *
+ * A source may name several domains running the same software, and the
+ * backend keeps no per-user state. Without this, a source whose usual home
+ * is down would fall through to a mirror on every screen, paying the failed
+ * attempt each time.
+ */
+describe('the home a source last worked from', () => {
+  const KEY = 'repo|Roaming';
+  const withKey = (extra) => ({
+    method: 'getPopular', args: [1], source: { key: KEY, name: 'Roaming' }, ...extra
+  });
+
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('is sent so the backend starts there', async () => {
+    window.localStorage.setItem(
+      'animiru.extensions.homes', JSON.stringify({ [KEY]: 'https://two.test' })
+    );
+    api.post.mockResolvedValue(ran);
+
+    await runSource(withKey());
+
+    expect(api.post.mock.calls[0][1].preferredBaseUrl).toBe('https://two.test');
+  });
+
+  it('is remembered from what the run reports', async () => {
+    api.post.mockResolvedValue({ data: { ...ran.data, baseUrl: 'https://one.test' } });
+
+    await runSource(withKey());
+
+    expect(JSON.parse(window.localStorage.getItem('animiru.extensions.homes')))
+      .toEqual({ [KEY]: 'https://one.test' });
+  });
+
+  it('is not sent when there is nothing remembered', async () => {
+    api.post.mockResolvedValue(ran);
+    await runSource(withKey());
+
+    expect(api.post.mock.calls[0][1].preferredBaseUrl).toBeUndefined();
+  });
+
+  // Nothing to key it by, so nothing is stored - and the run still works.
+  it('is skipped for a source with no key', async () => {
+    api.post.mockResolvedValue({ data: { ...ran.data, baseUrl: 'https://one.test' } });
+
+    const outcome = await runSource({ method: 'getPopular', args: [1] });
+
+    expect(outcome.result).toBeTruthy();
+    expect(window.localStorage.getItem('animiru.extensions.homes')).toBeNull();
+  });
+});
+
+/**
+ * Ruling out a home whose streams would not play.
+ *
+ * The player tries every server a home gave it. When none play, asking
+ * that home again returns the same unplayable list - so the screen names
+ * it and the backend rotation moves past it.
+ */
+describe('homes already found wanting', () => {
+  it('are sent so the backend skips them', async () => {
+    api.post.mockResolvedValue(ran);
+
+    await runSource({
+      method: 'getVideoList', args: ['ep-1'], excludeBaseUrls: ['https://home.test']
+    });
+
+    expect(api.post.mock.calls[0][1].excludeBaseUrls).toEqual(['https://home.test']);
+  });
+
+  // Sending an empty list would say "rule out nothing", which is what
+  // omitting it already means - and the backend treats the two the same.
+  it.each([[[]], [undefined], ['not a list']])('are omitted for %p', async (bad) => {
+    api.post.mockResolvedValue(ran);
+
+    await runSource({ method: 'getVideoList', args: ['ep-1'], excludeBaseUrls: bad });
+
+    expect(api.post.mock.calls[0][1].excludeBaseUrls).toBeUndefined();
+  });
+});

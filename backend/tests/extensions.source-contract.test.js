@@ -487,3 +487,119 @@ describe('reading HTML', () => {
     expect(structureIn(code)).toEqual([]);
   });
 });
+
+/**
+ * A source's other homes.
+ *
+ * A source may name domains running the same software, and a run that
+ * cannot use one is tried against the next. Two ways that goes wrong
+ * silently, both checked here.
+ *
+ * A mirror list is written by hand, so a typo becomes a domain that is
+ * asked and can never answer - costing an attempt out of three on exactly
+ * the run where the usual home is already down.
+ *
+ * And a source only follows its home if it reads it. Thirteen of the
+ * sixteen build every URL from this.source.baseUrl and gain mirrors for
+ * free; the rest hardcode their domain, so a mirror list on one of those
+ * would be decorative - the rotation would move the base and the source
+ * would go on asking the same dead host.
+ */
+describe('the homes a source names', () => {
+  /** The mirrors a source declares, or an empty list. */
+  function declaredMirrors(code) {
+    const [entry] = extractMetadata(code) || [];
+    return (entry && Array.isArray(entry.mirrors)) ? entry.mirrors : [];
+  }
+
+  const readsItsBase = (code) => /this\.source\.baseUrl/.test(executable(code));
+
+  it.each(sources.map((s) => [s.file]))('%s names each home once, as a URL', (file) => {
+    const { code } = sources.find((s) => s.file === file);
+    const [entry] = extractMetadata(code) || [];
+    const mirrors = declaredMirrors(code);
+
+    const seen = new Set(entry && entry.baseUrl ? [entry.baseUrl.replace(/\/+$/, '')] : []);
+    for (const mirror of mirrors) {
+      expect(typeof mirror).toBe('string');
+      expect(mirror).toMatch(/^https:\/\//);
+
+      const key = mirror.replace(/\/+$/, '');
+      // Its own home listed again, or the same mirror twice, spends an
+      // attempt on a host already known to be unusable.
+      expect(seen.has(key)).toBe(false);
+      seen.add(key);
+    }
+  });
+
+  it.each(sources.map((s) => [s.file]))('%s follows its home if it names others', (file) => {
+    const { code } = sources.find((s) => s.file === file);
+    if (declaredMirrors(code).length === 0) return;
+
+    expect(readsItsBase(code)).toBe(true);
+  });
+});
+
+/**
+ * The checks above pass today because no source names a mirror yet, which
+ * is exactly when a check is most likely to be quietly wrong. These plant
+ * the mistakes they exist to catch.
+ */
+describe('recognising a bad mirror list', () => {
+  const entryWith = (fields) => `
+    const mangayomiSources = [{
+      "name": "Planted", "id": 1, "version": "1.0.0",
+      "baseUrl": "https://home.test"${fields}
+    }];
+    class DefaultExtension extends MProvider {
+      async getPopular(p) { return { list: [], hasNextPage: false }; }
+    }
+  `;
+
+  const mirrorsOf = (code) => {
+    const [entry] = extractMetadata(code) || [];
+    return (entry && Array.isArray(entry.mirrors)) ? entry.mirrors : [];
+  };
+
+  it('reads a mirror list that is there', () => {
+    expect(mirrorsOf(entryWith(', "mirrors": ["https://one.test"]')))
+      .toEqual(['https://one.test']);
+  });
+
+  it('reads none when there is none', () => {
+    expect(mirrorsOf(entryWith(''))).toEqual([]);
+  });
+
+  it.each([
+    ['a plain typo', 'one.test'],
+    ['an unencrypted host', 'http://one.test'],
+    ['something that is not a URL at all', 'mirror']
+  ])('would flag %s', (_, bad) => {
+    const [mirror] = mirrorsOf(entryWith(`, "mirrors": ["${bad}"]`));
+    expect(/^https:\/\//.test(mirror)).toBe(false);
+  });
+
+  it('would flag a home listed as its own mirror', () => {
+    const code = entryWith(', "mirrors": ["https://home.test/"]');
+    const [entry] = extractMetadata(code);
+    const seen = new Set([entry.baseUrl.replace(/\/+$/, '')]);
+
+    expect(seen.has(mirrorsOf(code)[0].replace(/\/+$/, ''))).toBe(true);
+  });
+
+  // The anidap and miruro shape: mirrors would move a base the source
+  // never reads.
+  it('would flag a source that does not read its own base', () => {
+    const hardcoded = `
+      const mangayomiSources = [{ "name": "Fixed", "id": 2, "version": "1.0.0",
+        "baseUrl": "https://home.test", "mirrors": ["https://one.test"] }];
+      class DefaultExtension extends MProvider {
+        async getPopular(p) {
+          await new Client().get("https://home.test/list");
+          return { list: [], hasNextPage: false };
+        }
+      }
+    `;
+    expect(/this\.source\.baseUrl/.test(executable(hardcoded))).toBe(false);
+  });
+});

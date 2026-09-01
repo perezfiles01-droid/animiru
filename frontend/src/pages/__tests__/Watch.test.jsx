@@ -28,16 +28,24 @@ jest.mock('../../services/providers/registry', () => ({
 beforeEach(() => getProviders.mockReturnValue([]));
 // The player needs media APIs jsdom does not implement; none of it is under
 // test here, only what it is handed.
-jest.mock('../../components/VideoPlayer', () => ({ streams, title, startAt, mediaKey, onProgress }) => (
+jest.mock('../../components/VideoPlayer', () => (
+  { streams, title, startAt, mediaKey, onProgress, onExhausted }
+) => (
   <div
     data-testid="player"
     data-options={streams.options.length}
     data-start-at={startAt}
     data-media-key={mediaKey}
+    data-home={streams.home || ''}
   >
     {title}
     <button type="button" onClick={() => onProgress({ position: 521, duration: 1440 })}>
       report progress
+    </button>
+    {/* Stands in for every server failing to play, which is the only
+        thing that tells the page this home is spent. */}
+    <button type="button" onClick={() => onExhausted && onExhausted('Dead.')}>
+      exhaust servers
     </button>
   </div>
 ));
@@ -326,5 +334,103 @@ describe('remembering the position', () => {
     await renderWatch();
 
     expect(screen.getByTestId('player')).toHaveAttribute('data-media-key', '/e/1');
+  });
+});
+
+/**
+ * Asking another home when every server on this one has failed.
+ *
+ * The player tries each server it was handed and reports when none play.
+ * That is the moment the source may still be able to help: it can run on
+ * several domains, and the episode may be servable from another. Asking
+ * the same home again would return the same unplayable list, so it is
+ * named as one to skip.
+ */
+describe('when every server on a home fails', () => {
+  const streamsFrom = (home, label) => ({
+    home,
+    options: [{ label, url: `https://cdn.test/${label}.m3u8`, type: 'hls', height: 1080 }]
+  });
+
+  const exhaust = () => userEvent.click(screen.getByText('exhaust servers'));
+
+  it('asks again with that home ruled out', async () => {
+    const getStreams = jest.fn()
+      .mockResolvedValueOnce(streamsFrom('https://home.test', 'a'))
+      .mockResolvedValueOnce(streamsFrom('https://one.test', 'b'));
+    getProvider.mockReturnValue(makeProvider({ getStreams }));
+    await renderWatch();
+
+    await act(async () => { await exhaust(); });
+
+    expect(getStreams).toHaveBeenLastCalledWith('/e/1', {
+      excludeBaseUrls: ['https://home.test']
+    });
+  });
+
+  it('plays what the other home gave', async () => {
+    const getStreams = jest.fn()
+      .mockResolvedValueOnce(streamsFrom('https://home.test', 'a'))
+      .mockResolvedValueOnce(streamsFrom('https://one.test', 'b'));
+    getProvider.mockReturnValue(makeProvider({ getStreams }));
+    await renderWatch();
+
+    await act(async () => { await exhaust(); });
+
+    expect(screen.getByTestId('player')).toHaveAttribute('data-home', 'https://one.test');
+  });
+
+  // Each home that fails is added, so the third attempt skips both.
+  it('rules out every home that has failed, not only the first', async () => {
+    const getStreams = jest.fn()
+      .mockResolvedValueOnce(streamsFrom('https://home.test', 'a'))
+      .mockResolvedValueOnce(streamsFrom('https://one.test', 'b'))
+      .mockResolvedValueOnce(streamsFrom('https://two.test', 'c'));
+    getProvider.mockReturnValue(makeProvider({ getStreams }));
+    await renderWatch();
+
+    await act(async () => { await exhaust(); });
+    await act(async () => { await exhaust(); });
+
+    expect(getStreams).toHaveBeenLastCalledWith('/e/1', {
+      excludeBaseUrls: ['https://home.test', 'https://one.test']
+    });
+  });
+
+  // No other home has it, and the run says so. The player's message was
+  // the first half of the truth; this is the rest.
+  it('reports the failure when no other home can serve it', async () => {
+    const getStreams = jest.fn()
+      .mockResolvedValueOnce(streamsFrom('https://home.test', 'a'))
+      .mockRejectedValueOnce(new Error('No other home left to try for getVideoList()'));
+    getProvider.mockReturnValue(makeProvider({ getStreams }));
+    await renderWatch();
+
+    await act(async () => { await exhaust(); });
+
+    expect(await screen.findByText(/No other home left to try/)).toBeInTheDocument();
+  });
+
+  // A source that names no homes has nothing to rule out, and asking again
+  // would fetch the same list from the same place.
+  it('does nothing when the run named no home', async () => {
+    const getStreams = jest.fn().mockResolvedValue({
+      options: [{ label: '1080p', url: 'https://cdn.test/a.m3u8', type: 'hls' }]
+    });
+    getProvider.mockReturnValue(makeProvider({ getStreams }));
+    await renderWatch();
+
+    await act(async () => { await exhaust(); });
+
+    expect(getStreams).toHaveBeenCalledTimes(1);
+  });
+
+  // The first look at an episode rules out nothing.
+  it('starts an episode with nothing ruled out', async () => {
+    const provider = makeProvider();
+    getProvider.mockReturnValue(provider);
+    await renderWatch();
+
+    expect(provider.getStreams).toHaveBeenCalledWith('/e/1');
   });
 });
