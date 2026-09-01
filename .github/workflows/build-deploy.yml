@@ -124,7 +124,11 @@ jobs:
         run: |
           cd mobile/android
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          # The APK has to carry this build's version, or Android reads an
+          # install as reinstalling the same app rather than updating it.
+          ./gradlew --no-daemon assembleDebug \
+            -PanimiruVersionCode=${{ github.run_number }} \
+            -PanimiruVersionName=1.0.${{ github.run_number }}
 
       # Proves the key actually reached the APK. A misnamed secret would
       # otherwise produce a debug-signed build that looks fine here and fails
@@ -161,7 +165,9 @@ jobs:
           ANIMIRU_KEY_ALIAS: animiru
         run: |
           cd mobile/android
-          ./gradlew --no-daemon assembleRelease
+          ./gradlew --no-daemon assembleRelease \
+            -PanimiruVersionCode=${{ github.run_number }} \
+            -PanimiruVersionName=1.0.${{ github.run_number }}
 
       - name: Find APK
         run: find mobile/android -name "*.apk" -type f -exec ls -lh {} \;

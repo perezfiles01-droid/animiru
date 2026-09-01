@@ -10,8 +10,26 @@ android {
         applicationId "com.animiru.app"
         minSdk 21
         targetSdk 34
-        versionCode 1
-        versionName "1.0.0"
+        /*
+         * The build's own version, not a constant.
+         *
+         * These were hardcoded, so every APK ever built - v1.0.108,
+         * v1.0.115, v1.0.117 - told Android it was version code 1, name
+         * 1.0.0. The release tag and the version compiled into the web
+         * bundle both came from the CI run number; the package metadata was
+         * never joined up to them.
+         *
+         * Android reads an install whose version code has not increased as
+         * reinstalling the same app rather than updating it, and several
+         * OEM installers refuse it outright - which leaves uninstalling
+         * first as the only way through, and uninstalling deletes the app
+         * storage holding the library, sources and settings.
+         *
+         * A local build has no run number and stays at 1: it is not
+         * updating anything.
+         */
+        versionCode (project.findProperty('animiruVersionCode') ?: '1') as Integer
+        versionName (project.findProperty('animiruVersionName') ?: '1.0.0')
     }
 
     /**
