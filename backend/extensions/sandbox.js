@@ -234,7 +234,14 @@ async function runExtension(options = {}) {
     const invocationJson = JSON.stringify({
       method,
       args,
-      source: options.source || {}
+      source: options.source || {},
+      // A base URL chosen for this run, so a method can be run against a
+      // mirror rather than the source's usual home. Passed as its own field
+      // rather than folded into the entry: the entry describes the source,
+      // and a rotation is a decision about this one attempt.
+      baseUrlOverride: typeof options.baseUrl === 'string' && options.baseUrl
+        ? options.baseUrl
+        : null
     });
 
     vm.runInContext(
@@ -296,6 +303,12 @@ async function runExtension(options = {}) {
               merged[j] = declared[j];
             }
           }
+        }
+
+        // Applied after the merge so it wins whatever the entries hold,
+        // and only when one was given.
+        if (__invocation.baseUrlOverride) {
+          merged.baseUrl = __invocation.baseUrlOverride;
         }
 
         instance.source = merged;
