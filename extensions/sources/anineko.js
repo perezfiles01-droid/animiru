@@ -113,6 +113,14 @@ class DefaultExtension extends MProvider {
     return (res && res.body) || "";
   }
 
+  // Parsed rather than matched, as AniWave does it. A regex over raw HTML
+  // breaks on any markup change and needs its own entity decoding and tag
+  // stripping; the parser gives both free.
+  async fetchDoc(path, headers) {
+    var res = await this.client.get(this.abs(path), headers || this.headers);
+    return new Document((res && res.body) || "");
+  }
+
   decode(s) {
     return (s || "")
       .replace(/&#0*39;|&apos;|&rsquo;/g, "'")
@@ -139,40 +147,53 @@ class DefaultExtension extends MProvider {
   //       <img src="COVER" alt="Title" ...>
   //     ...
   //     <h3 class="nv-anime-title"><a href="/watch/slug">Title</a></h3>
-  parseList(html) {
+  parseList(doc) {
     var list = [];
     var seen = {};
+    var cards = doc.select("article.nv-anime-card");
 
-    // Prefer the <h3> title (exact) and fall back to the img alt attribute.
-    var titles = {};
-    var tRx = /<h3[^>]*class="[^"]*nv-anime-title[^"]*"[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
-    var tm;
-    while ((tm = tRx.exec(html)) !== null) {
-      var thref = tm[1].replace(/^https?:\/\/[^/]+/, "");
-      if (!titles[thref]) titles[thref] = this.stripTags(tm[2]);
-    }
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var thumb = card.selectFirst("a.nv-anime-thumb");
+      if (!thumb) continue;
 
-    var rx = /<a[^>]*class="[^"]*nv-anime-thumb[^"]*"[^>]*href="([^"]+)"[^>]*>\s*<img[^>]*src="([^"]+)"[^>]*alt="([^"]*)"/g;
-    var m;
-    while ((m = rx.exec(html)) !== null) {
-      var href = m[1].replace(/^https?:\/\/[^/]+/, "");
+      var href = this.path(thumb.attr("href"));
       if (!href || seen[href]) continue;
-      seen[href] = true;
-      var name = titles[href] || this.decode(m[3]);
+
+      // The h3 anchor carries the exact title; a card without one leaves the
+      // cover's alt as the only name available.
+      var img = card.selectFirst("img");
+      var titleLink = card.selectFirst("h3.nv-anime-title a");
+      var name = titleLink ? (titleLink.text || "").trim() : "";
+      if (!name && img) name = (img.attr("alt") || "").trim();
       if (!name) continue;
-      list.push({ name: name, link: this.abs(href), imageUrl: m[2] });
+
+      seen[href] = true;
+      list.push({
+        name: name,
+        link: this.abs(href),
+        imageUrl: img ? (img.attr("src") || "") : "",
+      });
     }
     return list;
   }
 
+  /** A link as this site's own path, however the page wrote it. */
+  path(href) {
+    return (href || "").replace(/^https?:\/\/[^/]+/, "");
+  }
+
   // The pager renders a "next" link only while more pages exist.
-  hasNext(html, page) {
-    if (/class='page-item next'/.test(html) || /class="page-item next"/.test(html)) return true;
+  hasNext(doc, page) {
+    // The pager renders a "next" item only while more pages exist, so its
+    // presence settles it. Failing that, the highest page the pager offers
+    // beats the one being read.
+    if (doc.selectFirst(".page-item.next")) return true;
+
     var max = 0;
-    var rx = /data-page='(\d+)'|data-page="(\d+)"/g;
-    var m;
-    while ((m = rx.exec(html)) !== null) {
-      var n = parseInt(m[1] || m[2], 10);
+    var links = doc.select("[data-page]");
+    for (var i = 0; i < links.length; i++) {
+      var n = parseInt(links[i].attr("data-page") || "0", 10);
       if (n > max) max = n;
     }
     return max > (page || 1);
@@ -180,8 +201,8 @@ class DefaultExtension extends MProvider {
 
   async listPage(path, page) {
     var sep = path.indexOf("?") >= 0 ? "&" : "?";
-    var html = await this.fetchHtml(path + sep + "page=" + (page || 1));
-    return { list: this.parseList(html), hasNextPage: this.hasNext(html, page) };
+    var doc = await this.fetchDoc(path + sep + "page=" + (page || 1));
+    return { list: this.parseList(doc), hasNextPage: this.hasNext(doc, page) };
   }
 
   get supportsLatest() {
