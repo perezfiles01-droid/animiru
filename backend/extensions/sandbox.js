@@ -17,7 +17,21 @@ const { createOps } = require('./ops');
 const { RUNTIME_SOURCE } = require('./runtime');
 const { buildDiagnostics } = require('./diagnostics');
 
-const DEFAULT_TIMEOUT_MS = 20000;
+/**
+ * How long a whole run may take.
+ *
+ * This is a budget for the run, not for one request, and the two were close
+ * enough to be the same number: one request may take 15 seconds, so at 20
+ * the second slow request in a run had nothing left, and a source that
+ * fetched a list and then a page could not finish on a slow site. Now a
+ * handful of them fit.
+ *
+ * The ceiling is the caller's own deadline - the app gives up on a run at
+ * 45 seconds - because a timeout reported by the app carries none of the
+ * diagnostics that make a failure readable. Staying inside it means the run
+ * is always the one that gives up, and always with a trace.
+ */
+const DEFAULT_TIMEOUT_MS = 40000;
 const MAX_TIMEOUT_MS = 60000;
 const MAX_SOURCE_BYTES = 512 * 1024;
 const MAX_RESULT_BYTES = 4 * 1024 * 1024;
