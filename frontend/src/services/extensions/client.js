@@ -102,14 +102,45 @@ export async function runSource({ codeUrl, code, version, method, args, source, 
       try {
         fetched[needed.key] = await fetchOnDevice(needed.request);
       } catch (deviceError) {
-        // The device could not make it either, so the original refusal is
-        // the honest thing to report - with why the fallback failed too.
+        /*
+         * Both roads are shut, and that is the finding.
+         *
+         * The server could not reach the site and neither could this device,
+         * on a different network entirely. Two failures from two places mean
+         * the site is not answering anybody - not that this app is broken,
+         * and not that the connection is at fault.
+         *
+         * This used to report the two failures end to end, which read as a
+         * chain of things going wrong inside the app. Someone looking at it
+         * could only conclude the app was still broken; the one thing it
+         * actually established - the site is down - was the thing it did not
+         * say. The technical detail stays a tap away.
+         */
+        const serverSaid = (err.response.data && err.response.data.error)
+          || 'The server could not reach the site.';
+
         const failure = new Error(
-          `${(err.response.data && err.response.data.error) || 'The site refused the server'} `
-          + `The device could not fetch it either: ${deviceError.message}`
+          'This site is not answering. Both the server and this device tried '
+          + 'and neither could reach it, so the site itself is down rather '
+          + 'than your connection or the app. Trying again later usually works.'
         );
         failure.requests = [];
         failure.logs = [];
+        failure.diagnostics = {
+          message: failure.message,
+          cause: 'The site did not answer the server or this device.',
+          fix: 'Two networks, the same result: the site is down or refusing '
+            + 'everyone, and nothing in the app or the source can reach it '
+            + 'until that changes. Other sources are unaffected.',
+          source: {},
+          requests: [],
+          logs: [],
+          failedRequests: [],
+          attempts: {
+            server: serverSaid,
+            device: deviceError.message
+          }
+        };
         throw failure;
       }
     }

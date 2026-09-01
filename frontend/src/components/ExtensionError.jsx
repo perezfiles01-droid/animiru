@@ -140,6 +140,22 @@ export default function ExtensionErrorReport({ error, compact }) {
             </section>
           )}
 
+          {diagnostics.attempts && (
+            /*
+             * What each road reported, for a failure where both were tried.
+             * The headline says the site is down; this is the evidence for
+             * that, kept out of the way of someone who only needs the
+             * conclusion.
+             */
+            <section>
+              <h4>What was tried</h4>
+              <ul className="ext-error-attempts">
+                <li>Server: {diagnostics.attempts.server}</li>
+                <li>This device: {diagnostics.attempts.device}</li>
+              </ul>
+            </section>
+          )}
+
           <BuildStamp build={diagnostics.build} />
 
           {diagnostics.source.codeUrl && (
