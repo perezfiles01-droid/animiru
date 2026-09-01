@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { CURRENT_VERSION } from '../services/updates';
 import '../styles/Extensions.css';
 
 /**
@@ -14,6 +15,36 @@ import '../styles/Extensions.css';
  * whole answer: a 403 above a null selector means the site blocked the
  * fetch, not that the markup moved.
  */
+
+/**
+ * Which app and which backend produced this failure.
+ *
+ * A screenshot of an error cannot be acted on without it. The same failure
+ * was reported three times running while the fix sat in the repository
+ * unmerged, because nothing on screen distinguished "the fix does not work"
+ * from "this build does not have the fix". Now the report says.
+ *
+ * Read from the failure rather than fetched: the backend stamps its build
+ * onto the report it sends, so this names the code that actually served the
+ * request. Asking afterwards would answer a different question - what is
+ * deployed now - and would be a request made from a screen whose whole
+ * subject is a request that failed.
+ */
+function BuildStamp({ build }) {
+  return (
+    <section>
+      <h4>Build</h4>
+      <ul className="ext-error-build">
+        <li>App: {CURRENT_VERSION || 'development'}</li>
+        <li>
+          Backend: {(build && build.shortCommit) || 'unknown'}
+          {build && build.branch && build.branch !== 'unknown' && ` (${build.branch})`}
+        </li>
+      </ul>
+    </section>
+  );
+}
+
 export default function ExtensionErrorReport({ error, compact }) {
   const [open, setOpen] = useState(false);
 
@@ -108,6 +139,8 @@ export default function ExtensionErrorReport({ error, compact }) {
               </ul>
             </section>
           )}
+
+          <BuildStamp build={diagnostics.build} />
 
           {diagnostics.source.codeUrl && (
             <section>
