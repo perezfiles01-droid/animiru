@@ -46,52 +46,61 @@ class DefaultExtension extends MProvider {
     return res.body || "";
   }
 
+  // Parsed rather than matched, as AniWave and AniNeko read their pages. A
+  // regex over raw HTML breaks on any markup change and needs its own
+  // entity decoding; the parser gives that free.
+  async fetchDoc(path) {
+    return new Document(await this.fetchHtml(path));
+  }
+
+  /** A site path made absolute, leaving one that already is. */
+  _abs(value) {
+    if (!value) return "";
+    return value.indexOf("http") === 0
+      ? value
+      : this.source.baseUrl + "/" + value.replace(/^\/+/, "");
+  }
+
   // Parse a list page (popular.php / new.php / search.php).
   // Site structure per item:
   //   <a href="anime.php?CODE"><img src="image.php?CODE"></a>
   //   <a href="anime.php?CODE">Title Text</a>
   // Attributes use double quotes; no class on img tags.
-  parseList(html) {
+  parseList(doc) {
     var list = [];
     var seen = {};
+    var anchors = doc.select('a[href^="anime.php?"]');
 
-    // First pass: build href → imgSrc map from image-anchor elements.
-    var imgMap = {};
-    var imgRx = /<a[^>]+href=["'](anime\.php\?[\w]+)["'][^>]*>\s*<img[^>]+src=["']([^"']+)["']/g;
-    var im;
-    while ((im = imgRx.exec(html)) !== null) {
-      if (!imgMap[im[1]]) imgMap[im[1]] = im[2];
+    // The cover and the title sit in different anchors that share an href,
+    // so the covers are collected first and matched by it.
+    var covers = {};
+    for (var i = 0; i < anchors.length; i++) {
+      var img = anchors[i].selectFirst("img");
+      if (!img) continue;
+      var key = anchors[i].attr("href");
+      if (key && !covers[key]) covers[key] = img.attr("src") || "";
     }
 
-    // Second pass: find plain-text title anchors and assemble list items.
-    var titleRx = /<a[^>]+href=["'](anime\.php\?[\w]+)["'][^>]*>([^<]{2,120})<\/a>/g;
-    var tm;
-    while ((tm = titleRx.exec(html)) !== null) {
-      var href = tm[1];
-      var name = tm[2].trim();
-      if (!name || seen[href]) continue;
+    for (var j = 0; j < anchors.length; j++) {
+      var anchor = anchors[j];
+      // A title anchor holds plain text and nothing else. One wrapping any
+      // markup is the cover, or a card, and its text would be assembled
+      // from whatever it contains.
+      if ((anchor.innerHtml || "").indexOf("<") !== -1) continue;
+
+      var href = anchor.attr("href");
+      var name = (anchor.text || "").trim();
+      if (!href || !name || seen[href]) continue;
+      if (name.length < 2 || name.length > 120) continue;
+
       seen[href] = true;
-      var imgSrc = imgMap[href] || "";
-      var imageUrl = imgSrc ? (imgSrc.indexOf("http") === 0 ? imgSrc : this.source.baseUrl + "/" + imgSrc) : "";
       list.push({
-        name: this._decodeHtml(name),
-        link: this.source.baseUrl + "/" + href,
-        imageUrl: imageUrl,
+        name: name,
+        link: this._abs(href),
+        imageUrl: covers[href] ? this._abs(covers[href]) : "",
       });
     }
     return list;
-  }
-
-  _decodeHtml(s) {
-    return (s || "")
-      .replace(/&#0*39;|&apos;/g, "'")
-      .replace(/&#0*34;|&quot;/g, '"')
-      .replace(/&#0*38;|&amp;/g, "&")
-      .replace(/&#0*60;|&lt;/g, "<")
-      .replace(/&#0*62;|&gt;/g, ">")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&#(\d+);/g, function(_m, n) { return String.fromCharCode(parseInt(n, 10)); })
-      .replace(/&#x([0-9a-fA-F]+);/g, function(_m, n) { return String.fromCharCode(parseInt(n, 16)); });
   }
 
   get supportsLatest() {
@@ -101,8 +110,7 @@ class DefaultExtension extends MProvider {
   async getPopular(page) {
     // The site returns all items on one HTML page. We slice client-side so
     // Mangayomi only receives 30 items at a time and can load more on scroll.
-    var html = await this.fetchHtml("popular.php");
-    var all = this.parseList(html);
+    var all = this.parseList(await this.fetchDoc("popular.php"));
     var pageSize = 30;
     var start = (page - 1) * pageSize;
     var slice = all.slice(start, start + pageSize);
@@ -110,8 +118,7 @@ class DefaultExtension extends MProvider {
   }
 
   async getLatestUpdates(page) {
-    var html = await this.fetchHtml("new.php");
-    var all = this.parseList(html);
+    var all = this.parseList(await this.fetchDoc("new.php"));
     var pageSize = 30;
     var start = (page - 1) * pageSize;
     var slice = all.slice(start, start + pageSize);
@@ -121,8 +128,8 @@ class DefaultExtension extends MProvider {
   async search(query, page, filters) {
     if (page > 1) return { list: [], hasNextPage: false };
     try {
-      var html = await this.fetchHtml("search.php?s=" + encodeURIComponent(query));
-      return { list: this.parseList(html), hasNextPage: false };
+      var doc = await this.fetchDoc("search.php?s=" + encodeURIComponent(query));
+      return { list: this.parseList(doc), hasNextPage: false };
     } catch (e) {
       return { list: [], hasNextPage: false };
     }
@@ -138,83 +145,74 @@ class DefaultExtension extends MProvider {
   }
 
   async getDetail(url) {
-    var html = await this.fetchHtml(url);
+    var doc = await this.fetchDoc(url);
 
-    // Title
-    var name = "";
-    var nameMatch = html.match(/<div class='infotitle c'>([^<]+)<\/div>/);
-    if (nameMatch) name = this._decodeHtml(nameMatch[1].trim());
+    var titleEl = doc.selectFirst(".infotitle");
+    var name = titleEl ? (titleEl.text || "").trim() : "";
 
-    // Cover image — detail page uses class='posterimg' for the main poster.
-    // Do NOT match 'coverimg'; those are related-anime thumbnails lower on the page.
-    // Fall back to og:image which always points to the correct art.
+    // The detail page's own poster carries class posterimg. Not coverimg:
+    // those are the related-anime thumbnails lower down. og:image always
+    // points at the right art and stands in when there is no poster.
     var imageUrl = "";
-    var posterMatch = html.match(/<img[^>]+class='[^']*posterimg[^']*'[^>]+src='([^']+)'/);
-    if (posterMatch) {
-      var rel = posterMatch[1];
-      imageUrl = rel.indexOf("http") === 0 ? rel : this.source.baseUrl + "/" + rel.replace(/^\/+/, "");
-    }
+    var poster = doc.selectFirst("img.posterimg");
+    if (poster) imageUrl = this._abs(poster.attr("src"));
     if (!imageUrl) {
-      var og = html.match(/<meta property='og:image' content='([^']+)'/);
-      if (og) imageUrl = og[1];
+      var og = doc.selectFirst('meta[property="og:image"]');
+      if (og) imageUrl = og.attr("content") || "";
     }
 
-    // Description
-    var description = "";
-    var descMatch = html.match(/<div class='infodes c'>([\s\S]*?)<\/div>/);
-    if (descMatch) {
-      description = this._decodeHtml(descMatch[1].replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
-    }
+    var descEl = doc.selectFirst(".infodes");
+    var description = descEl ? (descEl.text || "").replace(/\s+/g, " ").trim() : "";
 
-    // Genres — every <a class='boxitem ...'> in the tags section is a genre tag.
+    // Every tags.php link in the tag section is a genre.
     var genre = [];
-    var genreSection = html.match(/<div class='infotags[^']*'[^>]*>([\s\S]*?)<\/div>\s*<div class='infoyear/);
-    if (genreSection) {
-      var gRx = /<a[^>]+href='tags\.php\?[^']+'[^>]*>([^<]+)<\/a>/g;
-      var gm;
-      while ((gm = gRx.exec(genreSection[1])) !== null) {
-        genre.push(this._decodeHtml(gm[1].trim()));
+    var seenGenre = {};
+    var tagSection = doc.selectFirst(".infotags");
+    var tags = tagSection
+      ? tagSection.select('a[href^="tags.php?"]')
+      : doc.select('a[href^="tags.php?"]');
+    for (var g = 0; g < tags.length; g++) {
+      var label = (tags[g].text || "").trim();
+      if (!label) {
+        // A tag link with no text still names itself in the query.
+        var q = (tags[g].attr("href") || "").match(/tag=([^&']+)/);
+        if (q) label = decodeURIComponent(q[1]);
       }
-    }
-    // Fallback: just look for any tags.php links
-    if (genre.length === 0) {
-      var gRx2 = /<a[^>]+href='tags\.php\?tag=([^']+)'/g;
-      var seen = {};
-      var gm2;
-      while ((gm2 = gRx2.exec(html)) !== null) {
-        var t = decodeURIComponent(gm2[1]);
-        if (!seen[t]) { seen[t] = true; genre.push(t); }
+      if (label && !seenGenre[label]) {
+        seenGenre[label] = true;
+        genre.push(label);
       }
     }
 
-    // Status — site shows "Status:" inline followed by an inline div.
-    // "Episodes:" 11 etc. are in inline divs after labels. Use "Status" label if present.
+    // Sidebar rows: <div class='inline c'>Status</div><div class='inline c2'>...</div>
     var status = 5;
-    var statusBlock = html.match(/Status[\s\S]{0,40}?<div[^>]+class='inline c2'>([^<]+)</);
-    if (statusBlock) status = this.statusCode(statusBlock[1]);
-    else {
-      // If no status label, infer: if "Episodes" count appears followed by total, treat as completed; else default unknown
-      // Site mostly shows finished anime; default to 5 (UNKNOWN) when not stated.
+    var labels = doc.select(".inline.c");
+    for (var i = 0; i < labels.length; i++) {
+      if ((labels[i].text || "").trim().toLowerCase() !== "status") continue;
+      var value = labels[i].nextElementSibling;
+      if (value) status = this.statusCode((value.text || "").trim());
+      break;
     }
 
-    // Episodes — every anchor with onclick="gatea(...)" is an episode.
+    // Every anchor with an onclick of gatea(...) is an episode; the key it
+    // passes is the chapter url, and the number is in the watch2 element
+    // the anchor wraps.
     var chapters = [];
-    var epRx = /<a[^>]*onclick='gatea\(\\?["']([a-f0-9]+)\\?["']\)'[^>]*>([\s\S]*?)<\/a>/g;
-    var em;
-    while ((em = epRx.exec(html)) !== null) {
-      var hash = em[1];
-      var body = em[2];
-      var numMatch = body.match(/watch2[^>]*>(\d+(?:\.\d+)?)/);
-      var epNum = numMatch ? numMatch[1] : String(chapters.length + 1);
+    var episodes = doc.select("a[onclick]");
+    for (var e = 0; e < episodes.length; e++) {
+      var onclick = episodes[e].attr("onclick") || "";
+      var key = onclick.match(/gatea\(\\?["']([a-f0-9]+)\\?["']\)/);
+      if (!key) continue;
+
+      var numberEl = episodes[e].selectFirst(".watch2");
+      var number = numberEl ? (numberEl.text || "").trim().match(/^(\d+(?:\.\d+)?)/) : null;
       chapters.push({
-        name: "Episode " + epNum,
-        url: hash, // chapter URL is just the gate cookie key
+        name: "Episode " + (number ? number[1] : String(chapters.length + 1)),
+        url: key[1],
       });
     }
-    // Latest episode is usually first in the source; reverse so episode 1 is at the
-    // bottom (Mangayomi convention: most recent at top).
-    // The site already lists newest first, so no reverse needed.
 
+    // The site already lists newest first, which is the order the app wants.
     return {
       name: name,
       imageUrl: imageUrl,
