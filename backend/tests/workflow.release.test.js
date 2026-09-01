@@ -90,9 +90,35 @@ const GRADLE = path.join(__dirname, '..', '..', 'mobile', 'android', 'app', 'bui
 const gradle = fs.readFileSync(GRADLE, 'utf8');
 
 describe('the version the APK carries', () => {
-  it('is read from the build rather than hardcoded', () => {
-    expect(gradle).toMatch(/versionCode\s*\(?\s*project\.findProperty\(\s*'animiruVersionCode'/);
-    expect(gradle).toMatch(/versionName\s*\(\s*project\.findProperty\(\s*'animiruVersionName'/);
+  it('reads both versions from the properties the build supplies', () => {
+    expect(gradle).toMatch(/project\.findProperty\(\s*'animiruVersionCode'\s*\)/);
+    expect(gradle).toMatch(/project\.findProperty\(\s*'animiruVersionName'\s*\)/);
+  });
+
+  // The hardcoded pair is the bug itself, and the shape to keep out.
+  it('does not hardcode either of them', () => {
+    expect(gradle).not.toMatch(/versionCode\s+\d+\s*$/m);
+    expect(gradle).not.toMatch(/versionName\s+["'][\d.]+["']\s*$/m);
+  });
+
+  /*
+   * Read into locals before the android block, not written inline in it.
+   * Groovy parses `versionCode (expr) as Integer` as a call to versionCode
+   * followed by a cast of its result, so the DSL received the wrong value
+   * and the build failed with "Value is null" - green tests, red CI.
+   */
+  it('assigns the DSL a plain value, with no cast to misparse', () => {
+    // Comments explain the misparse, so searching the raw file finds the
+    // explanation rather than the code. Read what executes.
+    const code = gradle
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('//'))
+      .join('\n');
+
+    expect(code).toMatch(/versionCode\s+animiruVersionCode\s*$/m);
+    expect(code).toMatch(/versionName\s+animiruVersionName\s*$/m);
+    expect(code).not.toMatch(/versionCode[^\n]*\bas\s+Integer/);
   });
 
   it('is passed to every gradle build the workflow runs', () => {
