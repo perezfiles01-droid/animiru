@@ -17,7 +17,8 @@ const router = express.Router();
 
 const repository = require('./../extensions/repository');
 const { fetchSubtitle, SubtitleError } = require('./../extensions/subtitles');
-const { runExtension, ExtensionError, CALLABLE_METHODS } = require('./../extensions');
+const { ExtensionError, CALLABLE_METHODS } = require('./../extensions');
+const { runWithMirrors } = require('./../extensions/mirrors');
 const { DeviceFetchRequired, requestKey } = require('./../extensions/handoff');
 
 /**
@@ -114,7 +115,7 @@ router.post('/run', async (req, res, next) => {
       source = { ...source, ...(fetched.sources[0] || {}) };
     }
 
-    const outcome = await runExtension({
+    const outcome = await runWithMirrors({
       code: extensionCode,
       method,
       args: body.args || [],
@@ -126,7 +127,14 @@ router.post('/run', async (req, res, next) => {
       // - it has a real browser on the user's own connection - and only it
       // sends these two.
       allowHandoff: Boolean(body.allowHandoff),
-      fetched: body.fetched && typeof body.fetched === 'object' ? body.fetched : undefined
+      fetched: body.fetched && typeof body.fetched === 'object' ? body.fetched : undefined,
+      // Where this source worked last time, if the caller remembers. The
+      // server keeps no per-user state, so the app is the only thing that
+      // can carry it - and without it a source whose home is down pays the
+      // same failure on every screen.
+      preferredBaseUrl: typeof body.preferredBaseUrl === 'string'
+        ? body.preferredBaseUrl
+        : undefined
     });
 
     return res.json(outcome);

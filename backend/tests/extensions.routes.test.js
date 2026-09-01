@@ -227,3 +227,89 @@ describe('GET /api/extensions/methods', () => {
     expect(res.body.methods).toEqual(expect.arrayContaining(['search', 'getDetail', 'getVideoList']));
   });
 });
+
+/**
+ * A run reaching a source's other homes.
+ *
+ * The rotation itself is covered in extensions.mirrors.test.js. What these
+ * check is that the route actually uses it, and hands back which home
+ * worked - without which the app cannot remember, and a source whose home
+ * is down pays the same failure on every screen.
+ */
+describe('POST /run against a source with mirrors', () => {
+  const ROAMING = `
+    const mangayomiSources = [{ name: 'Roaming', id: 91, version: '1.0.0' }];
+    class DefaultExtension extends MProvider {
+      async getPopular(page) {
+        const res = await new Client().get(this.source.baseUrl + '/list');
+        const names = res.body ? JSON.parse(res.body) : [];
+        return { list: names.map((n) => ({ name: n, link: '' })), hasNextPage: false };
+      }
+      getSourcePreferences() { return []; }
+    }
+  `;
+
+  const SOURCE = {
+    name: 'Roaming',
+    baseUrl: 'https://home.test',
+    mirrors: ['https://one.test', 'https://two.test']
+  };
+
+  const serveByHost = (byHost) => {
+    jest.spyOn(http, 'request').mockImplementation(async ({ url }) => {
+      const answer = byHost[new URL(url).host];
+      if (answer instanceof Error) throw answer;
+      return { statusCode: 200, headers: {}, url, body: answer === undefined ? '[]' : answer };
+    });
+  };
+
+  const down = () => Object.assign(new Error('timeout of 5000ms exceeded'), { code: 'ETIMEDOUT' });
+
+  it('falls through to a mirror when the home is down', async () => {
+    serveByHost({ 'home.test': down(), 'one.test': '["One Piece"]' });
+
+    const { body } = await request(app)
+      .post('/api/extensions/run')
+      .send({ code: ROAMING, method: 'getPopular', args: [1], source: SOURCE })
+      .expect(200);
+
+    expect(body.result.list[0].name).toBe('One Piece');
+  });
+
+  it('says which home produced the answer', async () => {
+    serveByHost({ 'home.test': down(), 'one.test': '["One Piece"]' });
+
+    const { body } = await request(app)
+      .post('/api/extensions/run')
+      .send({ code: ROAMING, method: 'getPopular', args: [1], source: SOURCE })
+      .expect(200);
+
+    expect(body.baseUrl).toBe('https://one.test');
+  });
+
+  it('starts from the home the caller says worked last time', async () => {
+    serveByHost({ 'home.test': '["Home"]', 'two.test': '["Two"]' });
+
+    const { body } = await request(app)
+      .post('/api/extensions/run')
+      .send({
+        code: ROAMING, method: 'getPopular', args: [1], source: SOURCE,
+        preferredBaseUrl: 'https://two.test'
+      })
+      .expect(200);
+
+    expect(body.result.list[0].name).toBe('Two');
+    expect(body.baseUrl).toBe('https://two.test');
+  });
+
+  it('still reports a failure when no home works', async () => {
+    serveByHost({ 'home.test': down(), 'one.test': down(), 'two.test': down() });
+
+    const { body } = await request(app)
+      .post('/api/extensions/run')
+      .send({ code: ROAMING, method: 'getPopular', args: [1], source: SOURCE })
+      .expect(422);
+
+    expect(body.diagnostics).toBeTruthy();
+  });
+});
