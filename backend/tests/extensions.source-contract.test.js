@@ -29,14 +29,82 @@ const sources = fs.readdirSync(SOURCES_DIR)
  * "X-Requested-With: XMLHttpRequest" header, and one carries a comment
  * saying atob() is unavailable. Searching the raw text finds the mention
  * rather than the use, so the search happens on what actually executes.
+ *
+ * This is a scanner rather than a sequence of regex replacements, because
+ * the regex version was wrong in a way that hid it: AniLight has a line
+ * comment mentioning the path "/user/*", and the block-comment pattern
+ * matched that "/*" against a "*\/" 297 lines later, deleting half the file
+ * before the search ever ran. A check searching a file with its middle
+ * removed reports no findings and reads exactly like a check that passed.
+ *
+ * States are tracked in one pass, so a "/*" inside a line comment is a line
+ * comment, a quote inside a comment is a comment, and a "//" inside a string
+ * is a string. Regex literals are recognised well enough not to be mistaken
+ * for division and have their contents swallowed as a string.
  */
 function executable(code) {
-  return code
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
-    .replace(/`(?:\\.|[^`\\])*`/g, '""')
-    .replace(/'(?:\\.|[^'\\\n])*'/g, '""')
-    .replace(/"(?:\\.|[^"\\\n])*"/g, '""');
+  const source = String(code);
+  let out = '';
+  let i = 0;
+  /** The last significant character emitted, for the regex-or-divide call. */
+  let previous = '';
+
+  const keep = (character) => {
+    out += character;
+    if (!/\s/.test(character)) previous = character;
+  };
+
+  while (i < source.length) {
+    const two = source.slice(i, i + 2);
+
+    if (two === '//') {
+      while (i < source.length && source[i] !== '\n') i += 1;
+      continue;
+    }
+
+    if (two === '/*') {
+      const close = source.indexOf('*/', i + 2);
+      i = close === -1 ? source.length : close + 2;
+      out += ' ';
+      continue;
+    }
+
+    const character = source[i];
+
+    if (character === '"' || character === "'" || character === '`') {
+      i += 1;
+      while (i < source.length) {
+        if (source[i] === '\\') { i += 2; continue; }
+        if (source[i] === character) { i += 1; break; }
+        i += 1;
+      }
+      out += '""';
+      previous = '"';
+      continue;
+    }
+
+    // A slash here is either division or the start of a regex literal. After
+    // a value it divides; after an operator or an opening bracket it cannot.
+    if (character === '/' && /^$|[([{,;:=!&|?+\-*%~^<>]/.test(previous)) {
+      i += 1;
+      let inClass = false;
+      while (i < source.length && source[i] !== '\n') {
+        if (source[i] === '\\') { i += 2; continue; }
+        if (source[i] === '[') inClass = true;
+        else if (source[i] === ']') inClass = false;
+        else if (source[i] === '/' && !inClass) { i += 1; break; }
+        i += 1;
+      }
+      out += '""';
+      previous = '"';
+      continue;
+    }
+
+    keep(character);
+    i += 1;
+  }
+
+  return out;
 }
 
 /** The index just past the argument list that starts at `open`. */
@@ -52,6 +120,11 @@ function afterArguments(body, open) {
   return -1;
 }
 
+/**
+ * Every use of `name` as a global, ignoring the ways it can appear while
+ * meaning something else: `this.fetch()` and `obj.fetch()` are a source's
+ * own method, and `fetch(url) {` is where it defines one.
+ */
 function usesGlobal(code, name) {
   const body = executable(code);
   const calls = new RegExp(`(^|[^.\\w$])(new\\s+)?${name}\\s*\\(`, 'gm');
@@ -216,5 +289,107 @@ describe('finding a global the sandbox does not have', () => {
   it('reads through a definition split across lines', () => {
     expect(usesGlobal('async fetch(\n  url,\n  referer\n) {\n  return 1;\n}', 'fetch'))
       .toBe(false);
+  });
+});
+
+/**
+ * Every source reaches the network through the one op that can be fixed.
+ *
+ * This is what makes a fix in the shared transport reach all of them at
+ * once: browser identity, the retry, the device handoff for a 403 and the
+ * device handoff for a connection that was dropped instead. A source that
+ * fetched its own way would get none of it, and would keep failing after
+ * every one of those fixes had shipped.
+ *
+ * The forbidden-globals check above is the other half - it stops a source
+ * reaching for fetch or XMLHttpRequest. This half says the door it must use
+ * is actually the one it uses.
+ */
+describe('the one door out', () => {
+  /*
+   * Playback Diagnostic makes no requests at all: it returns fixed public
+   * test-video URLs so playback can be checked without a scraper in the
+   * way. Exempt because it has nothing to route, not because it routes
+   * around anything.
+   */
+  const NO_NETWORK = ['playbackdiag.js'];
+
+  it.each(sources.map((s) => [s.file]))('%s fetches through Client, or not at all', (file) => {
+    const { code } = sources.find((s) => s.file === file);
+    const body = executable(code);
+
+    if (NO_NETWORK.includes(file)) {
+      expect(body).not.toMatch(/new\s+Client\s*\(/);
+      return;
+    }
+
+    expect(body).toMatch(/new\s+Client\s*\(/);
+  });
+
+  // A census, so a source added without network access has to be declared
+  // rather than quietly widening the exemption.
+  it('has exactly one source that makes no requests', () => {
+    const silent = sources.filter(({ code }) => !/new\s+Client\s*\(/.test(executable(code)));
+    expect(silent.map((s) => s.file)).toEqual(NO_NETWORK);
+  });
+});
+
+/**
+ * The stripper has to leave the code behind.
+ *
+ * These exist because of a real failure in this file: the first version
+ * stripped block comments with a regex, before line comments. AniLight has
+ * a line comment mentioning the path "/user/*", and that "/*" matched a
+ * "*\/" 297 lines later - so half the file was deleted before any search
+ * ran. Every check built on it reported nothing and looked exactly like a
+ * check that passed.
+ *
+ * A stripper that eats code cannot be noticed by the checks that use it.
+ * It has to be tested directly.
+ */
+describe('removing comments and strings without removing code', () => {
+  it('does not treat a path inside a line comment as a block comment', () => {
+    const code = [
+      '// the site gates /user/* behind a login',
+      'const client = new Client();',
+      'const r = await fetch(u);'
+    ].join('\n');
+
+    // The line below the comment must survive, or nothing can be found in it.
+    expect(executable(code)).toMatch(/new\s+Client\s*\(/);
+    expect(usesGlobal(code, 'fetch')).toBe(true);
+  });
+
+  it('keeps the code that follows a real block comment', () => {
+    expect(executable('/* gone */ const client = new Client();'))
+      .toMatch(/new\s+Client\s*\(/);
+  });
+
+  it('does not let a quote inside a comment open a string', () => {
+    const code = "// the site's own login\nconst client = new Client();";
+    expect(executable(code)).toMatch(/new\s+Client\s*\(/);
+  });
+
+  it('does not let a slash inside a string start a comment', () => {
+    expect(executable('const u = "https://x.test/a"; const c = new Client();'))
+      .toMatch(/new\s+Client\s*\(/);
+  });
+
+  it('does not let a quote inside a regex literal open a string', () => {
+    expect(executable("const q = /[\"']/g; const c = new Client();"))
+      .toMatch(/new\s+Client\s*\(/);
+  });
+
+  // The real files are the case that matters: every bundled source has to
+  // come through with its code intact, or every check above is blind.
+  it.each(sources.map((s) => [s.file]))('%s keeps its executable code', (file) => {
+    const { code } = sources.find((s) => s.file === file);
+    const stripped = executable(code);
+
+    // Balanced braces are a cheap proof that no block was swallowed whole.
+    const opens = (stripped.match(/\{/g) || []).length;
+    const closes = (stripped.match(/\}/g) || []).length;
+    expect(opens).toBe(closes);
+    expect(stripped).toMatch(/class\s+DefaultExtension/);
   });
 });
