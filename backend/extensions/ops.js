@@ -373,9 +373,17 @@ function createOps({ preferences = {}, timeoutMs, fetched, allowHandoff = false 
         // device to hand it to, and a refusal is just a refusal.
         if (allowHandoff && isRefusal(response)) {
           entry.handedOff = true;
+          // The URL the source asked for, not `entry.url` - which the
+          // transport has by now rewritten to whichever hop finally
+          // answered. The replay looks this request up by what the source
+          // asks for, so naming a redirect target here would file the
+          // device's answer under a key the next run never asks about, and
+          // the same request would be refused every round until the app
+          // gave up and showed the refusal to the user. The device follows
+          // the redirects itself, exactly as the server just did.
           const required = new DeviceFetchRequired({
             method: entry.method,
-            url: entry.url,
+            url: String(options.url),
             headers: options.headers || {},
             body: options.body
           }, response.statusCode);

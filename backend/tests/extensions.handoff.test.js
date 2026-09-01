@@ -109,6 +109,50 @@ describe('when the site refuses the server', () => {
   });
 });
 
+/**
+ * The failure this whole mechanism was showing instead of fixing.
+ *
+ * The request the device is asked to make has to be named the way the
+ * source names it. When it was named by the transport instead - after
+ * redirects, after URL normalisation - the answer came back filed under a
+ * name the replay never looked up, so the same request was refused every
+ * round until the app ran out of rounds and put "The site refused the
+ * server with 403" on screen. Every source is affected, because every
+ * source reaches the network through this one op.
+ */
+describe('naming the request so the replay can find it', () => {
+  it('names the URL the source asked for, not the hop that answered', async () => {
+    jest.spyOn(http, 'request').mockImplementation(async ({ url, onRequest }) => {
+      // What the real transport does: reports each hop, normalised.
+      onRequest({ method: 'GET', url: 'https://cdn.site.test/api/list?redirected=1' });
+      return { statusCode: 403, headers: {}, url, body: '' };
+    });
+
+    const err = await run({}).catch((caught) => caught);
+    expect(err.request.url).toBe('https://site.test/api/list');
+  });
+
+  it('finds the answer even when the two spellings differ', async () => {
+    refuse(403);
+
+    const outcome = await runExtension({
+      code: CODE.replace("'https://site.test/api/list'", "'https://site.test/api/list'"),
+      method: 'getPopular',
+      args: [1],
+      allowHandoff: true,
+      // Stored under the trailing-slash-normalised spelling, as a URL that
+      // has been through `new URL()` comes back.
+      fetched: {
+        [requestKey({ method: 'GET', url: 'https://site.test:443/api/list' })]: {
+          statusCode: 200, body: '["One Piece"]', headers: {}, url: ''
+        }
+      }
+    });
+
+    expect(outcome.result.list[0].name).toBe('One Piece');
+  });
+});
+
 describe('running again with what the device fetched', () => {
   const answered = (body) => ({
     [requestKey({ method: 'GET', url: 'https://site.test/api/list' })]: {

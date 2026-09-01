@@ -29,6 +29,27 @@ const REFUSAL_STATUSES = new Set([403, 429, 503]);
 const MAX_HANDOFFS = 4;
 
 /**
+ * The same address written two ways.
+ *
+ * A URL is named once by the source and again by the transport, and the
+ * two spellings differ without the address differing: `https://site.test`
+ * becomes `https://site.test/`, a default port is dropped, an empty query
+ * disappears. Keys built from different spellings of one address never
+ * match, so the device's answer is never found and the same request is
+ * refused for ever - which is the 403 the user ends up reading.
+ *
+ * Anything that is not a parsable URL is left exactly as it is: it is not
+ * this function's job to decide what a malformed address means.
+ */
+function canonicalUrl(url) {
+  try {
+    return new URL(String(url)).toString();
+  } catch (err) {
+    return String(url);
+  }
+}
+
+/**
  * The name of one request.
  *
  * Method, URL and body, because a POST search for "naruto" and one for
@@ -36,7 +57,7 @@ const MAX_HANDOFFS = 4;
  * with the other's body would be worse than failing.
  */
 function requestKey({ method = 'GET', url = '', body }) {
-  const name = `${String(method).toUpperCase()} ${String(url)}`;
+  const name = `${String(method).toUpperCase()} ${canonicalUrl(url)}`;
   if (body === undefined || body === null || body === '') return name;
 
   const digest = crypto.createHash('sha1').update(String(body)).digest('hex');
@@ -105,6 +126,7 @@ function createHandoffStore(fetched) {
 module.exports = {
   createHandoffStore,
   requestKey,
+  canonicalUrl,
   isRefusal,
   DeviceFetchRequired,
   REFUSAL_STATUSES,
