@@ -70,18 +70,68 @@ function isRefusal(response) {
 }
 
 /**
+ * A refusal with no status code attached.
+ *
+ * Answering 403 is the polite way to turn a datacenter away. The cheaper way
+ * is to drop the connection - let it hang until it times out, reset it, or
+ * close it mid-handshake - and plenty of sites do exactly that. AniNeko gave
+ * no answer in fifteen seconds across two attempts; a subtitle host closed
+ * the socket before TLS finished. Neither produced a response, so neither
+ * reached isRefusal, so neither was ever offered to the device that could
+ * have fetched it.
+ *
+ * These are the same refusal as a 403 and want the same answer. They are
+ * only read this way once the transport's own retry has been spent: a
+ * connection that fails once is bad luck, and http.request has already tried
+ * again by the time this is asked.
+ *
+ * Deliberately not here: a name that does not resolve, a refused connection,
+ * a private address, an unusable URL. Those are answers about the request
+ * itself, and the device would fail them identically - handing one over
+ * spends a round trip to learn what we already knew.
+ */
+const CONNECTION_REFUSALS = [
+  /timeout of \d+ms exceeded/,
+  /\bETIMEDOUT\b/,
+  /\bECONNRESET\b/,
+  /socket hang up/,
+  /Client network socket disconnected/,
+  /\bEPIPE\b/,
+  /Request timed out/
+];
+
+/** True for an error that means "not you", rather than "not that URL". */
+function isConnectionRefusal(error) {
+  if (!error) return false;
+  const message = String(error.message || error);
+  return CONNECTION_REFUSALS.some((pattern) => pattern.test(message));
+}
+
+/**
  * Raised when a run cannot continue without the device.
  *
  * Carries everything needed to make the request somewhere else, and nothing
  * else: the route turns it into an instruction and the app follows it.
  */
 class DeviceFetchRequired extends Error {
-  constructor(request, statusCode) {
-    super(`The site refused the server with ${statusCode}. `
-      + 'This request has to be made from the device.');
+  /**
+   * @param {Object} request the one request the device has to make
+   * @param {number|string} refusal a status code, or the message of a
+   *   connection that was refused without one
+   */
+  constructor(request, refusal) {
+    const status = Number(refusal);
+    // Both are the site turning this server away; only one of them spent a
+    // response saying so, and the sentence has to read correctly either way.
+    super(Number.isFinite(status) && status > 0
+      ? `The site refused the server with ${status}. `
+        + 'This request has to be made from the device.'
+      : `The site did not answer the server (${refusal}). `
+        + 'This request has to be made from the device.');
     this.name = 'DeviceFetchRequired';
     this.request = request;
-    this.statusCode = statusCode;
+    this.statusCode = Number.isFinite(status) && status > 0 ? status : null;
+    this.refusal = refusal;
   }
 }
 
@@ -128,6 +178,8 @@ module.exports = {
   requestKey,
   canonicalUrl,
   isRefusal,
+  isConnectionRefusal,
+  CONNECTION_REFUSALS,
   DeviceFetchRequired,
   REFUSAL_STATUSES,
   MAX_HANDOFFS
