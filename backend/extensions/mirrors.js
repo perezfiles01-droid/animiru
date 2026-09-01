@@ -29,19 +29,29 @@ const { DeviceFetchRequired } = require('./handoff');
 const MAX_ATTEMPTS = 3;
 
 /**
- * The methods where an empty answer means the mirror is no good.
+ * The methods where an empty answer means the home is no good.
  *
  * A search returning nothing is usually the truth - there is no anime by
- * that name - and rotating through every mirror to confirm it would make
- * "no results" the slowest screen in the app. Browsing is different: a home
- * page with nothing on it is a broken mirror, not an empty catalogue.
+ * that name - and rotating through every home to confirm it would make "no
+ * results" the slowest screen in the app.
+ *
+ * The rest are different. A home page with nothing on it is a broken
+ * mirror, not an empty catalogue. And an episode the user has just clicked
+ * yielding no servers at all is the same: whether the home is incomplete or
+ * merely stale, there is nothing to play, and asking another home is the
+ * only thing that can help. That case is the whole reason the player says
+ * "no other server worked" - there were none to begin with.
  */
-const BROWSE_METHODS = new Set(['getPopular', 'getLatestUpdates']);
+const EMPTY_IS_FAILURE = new Set([
+  'getPopular',
+  'getLatestUpdates',
+  'getVideoList'
+]);
 
 /** Whether an outcome is worth showing, for the method that produced it. */
 function isUsable(method, result) {
   if (result === null || result === undefined) return false;
-  if (!BROWSE_METHODS.has(method)) return true;
+  if (!EMPTY_IS_FAILURE.has(method)) return true;
 
   const list = Array.isArray(result) ? result : result.list;
   return Array.isArray(list) && list.length > 0;
@@ -126,4 +136,4 @@ async function runWithMirrors(options = {}) {
   throw new ExtensionError(`No usable home for ${options.method}()`);
 }
 
-module.exports = { runWithMirrors, homes, isUsable, MAX_ATTEMPTS, BROWSE_METHODS };
+module.exports = { runWithMirrors, homes, isUsable, MAX_ATTEMPTS, EMPTY_IS_FAILURE };

@@ -195,3 +195,62 @@ describe('reading a mirror list', () => {
     expect(homes({ baseUrl: 'https://a.test' })).toEqual(['https://a.test']);
   });
 });
+
+/**
+ * An episode that yields no servers.
+ *
+ * The player already tries every server it is handed and says "no other
+ * server worked" once they are all dead. That message is also what a user
+ * sees when there were none to begin with - and in that case there was
+ * never anything to try.
+ *
+ * Whether the home is incomplete or merely stale, nothing on it can play,
+ * so another home is the only thing that can help. An empty search is still
+ * taken at its word; an empty episode is not.
+ */
+describe('a home with no streams for the episode', () => {
+  const EPISODES = `
+    const mangayomiSources = [{ name: 'Roaming', id: 9, version: '1.0.0' }];
+    class DefaultExtension extends MProvider {
+      async getVideoList(url) {
+        const res = await new Client().get(this.source.baseUrl + '/ep');
+        return res.body ? JSON.parse(res.body) : [];
+      }
+      getSourcePreferences() { return []; }
+    }
+  `;
+
+  const streams = (options) => runWithMirrors({
+    code: EPISODES, method: 'getVideoList', args: ['/watch/x/ep-1'],
+    source: SOURCE, ...options
+  });
+
+  it('is passed over for one that has them', async () => {
+    const asked = serve({ 'home.test': '[]', 'one.test': '[{"url":"https://cdn.test/a.m3u8"}]' });
+    const result = (await streams({})).result;
+
+    expect(result).toHaveLength(1);
+    expect(asked).toEqual(['home.test', 'one.test']);
+  });
+
+  it('names the home the streams came from', async () => {
+    serve({ 'home.test': '[]', 'one.test': '[{"url":"https://cdn.test/a.m3u8"}]' });
+    expect((await streams({})).baseUrl).toBe('https://one.test');
+  });
+
+  // Nothing anywhere is still an answer, and the player says so.
+  it('gives back the empty list when no home has the episode', async () => {
+    serve({ 'home.test': '[]', 'one.test': '[]', 'two.test': '[]' });
+    expect((await streams({})).result).toEqual([]);
+  });
+
+  // The distinction that keeps no-results fast.
+  it('does not change how an empty search is treated', async () => {
+    const asked = serve({ 'home.test': '[]', 'one.test': '["Wrong"]' });
+    await runWithMirrors({
+      code: CODE, method: 'search', args: ['nothing', 1, []], source: SOURCE
+    });
+
+    expect(asked).toEqual(['home.test']);
+  });
+});
