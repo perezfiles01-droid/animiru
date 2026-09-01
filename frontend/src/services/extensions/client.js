@@ -73,7 +73,9 @@ function deviceFetchNeeded(err) {
  *
  * @returns {Promise<{result:*, logs:Object[], requests:Object[], durationMs:number}>}
  */
-export async function runSource({ codeUrl, code, version, method, args, source, preferences }) {
+export async function runSource({
+  codeUrl, code, version, method, args, source, preferences, excludeBaseUrls
+}) {
   const canFetchOnDevice = isAvailable();
   const fetched = {};
 
@@ -106,7 +108,12 @@ export async function runSource({ codeUrl, code, version, method, args, source, 
         // an instruction to fetch, and on the web nobody could follow it.
         allowHandoff: canFetchOnDevice,
         fetched,
-        preferredBaseUrl: preferredBaseUrl || undefined
+        preferredBaseUrl: preferredBaseUrl || undefined,
+        // Homes already found wanting on this episode: the player tried
+        // every server one of them gave and none would play.
+        excludeBaseUrls: Array.isArray(excludeBaseUrls) && excludeBaseUrls.length
+          ? excludeBaseUrls
+          : undefined
       }, {
         // Scraping several pages is slower than the app-wide default allows.
         timeout: 45000

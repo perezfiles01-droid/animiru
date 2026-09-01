@@ -253,3 +253,32 @@ describe('the home a source last worked from', () => {
     expect(window.localStorage.getItem('animiru.extensions.homes')).toBeNull();
   });
 });
+
+/**
+ * Ruling out a home whose streams would not play.
+ *
+ * The player tries every server a home gave it. When none play, asking
+ * that home again returns the same unplayable list - so the screen names
+ * it and the backend rotation moves past it.
+ */
+describe('homes already found wanting', () => {
+  it('are sent so the backend skips them', async () => {
+    api.post.mockResolvedValue(ran);
+
+    await runSource({
+      method: 'getVideoList', args: ['ep-1'], excludeBaseUrls: ['https://home.test']
+    });
+
+    expect(api.post.mock.calls[0][1].excludeBaseUrls).toEqual(['https://home.test']);
+  });
+
+  // Sending an empty list would say "rule out nothing", which is what
+  // omitting it already means - and the backend treats the two the same.
+  it.each([[[]], [undefined], ['not a list']])('are omitted for %p', async (bad) => {
+    api.post.mockResolvedValue(ran);
+
+    await runSource({ method: 'getVideoList', args: ['ep-1'], excludeBaseUrls: bad });
+
+    expect(api.post.mock.calls[0][1].excludeBaseUrls).toBeUndefined();
+  });
+});
