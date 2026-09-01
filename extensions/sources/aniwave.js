@@ -4,12 +4,17 @@ const mangayomiSources = [
     "id": -367725331,
     "lang": "en",
     "baseUrl": "https://aniwaves.ru",
+    "mirrors": [
+      "https://lite.aniwaves.ru",
+      "https://9animez.org",
+      "https://9anime.skin",
+    ],
     "apiUrl": "",
     "iconUrl":
       "https://www.google.com/s2/favicons?sz=256&domain=https://aniwaves.ru",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.2.3",
+    "version": "0.2.4",
     "pkgPath": "anime/src/en/aniwave.js",
     "isManga": false,
     "isNsfw": false,

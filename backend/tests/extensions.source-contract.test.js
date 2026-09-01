@@ -538,6 +538,37 @@ describe('the homes a source names', () => {
 
     expect(readsItsBase(code)).toBe(true);
   });
+  /*
+   * Two sources cannot share a home.
+   *
+   * The app remembers the home that worked per source, and a domain claimed
+   * by two of them makes that memory ambiguous. Worse, it is how a mirror
+   * list acquires somebody else's site by accident: the domains are grouped
+   * by hand from names that look alike, and the pair that looks most alike
+   * is the pair most likely to be confused.
+   *
+   * Checked across the whole folder rather than per file, since a collision
+   * is by definition invisible from inside either one.
+   */
+  it('gives no address to two different sources', () => {
+    const owner = new Map();
+    const clashes = [];
+
+    for (const { file, code } of sources) {
+      const [entry] = extractMetadata(code) || [];
+      const claimed = [entry && entry.baseUrl, ...declaredMirrors(code)]
+        .filter((value) => typeof value === 'string' && value)
+        .map((value) => value.replace(/\/+$/, ''));
+
+      for (const address of claimed) {
+        const held = owner.get(address);
+        if (held && held !== file) clashes.push(`${address}: ${held} and ${file}`);
+        else owner.set(address, file);
+      }
+    }
+
+    expect(clashes).toEqual([]);
+  });
 });
 
 /**
