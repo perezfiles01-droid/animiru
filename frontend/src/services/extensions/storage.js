@@ -14,6 +14,7 @@ const SOURCES_KEY = 'animiru.extensions.sources';
 const PREFS_KEY = 'animiru.extensions.preferences';
 const SELECTED_KEY = 'animiru.extensions.selected';
 const SEARCH_SOURCES_KEY = 'animiru.searchSources';
+const HOMES_KEY = 'animiru.extensions.homes';
 
 /**
  * localStorage throws rather than returning null in a private window, in an
@@ -125,6 +126,14 @@ export function uninstallSource(key) {
     write(PREFS_KEY, prefs);
   }
 
+  // A home remembered for a source that is gone would be inherited by a
+  // reinstall, sending it to a mirror the user never chose.
+  const homes = read(HOMES_KEY, {});
+  if (String(key) in homes) {
+    delete homes[String(key)];
+    write(HOMES_KEY, homes);
+  }
+
   return sources;
 }
 
@@ -200,8 +209,50 @@ export function clearAll() {
   write(PREFS_KEY, {});
   write(SELECTED_KEY, null);
   write(SEARCH_SOURCES_KEY, []);
+  write(HOMES_KEY, {});
 }
 
 export const STORAGE_KEYS = {
-  REPOS_KEY, SOURCES_KEY, PREFS_KEY, SELECTED_KEY, SEARCH_SOURCES_KEY
+  REPOS_KEY, SOURCES_KEY, PREFS_KEY, SELECTED_KEY, SEARCH_SOURCES_KEY, HOMES_KEY
 };
+
+/**
+ * The home a source last worked from.
+ *
+ * A source may name several domains running the same software, and the
+ * server keeps no per-user state - it runs, and it forgets. So the app is
+ * the only thing that can remember which of them answered, and without
+ * that a source whose usual home is down would pay the same failure on
+ * every screen before falling through to a mirror again.
+ *
+ * Nothing breaks when this is missing or stale: the rotation simply starts
+ * from the source's own home, as it does the first time.
+ *
+ * @param {string} key the installed source's key
+ * @returns {string|null}
+ */
+export function getSourceHome(key) {
+  const homes = read(HOMES_KEY, {});
+  const home = homes[String(key)];
+  return typeof home === 'string' && home ? home : null;
+}
+
+/** Remembers the home that answered, so the next run starts there. */
+export function setSourceHome(key, baseUrl) {
+  if (!key || typeof baseUrl !== 'string' || !baseUrl) return;
+
+  const homes = read(HOMES_KEY, {});
+  if (homes[String(key)] === baseUrl) return;
+
+  homes[String(key)] = baseUrl;
+  write(HOMES_KEY, homes);
+}
+
+/** Forgets it, for a source being removed. */
+export function forgetSourceHome(key) {
+  const homes = read(HOMES_KEY, {});
+  if (!(String(key) in homes)) return;
+
+  delete homes[String(key)];
+  write(HOMES_KEY, homes);
+}

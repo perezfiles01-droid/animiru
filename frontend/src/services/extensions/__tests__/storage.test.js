@@ -160,3 +160,77 @@ describe('extension storage', () => {
     expect(storage.getPreferences(source().key)).toEqual({});
   });
 });
+
+/**
+ * The home a source last worked from.
+ *
+ * Remembered per source so a source whose usual domain is down does not
+ * pay the failed attempt on every screen. Nothing depends on it being
+ * present or current - it is a shortcut, not state the app needs.
+ */
+describe('remembering which home worked', () => {
+  const KEY = 'repo|Roaming';
+
+  // This block sits outside the one whose beforeEach clears the store, so
+  // it clears its own - otherwise a home remembered by one case is still
+  // there for the next, and a test asserting nothing was remembered passes
+  // or fails on what ran before it.
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('is nothing until something is remembered', () => {
+    expect(storage.getSourceHome(KEY)).toBeNull();
+  });
+
+  it('gives back what was remembered', () => {
+    storage.setSourceHome(KEY, 'https://one.test');
+    expect(storage.getSourceHome(KEY)).toBe('https://one.test');
+  });
+
+  it('keeps each source separate', () => {
+    storage.setSourceHome('a', 'https://a.test');
+    storage.setSourceHome('b', 'https://b.test');
+
+    expect(storage.getSourceHome('a')).toBe('https://a.test');
+    expect(storage.getSourceHome('b')).toBe('https://b.test');
+  });
+
+  it('replaces the old one rather than collecting them', () => {
+    storage.setSourceHome(KEY, 'https://one.test');
+    storage.setSourceHome(KEY, 'https://two.test');
+
+    expect(storage.getSourceHome(KEY)).toBe('https://two.test');
+  });
+
+  it.each([[''], [null], [undefined], [42]])('refuses to remember %p', (bad) => {
+    storage.setSourceHome(KEY, bad);
+    expect(storage.getSourceHome(KEY)).toBeNull();
+  });
+
+  it('can be forgotten', () => {
+    storage.setSourceHome(KEY, 'https://one.test');
+    storage.forgetSourceHome(KEY);
+
+    expect(storage.getSourceHome(KEY)).toBeNull();
+  });
+
+  // A home left behind for a removed source would be inherited by a
+  // reinstall, sending it to a mirror the user never chose.
+  it('is forgotten when the source is uninstalled', () => {
+    storage.installSource({ key: KEY, name: 'Roaming', codeUrl: 'https://repo.test/r.js' });
+    storage.setSourceHome(KEY, 'https://one.test');
+
+    storage.uninstallSource(KEY);
+
+    expect(storage.getSourceHome(KEY)).toBeNull();
+  });
+
+  // "Clear all" that leaves something behind is not clear all.
+  it('is cleared with everything else', () => {
+    storage.setSourceHome(KEY, 'https://one.test');
+    storage.clearAll();
+
+    expect(storage.getSourceHome(KEY)).toBeNull();
+  });
+});
