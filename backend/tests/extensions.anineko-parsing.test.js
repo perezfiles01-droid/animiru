@@ -116,3 +116,64 @@ describe('reading a list page', () => {
     expect(result.hasNextPage).toBe(false);
   });
 });
+
+const DETAIL_PAGE = fs.readFileSync(
+  path.join(__dirname, 'fixtures', 'pages', 'anineko-detail.html'), 'utf8'
+);
+
+describe('reading a detail page', () => {
+  const detail = async (page) => {
+    serve(page || DETAIL_PAGE);
+    const { result } = await run('getDetail', ['/watch/aot']);
+    return result;
+  };
+
+  it('takes the title from the heading', async () => {
+    expect((await detail()).name).toBe('Attack on Titan');
+  });
+
+  // og:image is the site's generic preview on some pages, so a real cover
+  // from the CDN wins when the page carries one.
+  it('prefers a real cover over the site preview', async () => {
+    expect((await detail()).imageUrl).toBe('https://cdn.anizara.store/cover/aot.jpg');
+  });
+
+  it('reads the synopsis, decoded', async () => {
+    expect((await detail()).description)
+      .toContain('Humanity lives behind walls & fears the Titans.');
+  });
+
+  it('falls back to the meta description when there is no synopsis', async () => {
+    const stripped = DETAIL_PAGE.replace(/<div class="nv-info-synopsis">[\s\S]*?<\/div>/, '');
+    expect((await detail(stripped)).description).toBe('Fallback synopsis from the meta tag.');
+  });
+
+  it('collects the genres', async () => {
+    expect((await detail()).genre).toEqual(['Action', 'Drama', 'Fantasy']);
+  });
+
+  it('reads the airing status from the sidebar', async () => {
+    // 0 is Mangayomi's "ongoing".
+    expect((await detail()).status).toBe(0);
+  });
+
+  it('lists the episodes, newest first', async () => {
+    const chapters = (await detail()).chapters;
+
+    expect(chapters).toHaveLength(3);
+    expect(chapters[0].url).toBe('https://anineko.to/watch/aot/ep-3');
+    expect(chapters[2].url).toBe('https://anineko.to/watch/aot/ep-1');
+  });
+
+  // The title span repeats the number ("1 To You..."), which would read
+  // "Episode 1: 1 To You..." if it were not dropped.
+  it('does not repeat the episode number in its label', async () => {
+    const chapters = (await detail()).chapters;
+    expect(chapters[2].name).toBe('Episode 1: To You, 2000 Years in the Future');
+  });
+
+  it('keeps an episode that has no title span', async () => {
+    const chapters = (await detail()).chapters;
+    expect(chapters[0].name).toBe('Episode 3');
+  });
+});
