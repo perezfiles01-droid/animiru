@@ -232,6 +232,37 @@ const browserAgent = new https.Agent({
   honorCipherOrder: false
 });
 
+/**
+ * Failures that say nothing about the request, only about the moment it was
+ * made: no answer in time, a connection dropped, a name server that did not
+ * answer this second. The same request a moment later usually works.
+ *
+ * A refused connection and a name that does not exist are deliberately not
+ * here - they are stable answers, and repeating them only spends the run's
+ * budget before reporting what we already knew.
+ */
+const TRANSIENT_CODES = new Set([
+  'ETIMEDOUT',
+  'ECONNABORTED',
+  'ECONNRESET',
+  'EAI_AGAIN',
+  'EPIPE',
+  'ERR_STREAM_PREMATURE_CLOSE'
+]);
+
+/** Repeating a request must not repeat a side effect on the site. */
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD']);
+
+/** How long to wait before the second attempt. */
+const RETRY_BACKOFF_MS = 300;
+
+function isTransient(err) {
+  if (!err) return false;
+  if (TRANSIENT_CODES.has(err.code)) return true;
+  return /socket hang up|timeout of \d+ms exceeded|Client network socket disconnected/
+    .test(String(err.message || ''));
+}
+
 function sanitizeHeaders(headers) {
   const clean = {};
   if (!headers || typeof headers !== 'object') return clean;
@@ -295,6 +326,54 @@ async function request(options = {}) {
   let currentMethod = method;
   let currentBody = options.body;
 
+  /**
+   * One hop, tried twice when the first try failed for a reason that says
+   * nothing about the request.
+   *
+   * A site that stalls once - and anime hosts stall constantly - used to end
+   * the whole run, which the user read as a broken source. The second try
+   * costs nothing when the first succeeds, which is almost always.
+   *
+   * The two attempts share one budget rather than each getting the full one:
+   * a retry that could double the wait would push the run past the deadline
+   * the caller is holding, and a timeout reported by the app instead of by
+   * us carries none of the diagnostics. So the first attempt gets the larger
+   * share and the second gets what is left.
+   */
+  async function attempt({ url, method: hopMethod, headers: hopHeaders, body, deadline: until }) {
+    for (let tries = 0; ; tries += 1) {
+      const left = until - Date.now();
+      if (left <= 0) throw new Error('Request timed out');
+
+      const canRetry = tries === 0
+        && IDEMPOTENT_METHODS.has(hopMethod)
+        && left > RETRY_BACKOFF_MS * 4;
+      const budget = canRetry ? Math.floor(left * 0.6) : left;
+
+      try {
+        return await axios({
+          url,
+          method: hopMethod,
+          headers: hopHeaders,
+          data: body === undefined ? undefined : body,
+          timeout: budget,
+          maxRedirects: 0,
+          maxContentLength: MAX_RESPONSE_BYTES,
+          maxBodyLength: MAX_RESPONSE_BYTES,
+          responseType: 'text',
+          httpsAgent: browserAgent,
+          transformResponse: [(data) => data],
+          // Redirects and error statuses are both ours to interpret, so
+          // accept every status and branch below rather than throwing on 404.
+          validateStatus: () => true
+        });
+      } catch (err) {
+        if (!canRetry || !isTransient(err)) throw err;
+        await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
+      }
+    }
+  }
+
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     await assertPublicHost(target.hostname);
 
@@ -305,21 +384,12 @@ async function request(options = {}) {
       options.onRequest({ method: currentMethod, url: target.toString() });
     }
 
-    const response = await axios({
+    const response = await attempt({
       url: target.toString(),
       method: currentMethod,
       headers,
-      data: currentBody === undefined ? undefined : currentBody,
-      timeout: remaining,
-      maxRedirects: 0,
-      maxContentLength: MAX_RESPONSE_BYTES,
-      maxBodyLength: MAX_RESPONSE_BYTES,
-      responseType: 'text',
-      httpsAgent: browserAgent,
-      transformResponse: [(data) => data],
-      // Redirects and error statuses are both ours to interpret, so accept
-      // every status and branch below rather than throwing on 404.
-      validateStatus: () => true
+      body: currentBody,
+      deadline
     });
 
     const isRedirect = response.status >= 300 && response.status < 400 && response.headers.location;
@@ -348,6 +418,7 @@ async function request(options = {}) {
 
 module.exports = {
   request,
+  isTransient,
   withBrowserIdentity,
   isPrivateAddress,
   sanitizeHeaders,
