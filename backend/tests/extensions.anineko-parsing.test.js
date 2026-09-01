@@ -177,3 +177,45 @@ describe('reading a detail page', () => {
     expect(chapters[0].name).toBe('Episode 3');
   });
 });
+
+const EPISODE_PAGE = fs.readFileSync(
+  path.join(__dirname, 'fixtures', 'pages', 'anineko-episode.html'), 'utf8'
+);
+
+/**
+ * The server buttons on an episode page.
+ *
+ * getVideoList resolves the embeds it finds, which needs the network, so
+ * these check the reading of the page rather than the resolving: the tab
+ * map gives each server its language, and only the supported host is kept.
+ */
+describe('reading the servers on an episode page', () => {
+  it('keeps only the supported host, and asks it for the stream', async () => {
+    const asked = [];
+    jest.spyOn(http, 'request').mockImplementation(async ({ url }) => {
+      asked.push(url);
+      return {
+        statusCode: 200,
+        headers: {},
+        url,
+        body: url.includes('/watch/') ? EPISODE_PAGE : ''
+      };
+    });
+
+    await run('getVideoList', ['/watch/aot/ep-1']);
+
+    // Two bibiemb servers are supported; other.host is not asked about.
+    const embeds = asked.filter((url) => url.includes('bibiemb.xyz'));
+    expect(embeds.length).toBeGreaterThan(0);
+    expect(asked.some((url) => url.includes('other.host'))).toBe(false);
+  });
+
+  it('does not throw when the page carries no servers', async () => {
+    jest.spyOn(http, 'request').mockImplementation(async ({ url }) => ({
+      statusCode: 200, headers: {}, url, body: '<html><body></body></html>'
+    }));
+
+    const { result } = await run('getVideoList', ['/watch/aot/ep-1']);
+    expect(result).toEqual([]);
+  });
+});

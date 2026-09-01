@@ -108,35 +108,13 @@ class DefaultExtension extends MProvider {
     return this.source.baseUrl + "/" + String(path).replace(/^\/+/, "");
   }
 
-  async fetchHtml(path) {
-    var res = await this.client.get(this.abs(path), this.headers);
-    return (res && res.body) || "";
-  }
-
-  // Parsed rather than matched, as AniWave does it. A regex over raw HTML
-  // breaks on any markup change and needs its own entity decoding and tag
-  // stripping; the parser gives both free.
+  // Every page is read through the parser, as AniWave reads its pages. A
+  // regex over raw HTML breaks on any markup change and needs its own
+  // entity decoding and tag stripping; the parser gives both free, which is
+  // why this source no longer carries a decode() or a stripTags().
   async fetchDoc(path, headers) {
     var res = await this.client.get(this.abs(path), headers || this.headers);
     return new Document((res && res.body) || "");
-  }
-
-  decode(s) {
-    return (s || "")
-      .replace(/&#0*39;|&apos;|&rsquo;/g, "'")
-      .replace(/&#0*34;|&quot;|&ldquo;|&rdquo;/g, '"')
-      .replace(/&middot;/g, "·")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&#0*60;|&lt;/g, "<")
-      .replace(/&#0*62;|&gt;/g, ">")
-      .replace(/&#(\d+);/g, function (_m, n) { return String.fromCharCode(parseInt(n, 10)); })
-      .replace(/&#x([0-9a-fA-F]+);/g, function (_m, n) { return String.fromCharCode(parseInt(n, 16)); })
-      .replace(/&#0*38;|&amp;/g, "&")
-      .trim();
-  }
-
-  stripTags(s) {
-    return this.decode(String(s || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " "));
   }
 
   // ── List pages ──────────────────────────────────────────────────────────────
@@ -351,24 +329,38 @@ class DefaultExtension extends MProvider {
   // ── Streaming ───────────────────────────────────────────────────────────────
 
   // tab_N -> hsub | sub | dub
-  parseTabs(html) {
+  // tab_N -> hsub | sub | dub
+  parseTabs(doc) {
     var map = {};
-    var rx = /<button[^>]*class="[^"]*nv-server-tab[^"]*\btab_(\d+)\b[^"]*"[^>]*data-id="([^"]+)"/g;
-    var m;
-    while ((m = rx.exec(html)) !== null) map["tab_" + m[1]] = m[2];
+    var tabs = doc.select("button.nv-server-tab");
+    for (var i = 0; i < tabs.length; i++) {
+      var id = tabs[i].attr("data-id");
+      if (!id) continue;
+      // The tab a server points at is named by the tab_N class it carries.
+      var match = (tabs[i].attr("class") || "").match(/\btab_(\d+)\b/);
+      if (match) map["tab_" + match[1]] = id;
+    }
     return map;
   }
 
-  parseServers(html) {
-    var tabs = this.parseTabs(html);
+  parseServers(doc) {
+    var tabs = this.parseTabs(doc);
     var out = [];
-    var rx = /<button[^>]*class="[^"]*server-video[^"]*"[^>]*data-video="([^"]+)"[^>]*data-tab="([^"]+)"[^>]*>([\s\S]*?)<\/button>/g;
-    var m;
-    while ((m = rx.exec(html)) !== null) {
-      var label = this.stripTags(m[3]).split(/\s{2,}/)[0].trim();
+    var buttons = doc.select("button.server-video");
+
+    for (var i = 0; i < buttons.length; i++) {
+      var button = buttons[i];
+      var embed = button.attr("data-video");
+      if (!embed) continue;
+
+      var tab = button.attr("data-tab") || "";
+      // The button holds its name and a note beside it; the name is the
+      // first line, which the parser gives already decoded.
+      var label = (button.text || "").trim().split(/\s{2,}|\n/)[0].trim();
+
       out.push({
-        embed: this.decode(m[1]),
-        lang: tabs[m[2]] || m[2],
+        embed: embed,
+        lang: tabs[tab] || tab,
         name: label || "Server",
       });
     }
@@ -461,8 +453,8 @@ class DefaultExtension extends MProvider {
   }
 
   async getVideoList(url) {
-    var html = await this.fetchHtml(url);
-    var servers = this.parseServers(html);
+    var doc = await this.fetchDoc(url);
+    var servers = this.parseServers(doc);
     if (servers.length === 0) return [];
 
     var prefLang = this.getPreference("anineko_pref_lang") || "sub";
