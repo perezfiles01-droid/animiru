@@ -20,6 +20,8 @@ export default function UpdateSettings() {
   const [error, setError] = useState(null);
   const [restored, setRestored] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  /** Set while the "before you install" dialog is open. */
+  const [confirming, setConfirming] = useState(false);
   const [backupText, setBackupText] = useState('');
   const [pasted, setPasted] = useState('');
   const [copied, setCopied] = useState(false);
@@ -177,21 +179,79 @@ export default function UpdateSettings() {
             )}
 
             {result.downloadUrl ? (
-              <a
+              <button
+                type="button"
                 className="btn btn-primary"
-                href={result.downloadUrl}
-                // Deliberately not target="_blank". In the Android app the
-                // download is caught by the WebView's download handler,
-                // which needs an ordinary navigation; a new window was
-                // dropped outright and the button did nothing at all.
-                onClick={() => setDownloading(true)}
+                onClick={() => setConfirming(true)}
               >
                 {downloading ? `Downloading ${result.version}...` : `Download ${result.version}`}
-              </a>
+              </button>
             ) : (
               <a className="btn btn-secondary" href={result.url}>
                 Open the release
               </a>
+            )}
+
+            {confirming && (
+              /*
+               * What happens next, before it happens.
+               *
+               * Installing over the current app keeps everything; deleting
+               * it first does not. Someone who has been uninstalling by hand
+               * has been throwing away their library every update without
+               * being told they never had to, so this says so at the moment
+               * it matters.
+               */
+              <div className="update-confirm" role="dialog" aria-label="Before you install">
+                <h4>Before you install</h4>
+
+                <ul>
+                  <li>
+                    <strong>Do not delete the app first.</strong> This installs
+                    over the current one and keeps your library, repositories,
+                    sources and settings.
+                  </li>
+                  <li>
+                    The download runs in your notifications. When it finishes
+                    the installer opens - tap <strong>Update</strong> or
+                    <strong> Install</strong>, then <strong>Open</strong>.
+                  </li>
+                  <li>
+                    Take a backup first if you want to be certain - the Backup
+                    section below copies everything as text.
+                  </li>
+                </ul>
+
+                <p className="settings-help">
+                  If Android refuses with &quot;App not installed&quot;, the
+                  signing key differs and uninstalling is the only way past
+                  it. Save a backup before doing that: uninstalling deletes
+                  the app storage your library lives in.
+                </p>
+
+                <div className="update-confirm-actions">
+                  {/*
+                    * The real download stays an ordinary anchor navigation.
+                    * The WebView's download handler needs one; a programmatic
+                    * click or a new window is dropped, which is how this
+                    * button came to do nothing at all once before.
+                    */}
+                  <a
+                    className="btn btn-primary"
+                    href={result.downloadUrl}
+                    onClick={() => { setDownloading(true); setConfirming(false); }}
+                  >
+                    Download and install
+                  </a>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setConfirming(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             )}
 
             {downloading && (
