@@ -254,3 +254,71 @@ describe('a home with no streams for the episode', () => {
     expect(asked).toEqual(['home.test']);
   });
 });
+
+/**
+ * Homes the caller has already found wanting.
+ *
+ * The player tries every server a home gave it. When none of them play,
+ * asking that same home again returns the same unplayable list - so the
+ * caller names it and the rotation moves past it.
+ */
+describe('ruling out a home', () => {
+  it('is skipped and the next one used', async () => {
+    const asked = serve({ 'home.test': '["Home"]', 'one.test': '["One"]' });
+    const outcome = await run({ excludeBaseUrls: ['https://home.test'] });
+
+    expect(outcome.baseUrl).toBe('https://one.test');
+    expect(asked).toEqual(['one.test']);
+  });
+
+  it('is recognised however the address is written', async () => {
+    const asked = serve({ 'home.test': '["Home"]', 'one.test': '["One"]' });
+    await run({ excludeBaseUrls: ['https://home.test/'] });
+
+    expect(asked).toEqual(['one.test']);
+  });
+
+  it('can rule out more than one', async () => {
+    const asked = serve({ 'two.test': '["Two"]' });
+    const outcome = await run({
+      excludeBaseUrls: ['https://home.test', 'https://one.test']
+    });
+
+    expect(outcome.baseUrl).toBe('https://two.test');
+    expect(asked).toEqual(['two.test']);
+  });
+
+  /*
+   * The interaction that had to be caught: with nothing left, the loop's
+   * "run once with no chosen base" fallback - which is right for a source
+   * that names no homes - would have gone straight back to the home just
+   * ruled out and returned the same answer.
+   */
+  it('says there is nothing left rather than returning to the ruled-out home', async () => {
+    const asked = serve({ 'home.test': '["Home"]' });
+
+    await expect(run({
+      excludeBaseUrls: ['https://home.test', 'https://one.test', 'https://two.test', 'https://three.test']
+    })).rejects.toThrow(/No other home left/);
+
+    expect(asked).toEqual([]);
+  });
+
+  it('ignores junk in the list rather than ruling out everything', async () => {
+    const asked = serve({ 'home.test': '["Home"]' });
+    const outcome = await run({ excludeBaseUrls: ['nonsense', null, 42] });
+
+    expect(outcome.baseUrl).toBe('https://home.test');
+    expect(asked).toEqual(['home.test']);
+  });
+
+  // A source naming no homes at all still runs, as it did before.
+  it('leaves a source with no mirrors alone when nothing is ruled out', async () => {
+    serve({ 'solo.test': '["Solo"]' });
+    const outcome = await runWithMirrors({
+      code: CODE, method: 'getPopular', args: [1], source: { baseUrl: 'https://solo.test' }
+    });
+
+    expect(outcome.result.list[0].name).toBe('Solo');
+  });
+});

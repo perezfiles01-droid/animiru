@@ -313,3 +313,64 @@ describe('POST /run against a source with mirrors', () => {
     expect(body.diagnostics).toBeTruthy();
   });
 });
+
+/**
+ * Asking again without the home whose streams would not play.
+ *
+ * The rotation covers this; what matters here is that the route carries
+ * the caller's list through, or the app can ask but never be heard.
+ */
+describe('POST /run ruling out a home', () => {
+  const EPISODES = `
+    const mangayomiSources = [{ name: 'Roaming', id: 92, version: '1.0.0' }];
+    class DefaultExtension extends MProvider {
+      async getVideoList(url) {
+        const res = await new Client().get(this.source.baseUrl + '/ep');
+        return res.body ? JSON.parse(res.body) : [];
+      }
+      getSourcePreferences() { return []; }
+    }
+  `;
+
+  const SOURCE = {
+    name: 'Roaming',
+    baseUrl: 'https://home.test',
+    mirrors: ['https://one.test']
+  };
+
+  it('skips it and returns the next home\'s streams', async () => {
+    jest.spyOn(http, 'request').mockImplementation(async ({ url }) => ({
+      statusCode: 200,
+      headers: {},
+      url,
+      body: new URL(url).host === 'one.test' ? '[{"url":"https://cdn.test/a.m3u8"}]' : '[]'
+    }));
+
+    const { body } = await request(app)
+      .post('/api/extensions/run')
+      .send({
+        code: EPISODES, method: 'getVideoList', args: ['/ep-1'], source: SOURCE,
+        excludeBaseUrls: ['https://home.test']
+      })
+      .expect(200);
+
+    expect(body.baseUrl).toBe('https://one.test');
+    expect(body.result).toHaveLength(1);
+  });
+
+  it('says so when every home has been ruled out', async () => {
+    jest.spyOn(http, 'request').mockResolvedValue({
+      statusCode: 200, headers: {}, url: 'https://home.test/ep', body: '[]'
+    });
+
+    const { body } = await request(app)
+      .post('/api/extensions/run')
+      .send({
+        code: EPISODES, method: 'getVideoList', args: ['/ep-1'], source: SOURCE,
+        excludeBaseUrls: ['https://home.test', 'https://one.test']
+      })
+      .expect(422);
+
+    expect(body.error).toMatch(/No other home left/);
+  });
+});

@@ -62,22 +62,36 @@ function isUsable(method, result) {
  * own. Anything that is not an https URL is dropped rather than tried:
  * a mirror list is written by hand and a typo should not become a request.
  */
-function homes(source = {}, preferred) {
+function homes(source = {}, preferred, exclude = []) {
   const seen = new Set();
   const list = [];
 
+  /** The same address written two ways is the same home. */
+  const identify = (value) => {
+    try {
+      const url = new URL(value);
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+      return url.host + url.pathname.replace(/\/+$/, '');
+    } catch (err) {
+      return null;
+    }
+  };
+
+  // Homes the caller has already found wanting on this run - streams that
+  // would not play, say. Asking them again would hand back the same
+  // unplayable answer.
+  const ruledOut = new Set(
+    (Array.isArray(exclude) ? exclude : [exclude])
+      .map((value) => (typeof value === 'string' ? identify(value) : null))
+      .filter(Boolean)
+  );
+
   const add = (value) => {
     if (typeof value !== 'string' || !value) return;
-    let url;
-    try {
-      url = new URL(value);
-    } catch (err) {
-      return;
-    }
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') return;
 
-    const key = url.host + url.pathname.replace(/\/+$/, '');
-    if (seen.has(key)) return;
+    const key = identify(value);
+    if (!key || seen.has(key) || ruledOut.has(key)) return;
+
     seen.add(key);
     list.push(value.replace(/\/+$/, ''));
   };
@@ -99,8 +113,26 @@ function homes(source = {}, preferred) {
  *   that produced it so the caller can go there first next time
  */
 async function runWithMirrors(options = {}) {
-  const candidates = homes(options.source, options.preferredBaseUrl);
+  const excluded = Array.isArray(options.excludeBaseUrls)
+    ? options.excludeBaseUrls.filter((value) => typeof value === 'string' && value)
+    : [];
+  const candidates = homes(options.source, options.preferredBaseUrl, excluded);
   const attempts = candidates.slice(0, MAX_ATTEMPTS);
+
+  /*
+   * Every home ruled out, and nothing left to try.
+   *
+   * The fallback below runs once with no chosen base, which is right for a
+   * source that simply names no homes - it uses the entry it was handed.
+   * It is wrong here: the caller ruled those homes out, and running without
+   * a choice would go straight back to the one they just rejected and hand
+   * back the same unplayable answer.
+   */
+  if (excluded.length && !attempts.length) {
+    throw new ExtensionError(
+      `No other home left to try for ${options.method}()`
+    );
+  }
   const tried = [];
 
   // The first failure is the one worth reporting if every home fails: it is

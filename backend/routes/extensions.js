@@ -134,6 +134,12 @@ router.post('/run', async (req, res, next) => {
       // same failure on every screen.
       preferredBaseUrl: typeof body.preferredBaseUrl === 'string'
         ? body.preferredBaseUrl
+        : undefined,
+      // Homes the caller has already found wanting on this episode - the
+      // player tried every server one gave it and none would play, so
+      // asking it again would return the same unplayable list.
+      excludeBaseUrls: Array.isArray(body.excludeBaseUrls)
+        ? body.excludeBaseUrls
         : undefined
     });
 
