@@ -108,27 +108,13 @@ class DefaultExtension extends MProvider {
     return this.source.baseUrl + "/" + String(path).replace(/^\/+/, "");
   }
 
-  async fetchHtml(path) {
-    var res = await this.client.get(this.abs(path), this.headers);
-    return (res && res.body) || "";
-  }
-
-  decode(s) {
-    return (s || "")
-      .replace(/&#0*39;|&apos;|&rsquo;/g, "'")
-      .replace(/&#0*34;|&quot;|&ldquo;|&rdquo;/g, '"')
-      .replace(/&middot;/g, "·")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&#0*60;|&lt;/g, "<")
-      .replace(/&#0*62;|&gt;/g, ">")
-      .replace(/&#(\d+);/g, function (_m, n) { return String.fromCharCode(parseInt(n, 10)); })
-      .replace(/&#x([0-9a-fA-F]+);/g, function (_m, n) { return String.fromCharCode(parseInt(n, 16)); })
-      .replace(/&#0*38;|&amp;/g, "&")
-      .trim();
-  }
-
-  stripTags(s) {
-    return this.decode(String(s || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " "));
+  // Every page is read through the parser, as AniWave reads its pages. A
+  // regex over raw HTML breaks on any markup change and needs its own
+  // entity decoding and tag stripping; the parser gives both free, which is
+  // why this source no longer carries a decode() or a stripTags().
+  async fetchDoc(path, headers) {
+    var res = await this.client.get(this.abs(path), headers || this.headers);
+    return new Document((res && res.body) || "");
   }
 
   // ── List pages ──────────────────────────────────────────────────────────────
@@ -139,40 +125,53 @@ class DefaultExtension extends MProvider {
   //       <img src="COVER" alt="Title" ...>
   //     ...
   //     <h3 class="nv-anime-title"><a href="/watch/slug">Title</a></h3>
-  parseList(html) {
+  parseList(doc) {
     var list = [];
     var seen = {};
+    var cards = doc.select("article.nv-anime-card");
 
-    // Prefer the <h3> title (exact) and fall back to the img alt attribute.
-    var titles = {};
-    var tRx = /<h3[^>]*class="[^"]*nv-anime-title[^"]*"[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
-    var tm;
-    while ((tm = tRx.exec(html)) !== null) {
-      var thref = tm[1].replace(/^https?:\/\/[^/]+/, "");
-      if (!titles[thref]) titles[thref] = this.stripTags(tm[2]);
-    }
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var thumb = card.selectFirst("a.nv-anime-thumb");
+      if (!thumb) continue;
 
-    var rx = /<a[^>]*class="[^"]*nv-anime-thumb[^"]*"[^>]*href="([^"]+)"[^>]*>\s*<img[^>]*src="([^"]+)"[^>]*alt="([^"]*)"/g;
-    var m;
-    while ((m = rx.exec(html)) !== null) {
-      var href = m[1].replace(/^https?:\/\/[^/]+/, "");
+      var href = this.path(thumb.attr("href"));
       if (!href || seen[href]) continue;
-      seen[href] = true;
-      var name = titles[href] || this.decode(m[3]);
+
+      // The h3 anchor carries the exact title; a card without one leaves the
+      // cover's alt as the only name available.
+      var img = card.selectFirst("img");
+      var titleLink = card.selectFirst("h3.nv-anime-title a");
+      var name = titleLink ? (titleLink.text || "").trim() : "";
+      if (!name && img) name = (img.attr("alt") || "").trim();
       if (!name) continue;
-      list.push({ name: name, link: this.abs(href), imageUrl: m[2] });
+
+      seen[href] = true;
+      list.push({
+        name: name,
+        link: this.abs(href),
+        imageUrl: img ? (img.attr("src") || "") : "",
+      });
     }
     return list;
   }
 
+  /** A link as this site's own path, however the page wrote it. */
+  path(href) {
+    return (href || "").replace(/^https?:\/\/[^/]+/, "");
+  }
+
   // The pager renders a "next" link only while more pages exist.
-  hasNext(html, page) {
-    if (/class='page-item next'/.test(html) || /class="page-item next"/.test(html)) return true;
+  hasNext(doc, page) {
+    // The pager renders a "next" item only while more pages exist, so its
+    // presence settles it. Failing that, the highest page the pager offers
+    // beats the one being read.
+    if (doc.selectFirst(".page-item.next")) return true;
+
     var max = 0;
-    var rx = /data-page='(\d+)'|data-page="(\d+)"/g;
-    var m;
-    while ((m = rx.exec(html)) !== null) {
-      var n = parseInt(m[1] || m[2], 10);
+    var links = doc.select("[data-page]");
+    for (var i = 0; i < links.length; i++) {
+      var n = parseInt(links[i].attr("data-page") || "0", 10);
       if (n > max) max = n;
     }
     return max > (page || 1);
@@ -180,8 +179,8 @@ class DefaultExtension extends MProvider {
 
   async listPage(path, page) {
     var sep = path.indexOf("?") >= 0 ? "&" : "?";
-    var html = await this.fetchHtml(path + sep + "page=" + (page || 1));
-    return { list: this.parseList(html), hasNextPage: this.hasNext(html, page) };
+    var doc = await this.fetchDoc(path + sep + "page=" + (page || 1));
+    return { list: this.parseList(doc), hasNextPage: this.hasNext(doc, page) };
   }
 
   get supportsLatest() {
@@ -238,82 +237,80 @@ class DefaultExtension extends MProvider {
   }
 
   async getDetail(url) {
-    var html = await this.fetchHtml(url);
+    var doc = await this.fetchDoc(url);
 
-    var name = "";
-    var nm = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/);
-    if (nm) name = this.stripTags(nm[1]);
+    var heading = doc.selectFirst("h1");
+    var name = heading ? (heading.text || "").trim() : "";
 
+    // og:image is the site's generic preview on some pages, so a real cover
+    // from the CDN wins wherever the page carries one.
     var imageUrl = "";
-    var im = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/) ||
-             html.match(/(https:\/\/cdn\.anizara\.store\/cover\/[^"']+)/);
-    if (im) imageUrl = im[1];
-    // og:image is the generic site preview on some pages — prefer a real cover.
-    var cover = html.match(/(https:\/\/cdn\.anizara\.store\/cover\/[^"']+)/);
-    if (cover) imageUrl = cover[1];
+    var og = doc.selectFirst('meta[property="og:image"]');
+    if (og) imageUrl = og.attr("content") || "";
+    var cover = doc.selectFirst('img[src*="/cover/"]');
+    if (cover) imageUrl = cover.attr("src") || imageUrl;
 
-    var description = "";
-    var dm = html.match(/<div[^>]*class="[^"]*nv-info-synopsis[^"]*"[^>]*>([\s\S]*?)<\/div>/);
-    if (dm) description = this.stripTags(dm[1]);
+    var synopsis = doc.selectFirst(".nv-info-synopsis");
+    var description = synopsis ? (synopsis.text || "").trim() : "";
     if (!description) {
-      var meta = html.match(/<meta[^>]+name="description"[^>]+content="([^"]*)"/);
-      if (meta) description = this.decode(meta[1]);
+      var meta = doc.selectFirst('meta[name="description"]');
+      if (meta) description = (meta.attr("content") || "").trim();
     }
 
     var genre = [];
-    var gm = html.match(/<div[^>]*class="[^"]*nv-info-genres[^"]*"[^>]*>([\s\S]*?)<\/div>/);
-    if (gm) {
-      var grx = /<(?:span|a)[^>]*>([^<]+)<\/(?:span|a)>/g;
-      var g;
-      while ((g = grx.exec(gm[1])) !== null) {
-        var gv = this.decode(g[1]);
-        if (gv) genre.push(gv);
-      }
+    var genreNodes = doc.select(".nv-info-genres a, .nv-info-genres span");
+    for (var g = 0; g < genreNodes.length; g++) {
+      var gv = (genreNodes[g].text || "").trim();
+      if (gv) genre.push(gv);
     }
 
     // Sidebar rows: <div><span>Status</span><strong>Currently Airing</strong></div>
     var info = {};
-    var irx = /<div><span>([^<]+)<\/span><strong>([\s\S]*?)<\/strong><\/div>/g;
-    var r;
-    while ((r = irx.exec(html)) !== null) {
-      info[this.decode(r[1]).toLowerCase()] = this.stripTags(r[2]);
+    var rows = doc.select("div");
+    for (var r = 0; r < rows.length; r++) {
+      var label = rows[r].selectFirst("span");
+      var value = rows[r].selectFirst("strong");
+      if (!label || !value) continue;
+      var key = (label.text || "").trim().toLowerCase();
+      if (key && !info[key]) info[key] = (value.text || "").trim();
     }
     var status = this.statusCode(info["status"]);
 
-    // Episodes: <a class="nv-info-episode-main" href="/watch/slug/ep-9">
-    //             <strong>Episode 9</strong><span>Real Title</span></a>
     var chapters = [];
     var seen = {};
-    var erx = /<a[^>]*class="[^"]*nv-info-episode-main[^"]*"[^>]*href="([^"]+)"[^>]*>\s*<strong>([\s\S]*?)<\/strong>\s*(?:<span>([\s\S]*?)<\/span>)?/g;
-    var e;
-    while ((e = erx.exec(html)) !== null) {
-      var href = e[1].replace(/^https?:\/\/[^/]+/, "");
+    var episodes = doc.select("a.nv-info-episode-main");
+    for (var e = 0; e < episodes.length; e++) {
+      var episode = episodes[e];
+      var href = this.path(episode.attr("href"));
       if (!href || seen[href]) continue;
       seen[href] = true;
-      var label = this.stripTags(e[2]);          // "Episode 12"
-      var epTitle = this.stripTags(e[3] || "");  // "12 Real Title" | "Episode 12"
+
+      var strong = episode.selectFirst("strong");
+      var span = episode.selectFirst("span");
+      var label = strong ? (strong.text || "").trim() : "";
+      var epTitle = span ? (span.text || "").trim() : "";
+
       // The title span often repeats the episode number ("12 Real Title");
-      // drop that prefix so the label doesn't read "Episode 12: 12 Real Title".
+      // drop that prefix so the label does not read "Episode 12: 12 Real".
       var numMatch = label.match(/([0-9.]+)\s*$/);
       if (numMatch && epTitle) {
         epTitle = epTitle
-          .replace(new RegExp("^" + numMatch[1].replace(".", "\\.") + "\\s*[-–:.]?\\s+"), "")
+          .replace(new RegExp("^" + numMatch[1].replace(".", "\\.") + "\\s*[-\u2013:.]?\\s+"), "")
           .trim();
       }
       if (epTitle && epTitle !== label) label = label + ": " + epTitle;
       chapters.push({ name: label || href, url: this.abs(href) });
     }
 
-    // Fall back to plain /ep-N links if the episode panel markup ever changes.
+    // Fall back to plain /ep-N links if the episode panel markup changes.
     if (chapters.length === 0) {
-      var frx = /href="([^"]*\/watch\/[^"]*\/ep-([0-9.]+))"/g;
-      var f2;
-      var fseen = {};
-      while ((f2 = frx.exec(html)) !== null) {
-        var fh = f2[1].replace(/^https?:\/\/[^/]+/, "");
-        if (fseen[fh]) continue;
-        fseen[fh] = true;
-        chapters.push({ name: "Episode " + f2[2], url: this.abs(fh) });
+      var links = doc.select('a[href*="/ep-"]');
+      for (var f = 0; f < links.length; f++) {
+        var fh = this.path(links[f].attr("href"));
+        var num = fh.match(/\/ep-([0-9.]+)/);
+        if (!num || seen[fh]) continue;
+        seen[fh] = true;
+        chapters.push({ name: "Episode " + num[1], url: this.abs(fh) });
       }
     }
 
@@ -332,24 +329,38 @@ class DefaultExtension extends MProvider {
   // ── Streaming ───────────────────────────────────────────────────────────────
 
   // tab_N -> hsub | sub | dub
-  parseTabs(html) {
+  // tab_N -> hsub | sub | dub
+  parseTabs(doc) {
     var map = {};
-    var rx = /<button[^>]*class="[^"]*nv-server-tab[^"]*\btab_(\d+)\b[^"]*"[^>]*data-id="([^"]+)"/g;
-    var m;
-    while ((m = rx.exec(html)) !== null) map["tab_" + m[1]] = m[2];
+    var tabs = doc.select("button.nv-server-tab");
+    for (var i = 0; i < tabs.length; i++) {
+      var id = tabs[i].attr("data-id");
+      if (!id) continue;
+      // The tab a server points at is named by the tab_N class it carries.
+      var match = (tabs[i].attr("class") || "").match(/\btab_(\d+)\b/);
+      if (match) map["tab_" + match[1]] = id;
+    }
     return map;
   }
 
-  parseServers(html) {
-    var tabs = this.parseTabs(html);
+  parseServers(doc) {
+    var tabs = this.parseTabs(doc);
     var out = [];
-    var rx = /<button[^>]*class="[^"]*server-video[^"]*"[^>]*data-video="([^"]+)"[^>]*data-tab="([^"]+)"[^>]*>([\s\S]*?)<\/button>/g;
-    var m;
-    while ((m = rx.exec(html)) !== null) {
-      var label = this.stripTags(m[3]).split(/\s{2,}/)[0].trim();
+    var buttons = doc.select("button.server-video");
+
+    for (var i = 0; i < buttons.length; i++) {
+      var button = buttons[i];
+      var embed = button.attr("data-video");
+      if (!embed) continue;
+
+      var tab = button.attr("data-tab") || "";
+      // The button holds its name and a note beside it; the name is the
+      // first line, which the parser gives already decoded.
+      var label = (button.text || "").trim().split(/\s{2,}|\n/)[0].trim();
+
       out.push({
-        embed: this.decode(m[1]),
-        lang: tabs[m[2]] || m[2],
+        embed: embed,
+        lang: tabs[tab] || tab,
         name: label || "Server",
       });
     }
@@ -442,8 +453,8 @@ class DefaultExtension extends MProvider {
   }
 
   async getVideoList(url) {
-    var html = await this.fetchHtml(url);
-    var servers = this.parseServers(html);
+    var doc = await this.fetchDoc(url);
+    var servers = this.parseServers(doc);
     if (servers.length === 0) return [];
 
     var prefLang = this.getPreference("anineko_pref_lang") || "sub";
