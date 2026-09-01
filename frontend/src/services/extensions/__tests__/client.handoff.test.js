@@ -97,12 +97,19 @@ describe('when the backend is refused', () => {
     expect(api.post.mock.calls.length).toBeLessThanOrEqual(5);
   });
 
-  it('reports both failures when the device cannot fetch it either', async () => {
+  // Both reasons are still reported - behind the summary rather than in
+  // front of it, so the reader gets the conclusion first and the evidence
+  // when they want it.
+  it('keeps both failures when the device cannot fetch it either', async () => {
     api.post.mockRejectedValue(refusal());
     fetchOnDevice.mockRejectedValue(new Error('Unable to resolve host'));
 
-    await expect(runSource({ method: 'getPopular', args: [1] }))
-      .rejects.toThrow(/refused the server.*Unable to resolve host/s);
+    const err = await runSource({ method: 'getPopular', args: [1] })
+      .catch((caught) => caught);
+
+    expect(err.message).toMatch(/site is not answering/i);
+    expect(err.diagnostics.attempts.server).toMatch(/refused the server/i);
+    expect(err.diagnostics.attempts.device).toBe('Unable to resolve host');
   });
 });
 
@@ -138,5 +145,55 @@ describe('an ordinary failure', () => {
     expect(caught.message).toBe('Cannot read properties of null');
     expect(caught.diagnostics).toEqual({ cause: 'A selector' });
     expect(fetchOnDevice).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * When the server and the device both fail to reach a site.
+ *
+ * Two failures from two networks establish one thing: the site is not
+ * answering anybody. The report used to put the two technical failures end
+ * to end - "timeout of 5695ms exceeded ... Software caused connection abort"
+ * - which reads as a chain of things going wrong inside the app. The one
+ * fact it had actually established was the one it did not say.
+ */
+describe('when neither the server nor the device can reach the site', () => {
+  const bothFail = async () => {
+    api.post.mockRejectedValue(refusal());
+    fetchOnDevice.mockRejectedValue(new Error('Software caused connection abort'));
+    return runSource({ method: 'getPopular', args: [1] }).catch((err) => err);
+  };
+
+  it('says the site is not answering, not that something went wrong', async () => {
+    const err = await bothFail();
+
+    expect(err.message).toMatch(/site is not answering/i);
+    expect(err.message).toMatch(/site itself is down/i);
+  });
+
+  // The two things a reader wrongly suspects first.
+  it('rules out the app and the connection explicitly', async () => {
+    const err = await bothFail();
+    expect(err.message).toMatch(/rather than your connection or the app/i);
+  });
+
+  it('does not lead with the technical failures', async () => {
+    const err = await bothFail();
+
+    expect(err.message).not.toMatch(/Software caused connection abort/);
+    expect(err.message).not.toMatch(/timeout of \d+ms/);
+  });
+
+  // Kept, but behind the summary rather than in front of it.
+  it('keeps what each road reported, for the details panel', async () => {
+    const err = await bothFail();
+
+    expect(err.diagnostics.attempts.device).toBe('Software caused connection abort');
+    expect(err.diagnostics.attempts.server).toMatch(/refused the server/i);
+  });
+
+  it('says other sources are unaffected', async () => {
+    const err = await bothFail();
+    expect(err.diagnostics.fix).toMatch(/Other sources are unaffected/i);
   });
 });
