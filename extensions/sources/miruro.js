@@ -12,7 +12,7 @@ const mangayomiSources = [
     "hasCloudflare": false,
     "sourceCodeUrl": "https://raw.githubusercontent.com/Mallyd11/mangayomi-anime-extensions/refs/heads/main/javascript/anime/src/en/miruro.js",
     "apiUrl": "",
-    "version": "6.1.11",
+    "version": "6.1.12",
     "isManga": false,
     "itemType": 1,
     "isFullData": false,
@@ -28,6 +28,24 @@ class DefaultExtension extends MProvider {
   constructor() {
     super();
     this.client = new Client();
+  }
+
+  /**
+   * The site's own address, from the entry rather than from this file.
+   *
+   * Miruro is unusual: it fetches nothing from this domain. Its metadata
+   * comes from AniList and its streams from JustAnime, and this address is
+   * used only to build the links the app hands back later. So this is not
+   * the resilience the other sources get from the same getter - it is what
+   * makes the configured entry authoritative, so a change of domain does
+   * not need this file edited.
+   *
+   * For the same reason no mirrors are declared for it. Rotating a domain
+   * that is never fetched from would try homes that cannot fail and can
+   * never differ - protection that looks real and could never fire.
+   */
+  get siteUrl() {
+    return String(this.source.baseUrl || "https://www.miruro.to").replace(/\/+$/, "");
   }
 
   get ua() {
@@ -62,7 +80,7 @@ class DefaultExtension extends MProvider {
   mediaToItem(m) {
     return {
       name: this.preferredTitle(m.title),
-      link: "https://www.miruro.to/info/" + m.id,
+      link: this.siteUrl + "/info/" + m.id,
       imageUrl: (m.coverImage && m.coverImage.large) || "",
     };
   }
@@ -166,7 +184,7 @@ class DefaultExtension extends MProvider {
     for (var i = 1; i <= epCount; i++) {
       chapters.push({
         name: "Episode " + i,
-        url: "https://www.miruro.to/watch/" + id + "/" + i,
+        url: this.siteUrl + "/watch/" + id + "/" + i,
         isFiller: false,
       });
     }
@@ -181,7 +199,7 @@ class DefaultExtension extends MProvider {
       description: m && m.description ? m.description.replace(/<[^>]+>/g, "") : "",
       genre:       m && m.genres ? m.genres : [],
       status:      status,
-      link:        "https://www.miruro.to/info/" + id,
+      link:        this.siteUrl + "/info/" + id,
       chapters:    chapters,
     };
   }

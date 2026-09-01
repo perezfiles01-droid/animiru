@@ -45,12 +45,27 @@ const RAW_BASE = process.env.EXTENSION_RAW_BASE
   || 'https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources';
 
 /** Fields carried into the index, with the defaults Mangayomi expects. */
+/**
+ * The other addresses a source says it runs on.
+ *
+ * Absent rather than empty when a source names none, so an entry without
+ * mirrors reads as a source that has none rather than one whose list came
+ * out empty.
+ */
+function mirrorsOf(declared) {
+  const listed = Array.isArray(declared.mirrors) ? declared.mirrors : [];
+  const kept = listed.filter((value) => typeof value === 'string' && value.trim());
+
+  return kept.length ? { mirrors: kept.map((value) => value.trim()) } : {};
+}
+
 function toEntry(declared, fileName) {
   return {
     name: String(declared.name),
     id: declared.id,
     lang: String(declared.lang || 'en'),
     baseUrl: String(declared.baseUrl || ''),
+    ...mirrorsOf(declared),
     apiUrl: String(declared.apiUrl || ''),
     iconUrl: String(declared.iconUrl || ''),
     version: String(declared.version || '0.0.1'),

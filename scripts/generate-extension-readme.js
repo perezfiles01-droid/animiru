@@ -51,14 +51,29 @@ function table(entries) {
   // differently makes it look as though they disagree.
   const rows = [...entries]
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((e) => `| ${e.name} | ${languageOf(e.lang)} | ${e.version} | ${siteLink(e.baseUrl)} |`)
+    .map((e) => `| ${e.name} | ${languageOf(e.lang)} | ${e.version} | ${siteLink(e.baseUrl)} | ${otherHomes(e)} |`)
     .join('\n');
 
   const count = `${entries.length} extension${entries.length === 1 ? '' : 's'}`;
   return `${count}.\n\n`
-    + '| Extension | Language | Version | Site |\n'
-    + '| --- | --- | --- | --- |\n'
+    + '| Extension | Language | Version | Site | Other homes |\n'
+    + '| --- | --- | --- | --- | --- |\n'
     + `${rows}\n`;
+}
+
+/**
+ * The other addresses a source says it runs on.
+ *
+ * Counted rather than listed: some sources name more than a dozen, and a
+ * table cell holding all of them would be unreadable. The count is the part
+ * worth seeing at a glance - it says whether a source has anywhere to go
+ * when its usual home is down.
+ */
+function otherHomes(entry) {
+  const mirrors = Array.isArray(entry.mirrors) ? entry.mirrors : [];
+  if (!mirrors.length) return '-';
+
+  return `${mirrors.length}`;
 }
 
 function render(existing, entries) {

@@ -72,21 +72,21 @@ for Mangayomi runs here unmodified.
 
 16 extensions.
 
-| Extension | Language | Version | Site |
-| --- | --- | --- | --- |
-| Anidap | English | 1.6.0 | [anidap.lol](https://anidap.lol) |
-| AniKoto | English | 0.4.15 | [anikototv.to](https://anikototv.to) |
-| AniLight | English | 0.5.1 | [anilight.live](https://anilight.live) |
-| AnimeHeaven | English | 0.0.7 | [animeheaven.me](https://animeheaven.me) |
-| AnimePahe | English | 2.3.0 | [animepahe.org](https://animepahe.org) |
-| AnimeParadise | English | 0.3.5 | [animeparadise.moe](https://animeparadise.moe) |
-| AniNeko | English | 0.1.1 | [anineko.to](https://anineko.to) |
-| AniWave | English | 0.2.3 | [aniwaves.ru](https://aniwaves.ru) |
-| HiAnime | English | 0.4.11 | [hianime.ms](https://hianime.ms) |
-| Just4Anime | English | 0.1.1 | [just4anime.online](https://just4anime.online) |
-| JustAnime | English | 0.2.8 | [justanime.to](https://justanime.to) |
-| KickAssAnime | English | 1.1.0 | [kaa.to](https://kaa.to) |
-| Miruro | English | 6.1.11 | [www.miruro.to](https://www.miruro.to) |
-| MyroniX | English | 0.2.4 | [myronix.strangled.net](https://myronix.strangled.net) |
-| Playback Diagnostic | English | 0.0.2 | [example.invalid](https://example.invalid) |
-| Re:ANIME | English | 2.2.0 | [reanime.to](https://reanime.to) |
+| Extension | Language | Version | Site | Other homes |
+| --- | --- | --- | --- | --- |
+| Anidap | English | 1.6.0 | [anidap.lol](https://anidap.lol) | - |
+| AniKoto | English | 0.4.16 | [anikototv.to](https://anikototv.to) | 14 |
+| AniLight | English | 0.5.1 | [anilight.live](https://anilight.live) | - |
+| AnimeHeaven | English | 0.0.7 | [animeheaven.me](https://animeheaven.me) | - |
+| AnimePahe | English | 2.3.1 | [animepahe.org](https://animepahe.org) | 2 |
+| AnimeParadise | English | 0.3.5 | [animeparadise.moe](https://animeparadise.moe) | - |
+| AniNeko | English | 0.1.1 | [anineko.to](https://anineko.to) | - |
+| AniWave | English | 0.2.4 | [aniwaves.ru](https://aniwaves.ru) | 3 |
+| HiAnime | English | 0.4.12 | [hianime.ms](https://hianime.ms) | 1 |
+| Just4Anime | English | 0.1.1 | [just4anime.online](https://just4anime.online) | - |
+| JustAnime | English | 0.2.8 | [justanime.to](https://justanime.to) | - |
+| KickAssAnime | English | 1.1.0 | [kaa.to](https://kaa.to) | - |
+| Miruro | English | 6.1.12 | [www.miruro.to](https://www.miruro.to) | - |
+| MyroniX | English | 0.2.4 | [myronix.strangled.net](https://myronix.strangled.net) | - |
+| Playback Diagnostic | English | 0.0.2 | [example.invalid](https://example.invalid) | - |
+| Re:ANIME | English | 2.2.1 | [reanime.to](https://reanime.to) | 2 |
