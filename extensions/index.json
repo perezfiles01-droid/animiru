@@ -198,7 +198,7 @@
     "baseUrl": "https://www.miruro.to",
     "apiUrl": "",
     "iconUrl": "https://www.google.com/s2/favicons?sz=256&domain=https://www.miruro.to",
-    "version": "6.1.11",
+    "version": "6.1.12",
     "itemType": 1,
     "isNsfw": false,
     "hasCloudflare": false,
