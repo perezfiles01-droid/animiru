@@ -106,6 +106,47 @@ describe('explaining the failure', () => {
   });
 });
 
+/**
+ * A site that is slow, or that drops the connection, is not a broken source.
+ *
+ * These arrive from the network layer in wording nothing here chose -
+ * axios says "timeout of 14955ms exceeded", Node says "read ECONNRESET" -
+ * and every one of them used to fall through to "an error the app does not
+ * recognise", which tells a reader nothing about a site that was simply
+ * slow. Every source reaches the network the same way, so every source
+ * shows the same unhelpful message.
+ */
+describe('explaining a request that never got an answer', () => {
+  const recognised = (message) => expect(explain(message).cause)
+    .not.toMatch(/does not recognise/);
+
+  it.each([
+    ['timeout of 14955ms exceeded'],
+    ['connect ETIMEDOUT 1.2.3.4:443'],
+    ['read ECONNRESET'],
+    ['socket hang up'],
+    ['getaddrinfo ENOTFOUND anineko.test'],
+    ['connect ECONNREFUSED 1.2.3.4:443'],
+    ['certificate has expired']
+  ])('recognises %s', (message) => recognised(message));
+
+  it('names how long the request waited', () => {
+    expect(explain('timeout of 14955ms exceeded').cause).toContain('14955ms');
+  });
+
+  // The run budget and one request are different failures wanting
+  // different advice, and their messages both contain "timed out".
+  it('tells a slow request apart from a run that overran', () => {
+    expect(explain('timeout of 14955ms exceeded').cause).toMatch(/request/i);
+    expect(explain('Extension timed out after 20000ms').cause).toMatch(/ran longer/i);
+  });
+
+  it('names the host that did not resolve, without the punctuation', () => {
+    expect(explain('Could not resolve anineko.test: getaddrinfo ENOTFOUND').cause)
+      .toContain('"anineko.test"');
+  });
+});
+
 describe('the request trace', () => {
   afterEach(() => jest.restoreAllMocks());
 

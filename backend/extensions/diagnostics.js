@@ -121,6 +121,53 @@ const CAUSES = [
     fix: 'Look at the request trace below. An HTML body usually means an '
       + 'error page, a rate limit, a consent wall, or a URL that has moved.'
   },
+  // Ahead of the run-budget rule: this is one request giving up, not the
+  // whole run, and the two want different advice. axios words it "timeout
+  // of 14955ms exceeded", which matched nothing at all before - so a site
+  // that simply answered slowly was reported as an error the app does not
+  // recognise, which tells the reader nothing.
+  {
+    match: /timeout of (\d+)ms exceeded|\bETIMEDOUT\b/,
+    cause: (m) => (m[1]
+      ? `A request to the site got no answer within ${m[1]}ms.`
+      : 'A request to the site got no answer before it gave up.'),
+    fix: 'The site is slow or not answering right now, rather than the source '
+      + 'asking for the wrong thing. Each request is retried once before it '
+      + 'is reported, so this means both attempts ran out of time. The trace '
+      + 'below names the request that stalled; trying again later usually '
+      + 'works if the site itself is up.'
+  },
+  {
+    match: /\bECONNRESET\b|socket hang up/,
+    cause: () => 'The site closed the connection part way through the request.',
+    fix: 'Usually the site dropping a request it did not like, or an unstable '
+      + 'hop between the server and the site. It is retried once before '
+      + 'being reported, so a persistent one means the site is refusing this '
+      + 'server at the connection level rather than with a status code.'
+  },
+  {
+    // Stopping at the colon: http.js writes "Could not resolve host: why",
+    // and a greedy match names the host with the punctuation attached.
+    match: /\b(?:ENOTFOUND|EAI_AGAIN)\b|Could not resolve ([^\s:]+)/,
+    cause: (m) => (m[1]
+      ? `The address "${m[1]}" does not resolve.`
+      : 'The site\'s address does not resolve.'),
+    fix: 'The domain is wrong, has moved, or has expired - sources outlive '
+      + 'the sites they scrape. Check the baseUrl the source declares '
+      + 'against where the site actually lives now.'
+  },
+  {
+    match: /\bECONNREFUSED\b/,
+    cause: () => 'Nothing accepted the connection at that address.',
+    fix: 'The host resolves but is not serving on that port. Usually a URL '
+      + 'built with the wrong scheme or port, or a site that is down.'
+  },
+  {
+    match: /certificate|\bERR_TLS|\bEPROTO\b|\bDEPTH_ZERO_SELF_SIGNED/i,
+    cause: () => 'The site\'s TLS certificate could not be verified.',
+    fix: 'An expired or misconfigured certificate on the site. This is not '
+      + 'something the source can work around, and it is not bypassed here.'
+  },
   {
     match: /timed out after (\d+)ms/,
     cause: (m) => `The source ran longer than ${m[1]}ms and was stopped.`,
