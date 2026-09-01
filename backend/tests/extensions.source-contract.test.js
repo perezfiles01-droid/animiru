@@ -42,8 +42,10 @@ const sources = fs.readdirSync(SOURCES_DIR)
  * is a string. Regex literals are recognised well enough not to be mistaken
  * for division and have their contents swallowed as a string.
  */
-function executable(code) {
+function scan(code) {
   const source = String(code);
+  /** Every regex literal met on the way, in source order. */
+  const regexes = [];
   let out = '';
   let i = 0;
   /** The last significant character emitted, for the regex-or-divide call. */
@@ -86,15 +88,21 @@ function executable(code) {
     // A slash here is either division or the start of a regex literal. After
     // a value it divides; after an operator or an opening bracket it cannot.
     if (character === '/' && /^$|[([{,;:=!&|?+\-*%~^<>]/.test(previous)) {
+      const from = i + 1;
       i += 1;
       let inClass = false;
       while (i < source.length && source[i] !== '\n') {
         if (source[i] === '\\') { i += 2; continue; }
         if (source[i] === '[') inClass = true;
         else if (source[i] === ']') inClass = false;
-        else if (source[i] === '/' && !inClass) { i += 1; break; }
+        else if (source[i] === '/' && !inClass) { break; }
         i += 1;
       }
+      // The pattern itself, kept for checks that ask what it matches. The
+      // stripped text still loses it, so a search for code cannot trip over
+      // a pattern's contents.
+      regexes.push(source.slice(from, i));
+      i += 1;
       out += '""';
       previous = '"';
       continue;
@@ -104,7 +112,17 @@ function executable(code) {
     i += 1;
   }
 
-  return out;
+  return { code: out, regexes: regexes };
+}
+
+/** The source with comments, strings and regex literals removed. */
+function executable(code) {
+  return scan(code).code;
+}
+
+/** Every regex literal the source contains, as its pattern text. */
+function regexLiterals(code) {
+  return scan(code).regexes;
 }
 
 /** The index just past the argument list that starts at `open`. */
@@ -391,5 +409,81 @@ describe('removing comments and strings without removing code', () => {
     const closes = (stripped.match(/\}/g) || []).length;
     expect(opens).toBe(closes);
     expect(stripped).toMatch(/class\s+DefaultExtension/);
+  });
+});
+
+/**
+ * No source reads page structure with a regex.
+ *
+ * Two of the sixteen did: AniNeko with nine, AnimeHeaven with six. Both
+ * broke on the markup they were written against, both carried their own
+ * hand-written entity decoding, and both are selector-based now like the
+ * rest. This is what stops the next one arriving the same way - and the
+ * next one is the likeliest to, because its author is newest to the
+ * conventions here.
+ *
+ * The fault is matching the elements a page is BUILT from - its divs,
+ * anchors, images, headings, list items, meta tags - to pull content out of
+ * them. That is what a parser is for.
+ *
+ * Three things that look similar are deliberately allowed, because each is
+ * reading a value out of text rather than structure out of a page:
+ *
+ *   - a tag stripper, /<[^>]*>/ with nothing captured, cleaning HTML out of
+ *     a description a JSON API returned
+ *   - a script or style blob, where the content is JSON or JavaScript and
+ *     the tag is only its wrapper (HiAnime reads ld+json this way)
+ *   - a <title> probe, used to recognise a video host's error page
+ *     (AniKoto and AniLight both do)
+ *
+ * A pattern is reading structure when it names a content element AND
+ * captures something out of it.
+ */
+describe('reading HTML', () => {
+  /** The elements a page's cards and panels are built from. */
+  const CONTENT_TAGS = [
+    'a', 'div', 'span', 'img', 'p', 'li', 'ul', 'ol', 'tr', 'td', 'th',
+    'table', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'article', 'section',
+    'meta', 'button', 'iframe', 'figure', 'strong', 'em', 'label', 'option'
+  ];
+  const NAMES_A_CONTENT_TAG = new RegExp(`<\\/?(?:${CONTENT_TAGS.join('|')})\\b`, 'i');
+  /** A capture group, ignoring the non-capturing and assertion forms. */
+  const CAPTURES = /\((?!\?[:=!<])/;
+
+  const structureIn = (code) => regexLiterals(code)
+    .filter((pattern) => NAMES_A_CONTENT_TAG.test(pattern) && CAPTURES.test(pattern));
+
+  it.each(sources.map((s) => [s.file]))('%s does not match page structure', (file) => {
+    const { code } = sources.find((s) => s.file === file);
+    expect(structureIn(code)).toEqual([]);
+  });
+
+  /*
+   * The check is only worth having if it can fail. These plant the shapes
+   * AniNeko and AnimeHeaven actually carried, and the shapes that must not
+   * be mistaken for them.
+   */
+  it.each([
+    ['a div matcher', "var rx = /<div class='infotitle'>([^<]+)<\\/div>/;"],
+    ['an anchor matcher', 'var rx = /<a[^>]+href="([^"]+)"/g;'],
+    ['an image matcher', 'var rx = /<img[^>]+src="([^"]+)"[^>]+alt="([^"]*)"/g;'],
+    ['a heading matcher', 'var m = html.match(/<h1[^>]*>([\\s\\S]*?)<\\/h1>/);'],
+    ['a meta matcher', "var m = html.match(/<meta property='og:image' content='([^']+)'/);"],
+    ['a list-item matcher', 'var rx = /<li[^>]*>([^<]+)<\\/li>/g;']
+  ])('catches %s', (_, code) => {
+    expect(structureIn(code).length).toBe(1);
+  });
+
+  it.each([
+    ['a tag stripper', 'var t = s.replace(/<[^>]*>/g, " ");'],
+    ['a script blob', 'var re = /<script[^>]+ld\\+json[^>]*>([\\s\\S]*?)<\\/script>/gi;'],
+    ['a title probe', 'var m = body.match(/<title>File (\\d+)/i);'],
+    ['an episode number', 'var m = /(?:ep(?:isode)?\\.?\\s*)(\\d+)/i.exec(label);'],
+    ['a quality label', 'var m = /(\\d{3,4})p/.exec(label);'],
+    ['a hostname', 'var m = /^(?:https?:)?\\/\\/([^/]+)/i.exec(value);'],
+    ['a query parameter', 'var m = embed.match(/[?&](?:sub|caption_1)=([^&]+)/);'],
+    ['a comparison against text', 'var ae = /eng/i.test(a.label) ? 0 : 1;']
+  ])('does not flag %s', (_, code) => {
+    expect(structureIn(code)).toEqual([]);
   });
 });
