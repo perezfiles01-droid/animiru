@@ -57,7 +57,20 @@ public class MainActivity extends AppCompatActivity {
 
     /** Must stay in sync with WebViewAssetLoader's default authority. */
     private static final String APP_ORIGIN = "https://appassets.androidplatform.net";
-    private static final String START_URL = APP_ORIGIN + "/index.html";
+    /**
+     * The app is opened at a route, not at a file.
+     *
+     * React Router matches on the pathname, so "/index.html" put the app on
+     * a path it declares no route for: <Routes> rendered null, and since the
+     * navigation bars are outside it the app drew its own frame around an
+     * empty middle on every launch. Tapping a tab pushed a path that matched,
+     * which is why switching away and back appeared to fix it.
+     *
+     * SpaAssetsHandler below serves index.html for any path without a file
+     * extension, so this still loads the same file. What changes is the
+     * pathname the router reads afterwards.
+     */
+    private static final String START_URL = APP_ORIGIN + "/";
 
     private WebView webView;
 
