@@ -114,7 +114,12 @@ export default function Details() {
     `/watch?source=${encodeURIComponent(sourceId)}`
     + `&id=${encodeURIComponent(itemId)}`
     + `&ep=${encodeURIComponent(episode.id)}`
-    + `&title=${encodeURIComponent(displayTitle || '')}`;
+    + `&title=${encodeURIComponent(displayTitle || '')}`
+    // The poster travels too, and for the same reason the title does: the
+    // player is the only place that knows an episode was watched, and it
+    // has nothing else to describe the show with. Without it every history
+    // row drew an empty placeholder.
+    + (item.poster ? `&poster=${encodeURIComponent(item.poster)}` : '');
 
   // The title travels with the link because AniList is matched on it, and
   // fetching the detail again purely to learn the title it already showed

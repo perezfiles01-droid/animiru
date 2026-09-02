@@ -67,8 +67,32 @@ describe('Details', () => {
     expect(screen.getByRole('link', { name: 'Episode 2' })).toHaveAttribute(
       'href',
       `/watch?source=${encodeURIComponent(SOURCE)}&id=${encodeURIComponent(ITEM)}`
-      + '&ep=%2Fe%2F2&title=Bleach'
+      + '&ep=%2Fe%2F2&title=Bleach&poster=https%3A%2F%2Fi.test%2Fb.jpg'
     );
+  });
+
+  /**
+   * History rows drew an empty placeholder where the poster should be. Not a
+   * rendering fault: the poster was never sent. The player is the only place
+   * that knows an episode was watched and has nothing else to describe the
+   * show with, so the link has to carry it.
+   */
+  it('carries the poster to the player, so history can draw it', async () => {
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails();
+
+    expect(screen.getByRole('link', { name: 'Episode 2' }))
+      .toHaveAttribute('href', expect.stringContaining('poster=https%3A%2F%2Fi.test%2Fb.jpg'));
+  });
+
+  it('leaves the poster out when the source did not give one', async () => {
+    getProvider.mockReturnValue(makeProvider({
+      getItem: jest.fn().mockResolvedValue({ id: ITEM, title: 'Bleach', genres: [] })
+    }));
+    await renderDetails();
+
+    expect(screen.getByRole('link', { name: 'Episode 2' }))
+      .toHaveAttribute('href', expect.not.stringContaining('poster='));
   });
 
   it('offers the first episode as the main action', async () => {

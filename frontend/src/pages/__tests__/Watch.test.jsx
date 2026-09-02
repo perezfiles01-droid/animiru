@@ -274,6 +274,29 @@ describe('remembering the position', () => {
     });
   });
 
+  it('records the poster the link carried', async () => {
+    getProvider.mockReturnValue(makeProvider());
+    await renderWatch(`${PATH}&title=One%20Piece&poster=${encodeURIComponent('https://i.test/op.jpg')}`);
+
+    await userEvent.click(screen.getByRole('button', { name: /report progress/ }));
+    expect(getHistory()[0].poster).toBe('https://i.test/op.jpg');
+  });
+
+  // Opening an episode from a history row sends no poster, and the entry
+  // must not lose the one it already had.
+  it('keeps a poster it already knew when the link carries none', async () => {
+    recordProgress({
+      providerId: SOURCE, itemId: ITEM, title: 'One Piece',
+      poster: 'https://i.test/op.jpg', episodeId: '/e/1', position: 60, duration: 1440
+    });
+
+    getProvider.mockReturnValue(makeProvider());
+    await renderWatch(`${PATH}&title=One%20Piece`);
+
+    await userEvent.click(screen.getByRole('button', { name: /report progress/ }));
+    expect(getHistory()[0].poster).toBe('https://i.test/op.jpg');
+  });
+
   it('names the source, so the history row can say where it played', async () => {
     getProvider.mockReturnValue(makeProvider());
     await renderWatch(`${PATH}&title=One%20Piece`);
