@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import TitleRow from './TitleRow';
 import { getChart, findOnSourcesHref } from '../services/metadata';
-import { getHistory, resumePosition } from '../services/history';
+import { getHistory, resumePosition, backfillPosters } from '../services/history';
+import { getProvider } from '../services/providers/registry';
 import { formatPosition } from './ContinueWatching';
 
 /**
@@ -51,7 +52,22 @@ export function seasonHeading(chart) {
 export default function FrontRows() {
   // Read once on mount: re-reading on every render would redraw the row
   // while it is being scrolled.
-  const [watching] = useState(() => getHistory().slice(0, 20));
+  const [watching, setWatching] = useState(() => getHistory().slice(0, 20));
+
+  /**
+   * Rows recorded before the player carried posters draw an empty card, and
+   * resuming them from here never fixed it. Repaired once on mount, from
+   * the source each entry came from.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    backfillPosters({ getProvider }).then((repaired) => {
+      if (!cancelled) setWatching(repaired.slice(0, 20));
+    });
+
+    return () => { cancelled = true; };
+  }, []);
 
   /**
    * One call each, written out rather than mapped over a list.

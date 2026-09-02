@@ -169,5 +169,68 @@ export function clearHistory() {
   return write([]);
 }
 
+/**
+ * Gives stored entries the poster they were recorded without.
+ *
+ * The poster only ever reached history through the /watch URL, and only the
+ * details page put it there. Everything recorded before that - and anything
+ * resumed straight from a row rather than from the details page - has an
+ * empty poster, and no amount of watching it again will fill it in. Closing
+ * that hole stops it happening; it does nothing for what is already stored,
+ * which is what the user is looking at.
+ *
+ * So the entries that lack one are looked up against the source they came
+ * from, exactly once per title, and written back.
+ *
+ * Failure here is never worth losing a row over. An uninstalled source, a
+ * site that is down, a detail call that answers without an image: the entry
+ * keeps its title and its position, which is what it was kept for, and the
+ * row simply has no picture. Storage is only written when something was
+ * actually found, so a run that fixes nothing costs nothing.
+ *
+ * @param {Object} deps
+ * @param {Function} deps.getProvider resolves a provider id to a provider
+ * @returns {Promise<Array>} the history, repaired where it could be
+ */
+export async function backfillPosters({ getProvider } = {}) {
+  if (typeof getProvider !== 'function') return read();
+
+  const entries = read();
+  const missing = entries.filter((entry) => !entry.poster && entry.providerId && entry.itemId);
+  if (missing.length === 0) return entries;
+
+  // One lookup per title. The same show can hold several rows, and asking
+  // the source once per row is the kind of thing that turns opening a
+  // screen into twenty requests.
+  const wanted = new Map();
+  for (const entry of missing) {
+    const key = historyKey(entry);
+    if (!wanted.has(key)) wanted.set(key, entry);
+  }
+
+  const found = new Map();
+
+  await Promise.all([...wanted.entries()].map(async ([key, entry]) => {
+    try {
+      const provider = getProvider(entry.providerId);
+      if (!provider || typeof provider.getItem !== 'function') return;
+
+      const item = await provider.getItem(entry.itemId);
+      if (item && item.poster) found.set(key, item.poster);
+    } catch (err) {
+      // Deliberately silent: a missing picture is not worth an error in
+      // front of someone who opened the screen to carry on watching.
+    }
+  }));
+
+  if (found.size === 0) return entries;
+
+  return write(entries.map((entry) => (
+    !entry.poster && found.has(historyKey(entry))
+      ? { ...entry, poster: found.get(historyKey(entry)) }
+      : entry
+  )));
+}
+
 export const HISTORY_STORAGE_KEY = HISTORY_KEY;
 export const HISTORY_LIMITS = { MAX_ENTRIES, MIN_SECONDS, ENDING_SECONDS };
