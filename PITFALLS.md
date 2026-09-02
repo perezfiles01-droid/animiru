@@ -407,6 +407,36 @@ now.
 
 ---
 
+## An absence read off a partial list is not an absence
+
+A screenshot of AniLight's server menu showed five entries, and `misora` was
+not among them - so it was removed from the source, with a commit message
+stating the site had dropped it. The menu has nine entries. The screenshot
+was cropped, `misora` was in the part that was not visible, and it was the
+server actually selected.
+
+Nothing in the evidence said "this list is complete". The reasoning treated
+it as though it had.
+
+Two more entries were nearly mishandled the same way, in the opposite
+direction - by adding everything the full menu showed:
+
+- **RYU is AnimeGG.** The source's own comment says so ("the API's 'ryu'
+  provider"), and it already has its own resolver. Listing it would have
+  fetched the same backend twice.
+- **MEG is the embed path**, resolved from `embed_url`. `/sources` is the
+  wrong endpoint for it.
+
+**Pinned by** `backend/tests/extensions.anilight-servers.test.js`, which now
+asserts the exact set rather than a subset - `arrayContaining` would pass
+with `ryu` wrongly added.
+
+> Read what a screenshot shows, not what it implies about what it does not
+> show. When a conclusion depends on something being absent, say that the
+> evidence may be partial - or ask for the whole of it.
+
+---
+
 ## Verification
 
 The habit that caught most of the above, and is worth keeping:

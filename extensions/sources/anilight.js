@@ -8,7 +8,7 @@ const mangayomiSources = [
     "iconUrl": "https://www.google.com/s2/favicons?sz=128&domain=https://anilight.live",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.7.0",
+    "version": "0.8.0",
     "pkgPath": "anime/src/en/anilight.js",
     "isManga": false,
     "isNsfw": false,
@@ -163,24 +163,33 @@ var HOST_REWRITES = [
 // mode, which passes no video bytes at all.
 // The servers the site itself offers, by the id it uses for them.
 //
-// These are not guesses. The site's own watch URLs carry ?server=<id> and
-// its /sources call takes providerId=<id>, and the two are the same
-// namespace - "misa" in the menu is providerId "misa" here, which is what
-// makes the rest readable off a URL.
+// These are not guesses. The site's watch URLs carry ?server=<id> and its
+// /sources call takes providerId=<id>, and the two are the same namespace -
+// "misa" appears in the site's own menu and in this list, which is what
+// makes the rest readable straight off a URL.
 //
-// "misora" is gone: the site no longer lists it, and asking for a provider
-// that cannot answer spends a request on every episode. That cost is not
-// abstract - each request a bot check refuses is one the device has to make
-// instead.
+// Two of the menu's entries are deliberately absent, because they are
+// already reached another way and listing them here would fetch the same
+// backend twice:
 //
-// A referer of null means the stream's own origin, which is the right
-// default for every one of these except MegaPlay, whose CDN insists on its
-// own. A provider that does not answer returns nothing and is skipped, so a
-// wrong entry costs one request rather than the episode.
+//   RYU  is AnimeGG - the API's own name for it - which resolveAnimeGG
+//        asks for directly.
+//   MEG  is the embed path, resolved from the episode's embed_url.
+//        /sources is the wrong endpoint for it.
+//
+// A referer of null means the stream's own origin, which is right for every
+// one of these except MegaPlay, whose CDN insists on its own. Getting that
+// backwards is a 403 from the CDN on a stream that resolved perfectly well.
+//
+// A provider that does not answer returns nothing and is skipped, so a wrong
+// entry costs one request rather than the episode.
 var TS_PROVIDERS = [
   { id: "misa",   name: "MegaPlay", referer: "https://megaplay.buzz/" },
+  { id: "misora", name: "Misora",   referer: null },
   { id: "mello",  name: "Mello",    referer: null },
   { id: "rem",    name: "Rem",      referer: null },
+  { id: "near",   name: "Near",     referer: null },
+  { id: "kiwi",   name: "Kiwi",     referer: null },
   { id: "light",  name: "Light",    referer: null },
 ];
 

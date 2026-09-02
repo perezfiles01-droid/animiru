@@ -98,9 +98,14 @@ describe('the providers asked for', () => {
     return [...block[1].matchAll(/id:\s*"([^"]+)"/g)].map((match) => match[1]);
   };
 
-  // The site's own server menu lists LIGHT, MISA, REM and MEG.
-  it('no longer asks for misora, which the site dropped', () => {
-    expect(providers()).not.toContain('misora');
+  /**
+   * misora was removed once on the strength of a screenshot cropped to five
+   * entries, on the reasoning that the site had dropped it. The full menu
+   * lists it - selected, at that. An absence read off a partial list is not
+   * an absence.
+   */
+  it('asks for misora, which the site still serves', () => {
+    expect(providers()).toContain('misora');
   });
 
   it('still asks for misa, which it still serves', () => {
@@ -113,16 +118,25 @@ describe('the providers asked for', () => {
    * are the same namespace - "misa" appears in the menu and in this list
    * already, which is what makes the rest readable from a URL.
    */
-  it('asks for the servers the site offers', () => {
-    expect(providers()).toEqual(
-      expect.arrayContaining(['misa', 'mello', 'rem', 'light'])
+  it('asks for every server the menu offers through /sources', () => {
+    expect(providers().sort()).toEqual(
+      ['kiwi', 'light', 'mello', 'misa', 'misora', 'near', 'rem']
     );
   });
 
-  // MEG is the embed path, resolved from the episode's embed_url rather
-  // than through /sources - listing it here would ask the wrong endpoint.
+  /**
+   * Two of the menu's entries are reached another way, and listing them
+   * here would fetch the same backend twice - spending requests that are
+   * rationed the moment a bot check starts refusing them.
+   */
   it('does not ask /sources for the embed server', () => {
     expect(providers()).not.toContain('meg');
+  });
+
+  // The source's own comment: AnimeGG is "the API's 'ryu' provider".
+  it('does not ask /sources for AnimeGG under its API name', () => {
+    expect(providers()).not.toContain('ryu');
+    expect(SOURCE).toMatch(/resolveAnimeGG/);
   });
 
   /**
