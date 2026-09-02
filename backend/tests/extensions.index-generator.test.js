@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const {
-  build, serialise, toEntry, problemsWith, RAW_BASE
+  build, serialise, toEntry, problemsWith, RAW_BASE, OUTPUTS
 } = require('../../scripts/generate-extension-index');
 
 const INDEX = path.join(__dirname, '..', '..', 'extensions', 'index.json');
@@ -216,5 +216,64 @@ describe('the fields the other app reads', () => {
     for (const entry of build()) {
       expect(Number.isInteger(entry.id)).toBe(true);
     }
+  });
+});
+
+/**
+ * The repository is published at two addresses, one per app.
+ *
+ * Two files is how they drift: a source added to one and forgotten in the
+ * other stays invisible until somebody installs from the stale link and
+ * finds an extension missing, with nothing to say which of the two they
+ * used. Both are written by the same builder, so both are checked.
+ */
+describe('both published indexes', () => {
+  it.each(OUTPUTS.map((file) => [path.relative(path.join(__dirname, '..', '..'), file)]))(
+    '%s is in step with the sources on disk',
+    (relative) => {
+      const file = path.join(__dirname, '..', '..', relative);
+      expect(fs.readFileSync(file, 'utf8')).toBe(serialise(build()));
+    }
+  );
+
+  // Byte-identical rather than merely equivalent: each app ignores what it
+  // does not read, so there is nothing to tailor and no reason for the two
+  // to differ by even a key order.
+  it('are the same file at two addresses', () => {
+    const [first, ...rest] = OUTPUTS.map((file) => fs.readFileSync(file, 'utf8'));
+    for (const other of rest) expect(other).toBe(first);
+  });
+});
+
+/**
+ * The workflow that republishes the indexes must commit all of them.
+ *
+ * The bot names the files it stages, so a file the generator writes but the
+ * workflow does not add is regenerated on every push and committed on none.
+ * It goes stale on main and stays there - and the published link keeps
+ * serving the old list, which is invisible from here: the repository looks
+ * right, the generator is right, and only the URL is wrong.
+ *
+ * Read from the workflow rather than asserted as a list, so adding a third
+ * output cannot pass this by being forgotten in the same way.
+ */
+describe('the workflow that publishes them', () => {
+  const WORKFLOW = path.join(
+    __dirname, '..', '..', '.github', 'workflows', 'extensions-index.yml'
+  );
+  const ROOT_DIR = path.join(__dirname, '..', '..');
+
+  it('stages every file the generator writes', () => {
+    const yaml = fs.readFileSync(WORKFLOW, 'utf8');
+    const staged = yaml
+      .split('\n')
+      .filter((line) => line.includes('git add '))
+      .join(' ');
+
+    const forgotten = OUTPUTS
+      .map((file) => path.relative(ROOT_DIR, file))
+      .filter((relative) => !staged.includes(relative));
+
+    expect(forgotten).toEqual([]);
   });
 });

@@ -34,6 +34,22 @@ const SOURCES_DIR = path.join(ROOT, 'extensions', 'sources');
 const INDEX_PATH = path.join(ROOT, 'extensions', 'index.json');
 
 /**
+ * The same index under the name the other app's repositories use.
+ *
+ * Two published addresses, one builder. The alternative - maintaining a
+ * second file - is how the two drift: a source added to one and forgotten
+ * in the other is invisible until somebody installs from the stale link.
+ *
+ * The content is identical rather than tailored, because each app already
+ * ignores what it does not read. Animiru does not mind the fields Mangayomi
+ * needs, and Mangayomi does not mind pkgPath or the mirror lists.
+ */
+const ANIME_INDEX_PATH = path.join(ROOT, 'anime_index.json');
+
+/** Every file this generator owns. Both are written, both are checked. */
+const OUTPUTS = [INDEX_PATH, ANIME_INDEX_PATH];
+
+/**
  * Where a source's code is served from.
  *
  * Absolute, not a path relative to the index. Animiru resolves a relative
@@ -229,25 +245,33 @@ function main() {
   }
 
   if (check) {
-    const current = fs.existsSync(INDEX_PATH) ? fs.readFileSync(INDEX_PATH, 'utf8') : '';
-    if (current !== text) {
+    const stale = OUTPUTS.filter((file) => {
+      const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+      return current !== text;
+    });
+
+    if (stale.length) {
       console.error(
-        'extensions/index.json is out of date.\n'
-        + 'It is generated - run `node scripts/generate-extension-index.js` and commit the result.'
+        `${stale.map((file) => path.relative(ROOT, file)).join(' and ')} out of date.\n`
+        + 'Generated - run `node scripts/generate-extension-index.js` and commit the result.'
       );
       process.exit(1);
     }
-    console.log('extensions/index.json is up to date.');
+    console.log('Both indexes are up to date.');
     return;
   }
 
-  fs.writeFileSync(INDEX_PATH, text);
+  for (const file of OUTPUTS) fs.writeFileSync(file, text);
   const count = JSON.parse(text).length;
-  console.log(`Wrote extensions/index.json - ${count} source${count === 1 ? '' : 's'}.`);
+  console.log(
+    `Wrote ${OUTPUTS.map((file) => path.relative(ROOT, file)).join(' and ')}`
+    + ` - ${count} source${count === 1 ? '' : 's'}.`
+  );
 }
 
 if (require.main === module) main();
 
 module.exports = {
-  build, serialise, toEntry, problemsWith, RAW_BASE, sourceCodeLanguageOf
+  build, serialise, toEntry, problemsWith, RAW_BASE, sourceCodeLanguageOf,
+  INDEX_PATH, ANIME_INDEX_PATH, OUTPUTS
 };
