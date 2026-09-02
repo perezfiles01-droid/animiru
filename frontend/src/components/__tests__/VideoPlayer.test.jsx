@@ -390,6 +390,36 @@ describe('when a server fails', () => {
     expect(await screen.findByText(/No other server worked either/)).toBeInTheDocument();
   });
 
+  /*
+   * The screen may know of another home for the same episode. It cannot
+   * act on that unless it is told the servers here are spent - and the
+   * player is the only thing that knows.
+   */
+  it('tells the page when every server is spent', async () => {
+    const onExhausted = jest.fn();
+    const { container } = renderPlayer([
+      option({ id: 'only', server: 'Only', type: 'mp4', url: 'https://cdn.test/a.mp4' })
+    ], { onExhausted });
+
+    failCurrentServer(container);
+
+    await screen.findByText(/No other server worked either/);
+    expect(onExhausted).toHaveBeenCalled();
+  });
+
+  // While a server remains untried, nothing is spent: switching to it is
+  // cheaper than asking the source again.
+  it('does not say so while a server is still untried', async () => {
+    const onExhausted = jest.fn();
+    const { container } = renderPlayer(servers(), { onExhausted });
+
+    startPlayback(container);
+    failCurrentServer(container);
+
+    await screen.findByText(/still untried/);
+    expect(onExhausted).not.toHaveBeenCalled();
+  });
+
   it('tells the page which server failed', async () => {
     const onServerFailed = jest.fn();
     const { container } = renderPlayer(servers(), { onServerFailed });

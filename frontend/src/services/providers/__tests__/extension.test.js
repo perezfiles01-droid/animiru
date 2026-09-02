@@ -440,3 +440,61 @@ describe('extension provider', () => {
     });
   });
 });
+
+/**
+ * Which of the source's homes the streams came from.
+ *
+ * A source may run on several domains. When every server one of them gave
+ * fails to play, the screen has to be able to name that home as one to
+ * skip - otherwise asking again goes back to it and returns the same
+ * unplayable list.
+ */
+describe('the home a set of streams came from', () => {
+  const oneStream = [{ url: 'https://cdn.test/a.m3u8', quality: '1080p' }];
+
+  // This block sits outside the one that builds a provider, so it builds
+  // its own and resets the mock itself.
+  let provider;
+  beforeEach(() => {
+    runSource.mockReset();
+    provider = createExtensionProvider(source);
+  });
+
+  it('is carried back with them', async () => {
+    runSource.mockResolvedValueOnce({
+      result: oneStream, baseUrl: 'https://one.test', logs: [], requests: [], durationMs: 1
+    });
+
+    const { home } = await provider.getStreams('/e/1');
+    expect(home).toBe('https://one.test');
+  });
+
+  // A source with no mirrors reports none, and the screen simply has
+  // nothing to rule out.
+  it('is null when the run named none', async () => {
+    resolves(oneStream);
+
+    const { home } = await provider.getStreams('/e/1');
+    expect(home).toBeNull();
+  });
+
+  it('passes the homes to skip through to the run', async () => {
+    resolves(oneStream);
+
+    await provider.getStreams('/e/1', { excludeBaseUrls: ['https://home.test'] });
+
+    expect(runSource).toHaveBeenCalledWith(
+      expect.objectContaining({ excludeBaseUrls: ['https://home.test'] })
+    );
+  });
+
+  it('asks for none to be skipped when it is not told to', async () => {
+    resolves(oneStream);
+
+    await provider.getStreams('/e/1');
+
+    expect(runSource).toHaveBeenCalledWith(
+      expect.objectContaining({ excludeBaseUrls: undefined })
+    );
+  });
+});

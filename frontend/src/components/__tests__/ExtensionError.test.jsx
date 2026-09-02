@@ -124,3 +124,91 @@ describe('ExtensionErrorReport', () => {
     expect(screen.queryByText(/selectFirst\(\) returns null/)).not.toBeInTheDocument();
   });
 });
+
+/**
+ * Which build produced the failure.
+ *
+ * The same error was reported three times running while the fix sat
+ * unmerged in the repository, because nothing on screen distinguished "the
+ * fix does not work" from "this build does not have the fix". A screenshot
+ * has to answer that on its own.
+ */
+describe('naming the build that failed', () => {
+  const openWith = async (build) => {
+    const error = errorWith();
+    error.diagnostics.build = build;
+    render(<ExtensionErrorReport error={error} />);
+    await userEvent.click(screen.getByText(/Show details/i));
+  };
+
+  it('names the backend build the failure came from', async () => {
+    await openWith({ shortCommit: 'ce1651f', branch: 'main' });
+    expect(screen.getByText(/ce1651f/)).toBeInTheDocument();
+  });
+
+  it('names the branch that build came from', async () => {
+    await openWith({ shortCommit: 'ce1651f', branch: 'main' });
+    expect(screen.getByText(/main/)).toBeInTheDocument();
+  });
+
+  // A backend too old to stamp its build reads as unknown - never as
+  // though the build were current. That is the case this exists for: it is
+  // exactly what a deployment predating this change will send.
+  it('says unknown when the failure carries no build', async () => {
+    await openWith(undefined);
+    expect(screen.getByText(/Backend: unknown/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * A failure where both the server and the device were tried.
+ *
+ * The headline says the site is down. The evidence for that - what each
+ * road actually reported - belongs in the details, where someone who wants
+ * it can find it and someone who only needs the conclusion is not made to
+ * read two stack-shaped strings first.
+ */
+describe('a failure both roads hit', () => {
+  const bothFailed = () => {
+    const error = new Error('This site is not answering.');
+    error.diagnostics = {
+      message: error.message,
+      cause: 'The site did not answer the server or this device.',
+      fix: 'Two networks, the same result.',
+      source: {},
+      requests: [],
+      logs: [],
+      failedRequests: [],
+      attempts: {
+        server: 'timeout of 5695ms exceeded',
+        device: 'Software caused connection abort'
+      }
+    };
+    return error;
+  };
+
+  it('shows what each road reported, once opened', async () => {
+    render(<ExtensionErrorReport error={bothFailed()} />);
+    await userEvent.click(screen.getByText(/Show details/i));
+
+    expect(screen.getByText(/timeout of 5695ms exceeded/)).toBeInTheDocument();
+    expect(screen.getByText(/Software caused connection abort/)).toBeInTheDocument();
+  });
+
+  // Before the tap, the conclusion and nothing else.
+  it('keeps the technical detail out of the summary', () => {
+    render(<ExtensionErrorReport error={bothFailed()} />);
+
+    expect(screen.queryByText(/Software caused connection abort/)).not.toBeInTheDocument();
+    expect(screen.getByText(/did not answer the server or this device/)).toBeInTheDocument();
+  });
+
+  // Every other failure has no attempts to show and must not render an
+  // empty section.
+  it('shows nothing of the sort for an ordinary failure', async () => {
+    render(<ExtensionErrorReport error={errorWith()} />);
+    await userEvent.click(screen.getByText(/Show details/i));
+
+    expect(screen.queryByText('What was tried')).not.toBeInTheDocument();
+  });
+});

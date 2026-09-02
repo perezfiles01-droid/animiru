@@ -28,6 +28,14 @@ export default function Watch() {
 
   const [episodes, setEpisodes] = useState([]);
   const [streams, setStreams] = useState(null);
+  /**
+   * Homes whose streams would not play, for this episode.
+   *
+   * Reset whenever the episode changes: a home that could not serve one
+   * episode may well serve the next, and carrying the grudge across would
+   * narrow the choices for no reason.
+   */
+  const [deadHomes, setDeadHomes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -75,6 +83,7 @@ export default function Watch() {
       setLoading(true);
       setError(null);
       setStreams(null);
+      setDeadHomes([]);
 
       try {
         // A source with nothing to play now throws, carrying the trace of
@@ -94,6 +103,37 @@ export default function Watch() {
     load();
     return () => { cancelled = true; };
   }, [provider, episodeId]);
+
+  /**
+   * Every server this home gave has failed to play.
+   *
+   * The player has already tried each one - that is what "no other server
+   * worked either" means. Asking the same home again would return the same
+   * unplayable list, so it is ruled out and the source is asked for the
+   * episode again on whichever of its other homes can serve it.
+   *
+   * When there is no other home the run says so, and the error stands: the
+   * player's message is then the whole truth rather than the first half of
+   * it.
+   */
+  const handleExhausted = useCallback(async () => {
+    const spent = streams && streams.home;
+    if (!provider || !episodeId || !spent || deadHomes.includes(spent)) return;
+
+    const ruledOut = [...deadHomes, spent];
+    setDeadHomes(ruledOut);
+    setLoading(true);
+
+    try {
+      const found = await provider.getStreams(episodeId, { excludeBaseUrls: ruledOut });
+      setStreams(found);
+      setError(null);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [provider, episodeId, streams, deadHomes]);
 
   /**
    * Records progress once the episode is known and its video has loaded.
@@ -182,6 +222,7 @@ export default function Watch() {
           mediaKey={episodeId}
           startAt={startAt}
           onProgress={remember}
+          onExhausted={handleExhausted}
         />
       )}
 

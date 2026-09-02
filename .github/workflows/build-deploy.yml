@@ -124,7 +124,11 @@ jobs:
         run: |
           cd mobile/android
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          # The APK has to carry this build's version, or Android reads an
+          # install as reinstalling the same app rather than updating it.
+          ./gradlew --no-daemon assembleDebug \
+            -PanimiruVersionCode=${{ github.run_number }} \
+            -PanimiruVersionName=1.0.${{ github.run_number }}
 
       # Proves the key actually reached the APK. A misnamed secret would
       # otherwise produce a debug-signed build that looks fine here and fails
@@ -161,7 +165,9 @@ jobs:
           ANIMIRU_KEY_ALIAS: animiru
         run: |
           cd mobile/android
-          ./gradlew --no-daemon assembleRelease
+          ./gradlew --no-daemon assembleRelease \
+            -PanimiruVersionCode=${{ github.run_number }} \
+            -PanimiruVersionName=1.0.${{ github.run_number }}
 
       - name: Find APK
         run: find mobile/android -name "*.apk" -type f -exec ls -lh {} \;
@@ -173,10 +179,22 @@ jobs:
           path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
+  # Publishing the release is what makes a build installable: the app asks
+  # GitHub for the newest release and compares it against the version
+  # compiled into itself, so a build that is never released is a build no
+  # user is ever offered.
+  #
+  # This used to run on workflow_dispatch alone, which meant a merge to main
+  # built an APK, uploaded it as an artifact, and published nothing - the
+  # fixes were live on the backend and the app went on reporting itself up
+  # to date. Main is the release branch here, so landing on it is exactly
+  # the moment a build should become installable.
   release:
     needs: build
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    if: >-
+      github.ref == 'refs/heads/main'
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: write
 

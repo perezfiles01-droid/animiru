@@ -6,15 +6,10 @@
  * This is an isolation layer, not a security boundary. `node:vm` gives an
  * extension a fresh realm - no require, no process, no Buffer, nothing from
  * this module's scope - and the runtime bootstrap makes sure no host object,
- * promise or error ever reaches extension code. That is enough to contain
- * mistakes and casual mischief.
+ * promise or error ever reaches extension code.
  *
  * It is not enough to contain a determined attacker. The vm shares this
- * process's heap, and `timeout` only interrupts synchronous execution: code
- * that spins after its first `await` runs in a microtask this module cannot
- * preempt, and will hold the event loop. Sources you wrote or read are fine.
- * Arbitrary third-party repositories are not, and the plan is to move this
- * runner to a separate host with real isolation before those are promoted.
+ * process's heap, and `timeout` only interrupts synchronous execution.
  */
 
 const vm = require('vm');
@@ -22,13 +17,27 @@ const { createOps } = require('./ops');
 const { RUNTIME_SOURCE } = require('./runtime');
 const { buildDiagnostics } = require('./diagnostics');
 
-const DEFAULT_TIMEOUT_MS = 20000;
+/**
+ * How long a whole run may take.
+ *
+ * This is a budget for the run, not for one request, and the two were close
+ * enough to be the same number: one request may take 15 seconds, so at 20
+ * the second slow request in a run had nothing left, and a source that
+ * fetched a list and then a page could not finish on a slow site. Now a
+ * handful of them fit.
+ *
+ * The ceiling is the caller's own deadline - the app gives up on a run at
+ * 45 seconds - because a timeout reported by the app carries none of the
+ * diagnostics that make a failure readable. Staying inside it means the run
+ * is always the one that gives up, and always with a trace.
+ */
+const DEFAULT_TIMEOUT_MS = 40000;
 const MAX_TIMEOUT_MS = 60000;
 const MAX_SOURCE_BYTES = 512 * 1024;
 const MAX_RESULT_BYTES = 4 * 1024 * 1024;
 const SYNC_SLICE_MS = 5000;
 
-/** Methods an extension is allowed to expose. Anything else is not callable. */
+/** Methods an extension is allowed to expose. */
 const CALLABLE_METHODS = new Set([
   'getPopular',
   'getLatestUpdates',
@@ -45,16 +54,12 @@ class ExtensionError extends Error {
     this.name = 'ExtensionError';
     this.logs = logs;
     this.requests = requests;
-    // Where it happened in the source, what it likely means, and what the
-    // source asked for on the way. Built at the throw site, where the stack
-    // and the code are both still in hand.
     this.diagnostics = diagnostics;
   }
 }
 
 /**
- * Creates a realm seeded with nothing but the two host callables, then runs
- * the bootstrap that turns them into the extension API and removes them.
+ * Creates an isolated extension realm.
  */
 function createSandbox(ops) {
   const context = vm.createContext(Object.create(null), {
@@ -73,27 +78,35 @@ function createSandbox(ops) {
 }
 
 /**
- * Reads the `mangayomiSources` declaration out of a source file.
- *
- * This is deliberately a real evaluation rather than a regex: the array is
- * ordinary JavaScript and some sources compute parts of it. Running it in
- * the same sandbox as everything else keeps that safe.
+ * Reads the mangayomiSources declaration from an extension.
  */
 function extractMetadata(code, { timeoutMs } = {}) {
   const ops = createOps({});
+
   try {
     const context = createSandbox(ops);
+
     vm.runInContext(String(code), context, {
       filename: 'animiru:extension',
-      timeout: Math.min(Number(timeoutMs) || SYNC_SLICE_MS, MAX_TIMEOUT_MS)
+      timeout: Math.min(
+        Number(timeoutMs) || SYNC_SLICE_MS,
+        MAX_TIMEOUT_MS
+      )
     });
+
     const json = vm.runInContext(
       'typeof mangayomiSources !== "undefined" ? JSON.stringify(mangayomiSources) : "null"',
       context,
-      { filename: 'animiru:metadata', timeout: SYNC_SLICE_MS }
+      {
+        filename: 'animiru:metadata',
+        timeout: SYNC_SLICE_MS
+      }
     );
+
     const parsed = JSON.parse(String(json));
+
     if (parsed === null) return [];
+
     return Array.isArray(parsed) ? parsed : [parsed];
   } finally {
     ops.dispose();
@@ -101,46 +114,97 @@ function extractMetadata(code, { timeoutMs } = {}) {
 }
 
 /**
- * Runs `method` on the extension defined by `code`.
+ * Creates diagnostics for an empty result without treating it as an
+ * extension crash.
+ *
+ * This deliberately does not inspect or modify the result structure.
+ * Different extension methods return different contracts, so structural
+ * validation belongs at the source-contract layer rather than the sandbox.
+ */
+function buildEmptyResultDiagnostics({
+  code,
+  method,
+  source,
+  result,
+  requests,
+  logs
+}) {
+  const isEmptyArray = Array.isArray(result) && result.length === 0;
+
+  const isNullResult =
+    result === null ||
+    result === undefined;
+
+  if (!isEmptyArray && !isNullResult) {
+    return null;
+  }
+
+  return buildDiagnostics({
+    message: `Extension returned an empty result for ${method}()`,
+    code,
+    requests,
+    logs,
+    source,
+    method,
+    result: {
+      type: isEmptyArray ? 'empty-array' : 'null',
+      count: 0
+    }
+  });
+}
+
+/**
+ * Runs one extension method.
  *
  * @param {Object} options
- * @param {string} options.code the extension source
- * @param {string} options.method one of CALLABLE_METHODS
- * @param {Array}  [options.args] JSON-serialisable arguments
- * @param {Object} [options.source] the source's index.json entry, given to
- *   the extension as `this.source`
- * @param {Object} [options.preferences] the user's settings for this source
+ * @param {string} options.code
+ * @param {string} options.method
+ * @param {Array} [options.args]
+ * @param {Object} [options.source]
+ * @param {Object} [options.preferences]
  * @param {number} [options.timeoutMs]
- * @returns {Promise<{result:*, logs:Array, requests:Array, durationMs:number}>}
+ * @returns {Promise<Object>}
  */
 async function runExtension(options = {}) {
   const code = String(options.code ?? '');
   const method = String(options.method ?? '');
-  const args = Array.isArray(options.args) ? options.args : [];
-  const timeoutMs = Math.min(Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
+  const args = Array.isArray(options.args)
+    ? options.args
+    : [];
+
+  const timeoutMs = Math.min(
+    Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS,
+    MAX_TIMEOUT_MS
+  );
 
   if (code.length > MAX_SOURCE_BYTES) {
-    throw new ExtensionError(`Extension source exceeds ${MAX_SOURCE_BYTES} bytes`);
+    throw new ExtensionError(
+      `Extension source exceeds ${MAX_SOURCE_BYTES} bytes`
+    );
   }
+
   if (!CALLABLE_METHODS.has(method)) {
-    throw new ExtensionError(`Method not callable: ${method || '(none)'}`);
+    throw new ExtensionError(
+      `Method not callable: ${method || '(none)'}`
+    );
   }
 
   const ops = createOps({
     preferences: options.preferences,
     timeoutMs,
-    // Responses the device fetched after an earlier attempt was refused.
     fetched: options.fetched,
-    // Only a caller that can actually perform a request on its own
-    // connection may be handed one.
     allowHandoff: Boolean(options.allowHandoff)
   });
+
   const started = Date.now();
   let timer = null;
 
   try {
     const context = createSandbox(ops);
 
+    /*
+     * Load extension source.
+     */
     try {
       vm.runInContext(code, context, {
         filename: 'animiru:extension',
@@ -148,147 +212,327 @@ async function runExtension(options = {}) {
       });
     } catch (err) {
       const message = `Extension failed to load: ${err.message}`;
-      throw new ExtensionError(message, ops, buildDiagnostics({
-        message, stack: err.stack, code, requests: ops.requests, logs: ops.logs,
-        source: options.source, method
-      }));
+
+      throw new ExtensionError(
+        message,
+        ops,
+        buildDiagnostics({
+          message,
+          stack: err.stack,
+          code,
+          requests: ops.requests,
+          logs: ops.logs,
+          source: options.source,
+          method
+        })
+      );
     }
 
-    // The invocation is handed over as JSON text and re-parsed inside the
-    // realm, so the extension receives its own objects rather than ours.
+    /*
+     * Pass invocation data into the isolated realm as JSON.
+     */
     const invocationJson = JSON.stringify({
       method,
       args,
-      source: options.source || {}
+      source: options.source || {},
+      // A base URL chosen for this run, so a method can be run against a
+      // mirror rather than the source's usual home. Passed as its own field
+      // rather than folded into the entry: the entry describes the source,
+      // and a rotation is a decision about this one attempt.
+      baseUrlOverride: typeof options.baseUrl === 'string' && options.baseUrl
+        ? options.baseUrl
+        : null
     });
+
     vm.runInContext(
       `globalThis.__invocation = JSON.parse(${JSON.stringify(invocationJson)});`,
       context,
-      { filename: 'animiru:invocation', timeout: SYNC_SLICE_MS }
+      {
+        filename: 'animiru:invocation',
+        timeout: SYNC_SLICE_MS
+      }
     );
 
+    /*
+     * Build the extension driver.
+     */
     const driver = `
       (function () {
-        var Ctor = typeof DefaultExtension !== 'undefined' ? DefaultExtension : null;
+        var Ctor =
+          typeof DefaultExtension !== 'undefined'
+            ? DefaultExtension
+            : null;
+
         if (typeof Ctor !== 'function') {
-          throw new Error('Extension does not define a DefaultExtension class');
+          throw new Error(
+            'Extension does not define a DefaultExtension class'
+          );
         }
+
         var instance = new Ctor(__invocation.source);
 
-        // Real sources are written as:
-        //
-        //     constructor() { super(); this.client = new Client(); }
-        //
-        // - super() with no arguments - and then go on to read
-        // this.source.baseUrl. Passing the source to the constructor is
-        // therefore not enough on its own: the subclass throws it away, and
-        // baseUrl comes back undefined, which is how a source ends up
-        // requesting "undefined/ongoing?page=1". Mangayomi attaches the
-        // source to the instance instead, so do the same here.
-        //
-        // Anything the constructor did set wins, so a source that genuinely
-        // computes its own baseUrl keeps it; the invocation only fills gaps.
+        /*
+         * Mangayomi sources commonly call super() without passing the source.
+         * Therefore attach the invocation source after construction.
+         */
         var declared = instance.source;
         var merged = {};
+
         for (var k in __invocation.source) {
-          if (Object.prototype.hasOwnProperty.call(__invocation.source, k)) {
+          if (
+            Object.prototype.hasOwnProperty.call(
+              __invocation.source,
+              k
+            )
+          ) {
             merged[k] = __invocation.source[k];
           }
         }
+
         if (declared && typeof declared === 'object') {
           for (var j in declared) {
-            if (Object.prototype.hasOwnProperty.call(declared, j) &&
-                declared[j] !== undefined && declared[j] !== null && declared[j] !== '') {
+            if (
+              Object.prototype.hasOwnProperty.call(
+                declared,
+                j
+              ) &&
+              declared[j] !== undefined &&
+              declared[j] !== null &&
+              declared[j] !== ''
+            ) {
               merged[j] = declared[j];
             }
           }
         }
+
+        // Applied after the merge so it wins whatever the entries hold,
+        // and only when one was given.
+        if (__invocation.baseUrlOverride) {
+          merged.baseUrl = __invocation.baseUrlOverride;
+        }
+
         instance.source = merged;
 
-        // The defaults a source declares are part of how it behaves, not
-        // just decoration for a settings screen: it reads them back on
-        // every run and expects the declared value, not null, before the
-        // user has touched anything. Failing to declare them is not fatal
-        // - a source may not have any - so a throw here is ignored.
+        /*
+         * Apply declared source preference defaults.
+         */
         try {
-          if (typeof instance.getSourcePreferences === 'function') {
-            __declarePreferenceDefaults(instance.getSourcePreferences());
+          if (
+            typeof instance.getSourcePreferences ===
+            'function'
+          ) {
+            __declarePreferenceDefaults(
+              instance.getSourcePreferences()
+            );
           }
-        } catch (e) { /* a source with no usable declaration keeps its nulls */ }
+        } catch (e) {
+          /*
+           * A source without usable preferences is allowed.
+           */
+        }
 
         var fn = instance[__invocation.method];
+
         if (typeof fn !== 'function') {
-          throw new Error('Extension does not implement ' + __invocation.method + '()');
+          throw new Error(
+            'Extension does not implement ' +
+            __invocation.method +
+            '()'
+          );
         }
-        return Promise.resolve(fn.apply(instance, __invocation.args)).then(function (value) {
-          return JSON.stringify(value === undefined ? null : value);
+
+        return Promise.resolve(
+          fn.apply(instance, __invocation.args)
+        ).then(function (value) {
+          return JSON.stringify(
+            value === undefined
+              ? null
+              : value
+          );
         });
       })()
     `;
 
     let pending;
+
     try {
-      pending = vm.runInContext(driver, context, {
-        filename: 'animiru:driver',
-        timeout: SYNC_SLICE_MS
-      });
+      pending = vm.runInContext(
+        driver,
+        context,
+        {
+          filename: 'animiru:driver',
+          timeout: SYNC_SLICE_MS
+        }
+      );
     } catch (err) {
-      throw new ExtensionError(err.message, ops, buildDiagnostics({
-        message: err.message, stack: err.stack, code,
-        requests: ops.requests, logs: ops.logs, source: options.source, method
-      }));
+      throw new ExtensionError(
+        err.message,
+        ops,
+        buildDiagnostics({
+          message: err.message,
+          stack: err.stack,
+          code,
+          requests: ops.requests,
+          logs: ops.logs,
+          source: options.source,
+          method
+        })
+      );
     }
 
-    // Guards the asynchronous tail. It cannot interrupt a spinning
-    // extension - see the note at the top - but it does stop a source that
-    // is merely waiting forever on a dead host from hanging the request.
+    /*
+     * Protect against asynchronous requests that never finish.
+     */
     const deadline = new Promise((_, reject) => {
       timer = setTimeout(() => {
-        const message = `Extension timed out after ${timeoutMs}ms`;
-        reject(new ExtensionError(message, ops, buildDiagnostics({
-          message, code, requests: ops.requests, logs: ops.logs,
-          source: options.source, method
-        })));
+        const message =
+          `Extension timed out after ${timeoutMs}ms`;
+
+        reject(
+          new ExtensionError(
+            message,
+            ops,
+            buildDiagnostics({
+              message,
+              code,
+              requests: ops.requests,
+              logs: ops.logs,
+              source: options.source,
+              method
+            })
+          )
+        );
       }, timeoutMs);
     });
 
     let resultJson;
+
     try {
-      resultJson = await Promise.race([Promise.resolve(pending), deadline]);
+      resultJson = await Promise.race([
+        Promise.resolve(pending),
+        deadline
+      ]);
     } catch (err) {
-      // A refusal is not a fault in the source, and reporting it as one
-      // would bury the one thing that can still complete the run.
-      if (ops.pendingHandoff) throw ops.pendingHandoff;
-      if (err instanceof ExtensionError) throw err;
-      const message = err && err.message ? String(err.message) : String(err);
-      throw new ExtensionError(message, ops, buildDiagnostics({
-        message, stack: err && err.stack, code,
-        requests: ops.requests, logs: ops.logs, source: options.source, method
-      }));
+      if (ops.pendingHandoff) {
+        throw ops.pendingHandoff;
+      }
+
+      if (err instanceof ExtensionError) {
+        throw err;
+      }
+
+      const message =
+        err && err.message
+          ? String(err.message)
+          : String(err);
+
+      throw new ExtensionError(
+        message,
+        ops,
+        buildDiagnostics({
+          message,
+          stack: err && err.stack,
+          code,
+          requests: ops.requests,
+          logs: ops.logs,
+          source: options.source,
+          method
+        })
+      );
     }
 
-    // A source may catch a refused request and return a thinner result
-    // rather than failing. That result is wrong, not merely incomplete, so
-    // the handoff takes precedence over it.
-    if (ops.pendingHandoff) throw ops.pendingHandoff;
+    /*
+     * A refused request must take precedence over a partial result.
+     */
+    if (ops.pendingHandoff) {
+      throw ops.pendingHandoff;
+    }
 
-    const text = String(resultJson ?? 'null');
+    /*
+     * Serialize and size-check the result.
+     */
+    const text = String(
+      resultJson ?? 'null'
+    );
+
     if (text.length > MAX_RESULT_BYTES) {
-      const message = `Extension returned more than ${MAX_RESULT_BYTES} bytes`;
-      throw new ExtensionError(message, ops, buildDiagnostics({
-        message, code, requests: ops.requests, logs: ops.logs,
-        source: options.source, method
-      }));
+      const message =
+        `Extension returned more than ${MAX_RESULT_BYTES} bytes`;
+
+      throw new ExtensionError(
+        message,
+        ops,
+        buildDiagnostics({
+          message,
+          code,
+          requests: ops.requests,
+          logs: ops.logs,
+          source: options.source,
+          method
+        })
+      );
     }
+
+    /*
+     * Parse the result exactly once.
+     */
+    let result;
+
+    try {
+      result = JSON.parse(text);
+    } catch (err) {
+      const message =
+        `Extension returned invalid JSON: ${err.message}`;
+
+      throw new ExtensionError(
+        message,
+        ops,
+        buildDiagnostics({
+          message,
+          stack: err.stack,
+          code,
+          requests: ops.requests,
+          logs: ops.logs,
+          source: options.source,
+          method
+        })
+      );
+    }
+
+    /*
+     * Empty-result diagnostics.
+     *
+     * IMPORTANT:
+     * This does NOT fail the extension.
+     *
+     * It simply records useful diagnostic information so that a source
+     * returning zero results can be investigated without pretending the
+     * extension crashed.
+     */
+    const emptyDiagnostics =
+      buildEmptyResultDiagnostics({
+        code,
+        method,
+        source: options.source,
+        result,
+        requests: ops.requests,
+        logs: ops.logs
+      });
 
     return {
-      result: JSON.parse(text),
+      result,
       logs: ops.logs,
       requests: ops.requests,
-      durationMs: Date.now() - started
+      durationMs: Date.now() - started,
+      ...(emptyDiagnostics
+        ? { diagnostics: emptyDiagnostics }
+        : {})
     };
   } finally {
-    if (timer) clearTimeout(timer);
+    if (timer) {
+      clearTimeout(timer);
+    }
+
     ops.dispose();
   }
 }

@@ -22,6 +22,31 @@ async function search(body, options = {}) {
   return runExtension({ code: extensionWith(body), method: 'search', args: ['q', 1], ...options });
 }
 
+/**
+ * A run's budget has to hold more than one slow request.
+ *
+ * One request may take 15 seconds. When the run's own budget was 20, the
+ * second slow request in a run had nothing left - so a source that fetches
+ * a list and then a page failed on any site that was merely slow, which is
+ * most of them. The run budget has to leave room for several, while
+ * staying inside the deadline the app is holding, so that the failure the
+ * user sees is ours and carries a trace.
+ */
+describe('the budget for one run', () => {
+  const { DEFAULT_TIMEOUT_MS } = require('../extensions/sandbox');
+  const { DEFAULT_TIMEOUT_MS: PER_REQUEST } = require('../extensions/http');
+
+  it('holds several requests at the per-request limit', () => {
+    expect(DEFAULT_TIMEOUT_MS / PER_REQUEST).toBeGreaterThanOrEqual(2.5);
+  });
+
+  // The app gives up on a run at 45s. A run that outlived that would be
+  // reported by the app instead, without diagnostics.
+  it('gives up before the app does', () => {
+    expect(DEFAULT_TIMEOUT_MS).toBeLessThan(45000);
+  });
+});
+
 describe('extension sandbox', () => {
   describe('running extensions', () => {
     it('returns what the extension returns', async () => {

@@ -97,12 +97,19 @@ describe('when the backend is refused', () => {
     expect(api.post.mock.calls.length).toBeLessThanOrEqual(5);
   });
 
-  it('reports both failures when the device cannot fetch it either', async () => {
+  // Both reasons are still reported - behind the summary rather than in
+  // front of it, so the reader gets the conclusion first and the evidence
+  // when they want it.
+  it('keeps both failures when the device cannot fetch it either', async () => {
     api.post.mockRejectedValue(refusal());
     fetchOnDevice.mockRejectedValue(new Error('Unable to resolve host'));
 
-    await expect(runSource({ method: 'getPopular', args: [1] }))
-      .rejects.toThrow(/refused the server.*Unable to resolve host/s);
+    const err = await runSource({ method: 'getPopular', args: [1] })
+      .catch((caught) => caught);
+
+    expect(err.message).toMatch(/site is not answering/i);
+    expect(err.diagnostics.attempts.server).toMatch(/refused the server/i);
+    expect(err.diagnostics.attempts.device).toBe('Unable to resolve host');
   });
 });
 
@@ -138,5 +145,140 @@ describe('an ordinary failure', () => {
     expect(caught.message).toBe('Cannot read properties of null');
     expect(caught.diagnostics).toEqual({ cause: 'A selector' });
     expect(fetchOnDevice).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * When the server and the device both fail to reach a site.
+ *
+ * Two failures from two networks establish one thing: the site is not
+ * answering anybody. The report used to put the two technical failures end
+ * to end - "timeout of 5695ms exceeded ... Software caused connection abort"
+ * - which reads as a chain of things going wrong inside the app. The one
+ * fact it had actually established was the one it did not say.
+ */
+describe('when neither the server nor the device can reach the site', () => {
+  const bothFail = async () => {
+    api.post.mockRejectedValue(refusal());
+    fetchOnDevice.mockRejectedValue(new Error('Software caused connection abort'));
+    return runSource({ method: 'getPopular', args: [1] }).catch((err) => err);
+  };
+
+  it('says the site is not answering, not that something went wrong', async () => {
+    const err = await bothFail();
+
+    expect(err.message).toMatch(/site is not answering/i);
+    expect(err.message).toMatch(/site itself is down/i);
+  });
+
+  // The two things a reader wrongly suspects first.
+  it('rules out the app and the connection explicitly', async () => {
+    const err = await bothFail();
+    expect(err.message).toMatch(/rather than your connection or the app/i);
+  });
+
+  it('does not lead with the technical failures', async () => {
+    const err = await bothFail();
+
+    expect(err.message).not.toMatch(/Software caused connection abort/);
+    expect(err.message).not.toMatch(/timeout of \d+ms/);
+  });
+
+  // Kept, but behind the summary rather than in front of it.
+  it('keeps what each road reported, for the details panel', async () => {
+    const err = await bothFail();
+
+    expect(err.diagnostics.attempts.device).toBe('Software caused connection abort');
+    expect(err.diagnostics.attempts.server).toMatch(/refused the server/i);
+  });
+
+  it('says other sources are unaffected', async () => {
+    const err = await bothFail();
+    expect(err.diagnostics.fix).toMatch(/Other sources are unaffected/i);
+  });
+});
+
+/**
+ * Remembering which of a source's homes worked.
+ *
+ * A source may name several domains running the same software, and the
+ * backend keeps no per-user state. Without this, a source whose usual home
+ * is down would fall through to a mirror on every screen, paying the failed
+ * attempt each time.
+ */
+describe('the home a source last worked from', () => {
+  const KEY = 'repo|Roaming';
+  const withKey = (extra) => ({
+    method: 'getPopular', args: [1], source: { key: KEY, name: 'Roaming' }, ...extra
+  });
+
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('is sent so the backend starts there', async () => {
+    window.localStorage.setItem(
+      'animiru.extensions.homes', JSON.stringify({ [KEY]: 'https://two.test' })
+    );
+    api.post.mockResolvedValue(ran);
+
+    await runSource(withKey());
+
+    expect(api.post.mock.calls[0][1].preferredBaseUrl).toBe('https://two.test');
+  });
+
+  it('is remembered from what the run reports', async () => {
+    api.post.mockResolvedValue({ data: { ...ran.data, baseUrl: 'https://one.test' } });
+
+    await runSource(withKey());
+
+    expect(JSON.parse(window.localStorage.getItem('animiru.extensions.homes')))
+      .toEqual({ [KEY]: 'https://one.test' });
+  });
+
+  it('is not sent when there is nothing remembered', async () => {
+    api.post.mockResolvedValue(ran);
+    await runSource(withKey());
+
+    expect(api.post.mock.calls[0][1].preferredBaseUrl).toBeUndefined();
+  });
+
+  // Nothing to key it by, so nothing is stored - and the run still works.
+  it('is skipped for a source with no key', async () => {
+    api.post.mockResolvedValue({ data: { ...ran.data, baseUrl: 'https://one.test' } });
+
+    const outcome = await runSource({ method: 'getPopular', args: [1] });
+
+    expect(outcome.result).toBeTruthy();
+    expect(window.localStorage.getItem('animiru.extensions.homes')).toBeNull();
+  });
+});
+
+/**
+ * Ruling out a home whose streams would not play.
+ *
+ * The player tries every server a home gave it. When none play, asking
+ * that home again returns the same unplayable list - so the screen names
+ * it and the backend rotation moves past it.
+ */
+describe('homes already found wanting', () => {
+  it('are sent so the backend skips them', async () => {
+    api.post.mockResolvedValue(ran);
+
+    await runSource({
+      method: 'getVideoList', args: ['ep-1'], excludeBaseUrls: ['https://home.test']
+    });
+
+    expect(api.post.mock.calls[0][1].excludeBaseUrls).toEqual(['https://home.test']);
+  });
+
+  // Sending an empty list would say "rule out nothing", which is what
+  // omitting it already means - and the backend treats the two the same.
+  it.each([[[]], [undefined], ['not a list']])('are omitted for %p', async (bad) => {
+    api.post.mockResolvedValue(ran);
+
+    await runSource({ method: 'getVideoList', args: ['ep-1'], excludeBaseUrls: bad });
+
+    expect(api.post.mock.calls[0][1].excludeBaseUrls).toBeUndefined();
   });
 });

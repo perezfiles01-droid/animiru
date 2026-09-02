@@ -36,7 +36,8 @@ const REPORT_EVERY_MS = 5000;
  * question.
  */
 export default function VideoPlayer({
-  streams, title, poster, onServerFailed, startAt = 0, mediaKey, onProgress
+  streams, title, poster, onServerFailed, onExhausted,
+  startAt = 0, mediaKey, onProgress
 }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
@@ -280,6 +281,10 @@ export default function VideoPlayer({
 
       if (nextIndex === -1) {
         setError(`${reason} No other server worked either.`);
+        // Every server this home gave has failed. The screen may know of
+        // another home for the same episode; if it finds one it hands back
+        // new streams, and the effect above clears this error on the way in.
+        if (onExhausted) onExhausted(reason);
         return;
       }
 
@@ -345,7 +350,7 @@ export default function VideoPlayer({
     };
     // Keyed on the stream alone. Anything else here reloads the video every
     // time a piece of unrelated state changes.
-  }, [current, onServerFailed, onProgress]);
+  }, [current, onServerFailed, onExhausted, onProgress]);
 
   /**
    * A new episode starts where it says, not where the last one stopped.

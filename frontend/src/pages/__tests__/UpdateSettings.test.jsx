@@ -48,11 +48,14 @@ describe('the download link', () => {
   });
 
   it('is a plain navigation, not a new window', async () => {
-    // target="_blank" is what a WebView drops. The whole failure was here.
+    // target="_blank" is what a WebView drops. The whole failure was here,
+    // and it stays true now the link sits behind the confirmation: the
+    // download has to be an ordinary anchor the download handler can catch.
     checkForUpdate.mockResolvedValue(AVAILABLE);
     await check();
+    await userEvent.click(await screen.findByRole('button', { name: /Download v1\.0\.50/ }));
 
-    const link = await screen.findByRole('link', { name: /Download v1\.0\.50/ });
+    const link = await screen.findByRole('link', { name: 'Download and install' });
     expect(link).toHaveAttribute('href', AVAILABLE.downloadUrl);
     expect(link).not.toHaveAttribute('target');
   });
@@ -61,11 +64,12 @@ describe('the download link', () => {
     checkForUpdate.mockResolvedValue(AVAILABLE);
     await check();
 
-    await userEvent.click(await screen.findByRole('link', { name: /Download/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Download/ }));
+    await userEvent.click(await screen.findByRole('link', { name: 'Download and install' }));
 
     expect(await screen.findByText(/progress appears in your notifications/))
       .toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Downloading v1\.0\.50/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Downloading v1\.0\.50/ })).toBeInTheDocument();
   });
 
   it('explains that the app cannot restart itself', async () => {
@@ -97,7 +101,8 @@ describe('the download link', () => {
   it('clears the downloading state when checking again', async () => {
     checkForUpdate.mockResolvedValue(AVAILABLE);
     await check();
-    await userEvent.click(await screen.findByRole('link', { name: /Download/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Download/ }));
+    await userEvent.click(await screen.findByRole('link', { name: 'Download and install' }));
     await screen.findByText(/progress appears/);
 
     await userEvent.click(screen.getByRole('button', { name: 'Check for update' }));
@@ -111,7 +116,7 @@ describe('the download link', () => {
     await check();
 
     expect(await screen.findByText(/latest version/)).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /Download/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Download v/ })).not.toBeInTheDocument();
   });
 });
 
@@ -201,5 +206,59 @@ describe('backing up by copy and paste', () => {
   it('warns that the backup carries account access', () => {
     render(<MemoryRouter><UpdateSettings /></MemoryRouter>);
     expect(screen.getByText(/AniList token.*keep it somewhere private/s)).toBeInTheDocument();
+  });
+});
+
+/**
+ * What the confirmation says before the download starts.
+ *
+ * Someone who has been uninstalling by hand before every update has been
+ * throwing away their library each time without being told they never had
+ * to. This is the moment to say so - after they have decided to update and
+ * before anything is downloaded.
+ */
+describe('the dialog before the download', () => {
+  const openIt = async () => {
+    checkForUpdate.mockResolvedValue(AVAILABLE);
+    await check();
+    await userEvent.click(await screen.findByRole('button', { name: /Download v1\.0\.50/ }));
+  };
+
+  it('says not to delete the app first', async () => {
+    await openIt();
+    expect(await screen.findByText(/Do not delete the app first/i)).toBeInTheDocument();
+  });
+
+  it('says what is kept', async () => {
+    await openIt();
+    expect(await screen.findByText(/keeps your library/i)).toBeInTheDocument();
+  });
+
+  it('points at the backup before anything destructive', async () => {
+    await openIt();
+    expect(await screen.findByText(/Take a backup first/i)).toBeInTheDocument();
+  });
+
+  // The one case where uninstalling really is required, with the warning
+  // that it costs the library - so it is a last resort, not the routine.
+  it('explains the App not installed case and its cost', async () => {
+    await openIt();
+    expect(await screen.findByText(/App not installed/)).toBeInTheDocument();
+    expect(screen.getByText(/deletes the app storage/i)).toBeInTheDocument();
+  });
+
+  // Nothing downloads until it is confirmed; a dialog that has already
+  // started the download is decoration.
+  it('starts nothing until it is confirmed', async () => {
+    await openIt();
+    expect(screen.queryByText(/progress appears/)).not.toBeInTheDocument();
+  });
+
+  it('closes without downloading when cancelled', async () => {
+    await openIt();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByText(/Do not delete the app first/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/progress appears/)).not.toBeInTheDocument();
   });
 });

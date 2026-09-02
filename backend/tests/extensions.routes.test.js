@@ -227,3 +227,150 @@ describe('GET /api/extensions/methods', () => {
     expect(res.body.methods).toEqual(expect.arrayContaining(['search', 'getDetail', 'getVideoList']));
   });
 });
+
+/**
+ * A run reaching a source's other homes.
+ *
+ * The rotation itself is covered in extensions.mirrors.test.js. What these
+ * check is that the route actually uses it, and hands back which home
+ * worked - without which the app cannot remember, and a source whose home
+ * is down pays the same failure on every screen.
+ */
+describe('POST /run against a source with mirrors', () => {
+  const ROAMING = `
+    const mangayomiSources = [{ name: 'Roaming', id: 91, version: '1.0.0' }];
+    class DefaultExtension extends MProvider {
+      async getPopular(page) {
+        const res = await new Client().get(this.source.baseUrl + '/list');
+        const names = res.body ? JSON.parse(res.body) : [];
+        return { list: names.map((n) => ({ name: n, link: '' })), hasNextPage: false };
+      }
+      getSourcePreferences() { return []; }
+    }
+  `;
+
+  const SOURCE = {
+    name: 'Roaming',
+    baseUrl: 'https://home.test',
+    mirrors: ['https://one.test', 'https://two.test']
+  };
+
+  const serveByHost = (byHost) => {
+    jest.spyOn(http, 'request').mockImplementation(async ({ url }) => {
+      const answer = byHost[new URL(url).host];
+      if (answer instanceof Error) throw answer;
+      return { statusCode: 200, headers: {}, url, body: answer === undefined ? '[]' : answer };
+    });
+  };
+
+  const down = () => Object.assign(new Error('timeout of 5000ms exceeded'), { code: 'ETIMEDOUT' });
+
+  it('falls through to a mirror when the home is down', async () => {
+    serveByHost({ 'home.test': down(), 'one.test': '["One Piece"]' });
+
+    const { body } = await request(app)
+      .post('/api/extensions/run')
+      .send({ code: ROAMING, method: 'getPopular', args: [1], source: SOURCE })
+      .expect(200);
+
+    expect(body.result.list[0].name).toBe('One Piece');
+  });
+
+  it('says which home produced the answer', async () => {
+    serveByHost({ 'home.test': down(), 'one.test': '["One Piece"]' });
+
+    const { body } = await request(app)
+      .post('/api/extensions/run')
+      .send({ code: ROAMING, method: 'getPopular', args: [1], source: SOURCE })
+      .expect(200);
+
+    expect(body.baseUrl).toBe('https://one.test');
+  });
+
+  it('starts from the home the caller says worked last time', async () => {
+    serveByHost({ 'home.test': '["Home"]', 'two.test': '["Two"]' });
+
+    const { body } = await request(app)
+      .post('/api/extensions/run')
+      .send({
+        code: ROAMING, method: 'getPopular', args: [1], source: SOURCE,
+        preferredBaseUrl: 'https://two.test'
+      })
+      .expect(200);
+
+    expect(body.result.list[0].name).toBe('Two');
+    expect(body.baseUrl).toBe('https://two.test');
+  });
+
+  it('still reports a failure when no home works', async () => {
+    serveByHost({ 'home.test': down(), 'one.test': down(), 'two.test': down() });
+
+    const { body } = await request(app)
+      .post('/api/extensions/run')
+      .send({ code: ROAMING, method: 'getPopular', args: [1], source: SOURCE })
+      .expect(422);
+
+    expect(body.diagnostics).toBeTruthy();
+  });
+});
+
+/**
+ * Asking again without the home whose streams would not play.
+ *
+ * The rotation covers this; what matters here is that the route carries
+ * the caller's list through, or the app can ask but never be heard.
+ */
+describe('POST /run ruling out a home', () => {
+  const EPISODES = `
+    const mangayomiSources = [{ name: 'Roaming', id: 92, version: '1.0.0' }];
+    class DefaultExtension extends MProvider {
+      async getVideoList(url) {
+        const res = await new Client().get(this.source.baseUrl + '/ep');
+        return res.body ? JSON.parse(res.body) : [];
+      }
+      getSourcePreferences() { return []; }
+    }
+  `;
+
+  const SOURCE = {
+    name: 'Roaming',
+    baseUrl: 'https://home.test',
+    mirrors: ['https://one.test']
+  };
+
+  it('skips it and returns the next home\'s streams', async () => {
+    jest.spyOn(http, 'request').mockImplementation(async ({ url }) => ({
+      statusCode: 200,
+      headers: {},
+      url,
+      body: new URL(url).host === 'one.test' ? '[{"url":"https://cdn.test/a.m3u8"}]' : '[]'
+    }));
+
+    const { body } = await request(app)
+      .post('/api/extensions/run')
+      .send({
+        code: EPISODES, method: 'getVideoList', args: ['/ep-1'], source: SOURCE,
+        excludeBaseUrls: ['https://home.test']
+      })
+      .expect(200);
+
+    expect(body.baseUrl).toBe('https://one.test');
+    expect(body.result).toHaveLength(1);
+  });
+
+  it('says so when every home has been ruled out', async () => {
+    jest.spyOn(http, 'request').mockResolvedValue({
+      statusCode: 200, headers: {}, url: 'https://home.test/ep', body: '[]'
+    });
+
+    const { body } = await request(app)
+      .post('/api/extensions/run')
+      .send({
+        code: EPISODES, method: 'getVideoList', args: ['/ep-1'], source: SOURCE,
+        excludeBaseUrls: ['https://home.test', 'https://one.test']
+      })
+      .expect(422);
+
+    expect(body.error).toMatch(/No other home left/);
+  });
+});

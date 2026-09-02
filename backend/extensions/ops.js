@@ -11,7 +11,9 @@
 const crypto = require('crypto');
 const { HtmlStore } = require('./html');
 const http = require('./http');
-const { createHandoffStore, isRefusal, DeviceFetchRequired } = require('./handoff');
+const {
+  createHandoffStore, isRefusal, isConnectionRefusal, DeviceFetchRequired
+} = require('./handoff');
 
 const MAX_LOG_ENTRIES = 200;
 const MAX_LOG_LENGTH = 2000;
@@ -373,9 +375,17 @@ function createOps({ preferences = {}, timeoutMs, fetched, allowHandoff = false 
         // device to hand it to, and a refusal is just a refusal.
         if (allowHandoff && isRefusal(response)) {
           entry.handedOff = true;
+          // The URL the source asked for, not `entry.url` - which the
+          // transport has by now rewritten to whichever hop finally
+          // answered. The replay looks this request up by what the source
+          // asks for, so naming a redirect target here would file the
+          // device's answer under a key the next run never asks about, and
+          // the same request would be refused every round until the app
+          // gave up and showed the refusal to the user. The device follows
+          // the redirects itself, exactly as the server just did.
           const required = new DeviceFetchRequired({
             method: entry.method,
-            url: entry.url,
+            url: String(options.url),
             headers: options.headers || {},
             body: options.body
           }, response.statusCode);
@@ -388,6 +398,31 @@ function createOps({ preferences = {}, timeoutMs, fetched, allowHandoff = false 
       } catch (err) {
         entry.error = err.message;
         entry.durationMs = Date.now() - started;
+
+        // A connection that timed out, was reset, or was closed mid-TLS is
+        // the same refusal as a 403 - a site turning a datacenter away
+        // without spending a response on it. The transport has already
+        // retried by now, so this is the second failure, not bad luck.
+        // Hand it to the device, which is not a datacenter.
+        //
+        // A DeviceFetchRequired thrown just above must pass through
+        // untouched: it is already the instruction, and wrapping it again
+        // would name the wrong request.
+        if (allowHandoff
+          && !(err instanceof DeviceFetchRequired)
+          && isConnectionRefusal(err)) {
+          entry.handedOff = true;
+          const required = new DeviceFetchRequired({
+            method: entry.method,
+            url: String(options.url),
+            headers: options.headers || {},
+            body: options.body
+          }, err.message);
+
+          if (!pendingHandoff) pendingHandoff = required;
+          throw required;
+        }
+
         throw err;
       }
     }

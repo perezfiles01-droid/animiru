@@ -109,6 +109,50 @@ describe('when the site refuses the server', () => {
   });
 });
 
+/**
+ * The failure this whole mechanism was showing instead of fixing.
+ *
+ * The request the device is asked to make has to be named the way the
+ * source names it. When it was named by the transport instead - after
+ * redirects, after URL normalisation - the answer came back filed under a
+ * name the replay never looked up, so the same request was refused every
+ * round until the app ran out of rounds and put "The site refused the
+ * server with 403" on screen. Every source is affected, because every
+ * source reaches the network through this one op.
+ */
+describe('naming the request so the replay can find it', () => {
+  it('names the URL the source asked for, not the hop that answered', async () => {
+    jest.spyOn(http, 'request').mockImplementation(async ({ url, onRequest }) => {
+      // What the real transport does: reports each hop, normalised.
+      onRequest({ method: 'GET', url: 'https://cdn.site.test/api/list?redirected=1' });
+      return { statusCode: 403, headers: {}, url, body: '' };
+    });
+
+    const err = await run({}).catch((caught) => caught);
+    expect(err.request.url).toBe('https://site.test/api/list');
+  });
+
+  it('finds the answer even when the two spellings differ', async () => {
+    refuse(403);
+
+    const outcome = await runExtension({
+      code: CODE.replace("'https://site.test/api/list'", "'https://site.test/api/list'"),
+      method: 'getPopular',
+      args: [1],
+      allowHandoff: true,
+      // Stored under the trailing-slash-normalised spelling, as a URL that
+      // has been through `new URL()` comes back.
+      fetched: {
+        [requestKey({ method: 'GET', url: 'https://site.test:443/api/list' })]: {
+          statusCode: 200, body: '["One Piece"]', headers: {}, url: ''
+        }
+      }
+    });
+
+    expect(outcome.result.list[0].name).toBe('One Piece');
+  });
+});
+
 describe('running again with what the device fetched', () => {
   const answered = (body) => ({
     [requestKey({ method: 'GET', url: 'https://site.test/api/list' })]: {
@@ -217,5 +261,91 @@ describe('running again with what the device fetched', () => {
     }).catch((err) => err);
 
     expect(outcome).not.toBeInstanceOf(DeviceFetchRequired);
+  });
+});
+
+/**
+ * A site that refuses without spending a response on it.
+ *
+ * Answering 403 is the polite way to turn a datacenter away. The cheaper way
+ * is to drop the connection - hang until it times out, reset it, or close it
+ * mid-handshake - and plenty of sites do exactly that. AniNeko gave no
+ * answer in fifteen seconds across two attempts; a subtitle host closed the
+ * socket before TLS finished. Neither produced a response, so neither
+ * reached isRefusal, and the device that could have fetched them was never
+ * asked.
+ *
+ * This is the one op every source reaches the network through, so what is
+ * asserted here holds for all of them.
+ */
+describe('when the site refuses without answering', () => {
+  const failWith = (message) => jest.spyOn(http, 'request')
+    .mockRejectedValue(new Error(message));
+
+  it.each([
+    ['a request that timed out', 'timeout of 5679ms exceeded'],
+    ['a connection reset', 'read ECONNRESET'],
+    ['a socket hung up', 'socket hang up'],
+    ['a connection closed mid-TLS',
+      'Client network socket disconnected before secure TLS connection was established'],
+    ['the transport giving up', 'Request timed out']
+  ])('hands %s to the device', async (_, message) => {
+    failWith(message);
+    await expect(run({})).rejects.toBeInstanceOf(DeviceFetchRequired);
+  });
+
+  it('names the request the device has to make', async () => {
+    failWith('timeout of 5679ms exceeded');
+
+    const err = await run({}).catch((caught) => caught);
+    expect(err.request).toMatchObject({ method: 'GET', url: 'https://site.test/api/list' });
+    // No status: the site never sent one. Saying 0 or 403 would be a lie
+    // about what happened.
+    expect(err.statusCode).toBeNull();
+    expect(err.message).toMatch(/did not answer/);
+  });
+
+  /*
+   * These are answers about the request rather than about who is asking.
+   * The device would fail them identically, so handing one over spends a
+   * round trip - and four rounds of them - to learn what we already knew.
+   */
+  it.each([
+    ['a host that does not resolve', 'getaddrinfo ENOTFOUND anineko.to'],
+    ['a refused connection', 'connect ECONNREFUSED 1.2.3.4:443'],
+    ['an unusable URL', 'Invalid URL: undefined/api'],
+    ['a private address', 'Refusing to fetch a private address: 10.0.0.1']
+  ])('does not hand off %s', async (_, message) => {
+    failWith(message);
+
+    const err = await run({}).catch((caught) => caught);
+    expect(err).not.toBeInstanceOf(DeviceFetchRequired);
+  });
+
+  // On the web there is no device, and an instruction nobody can follow is
+  // worse than the plain error.
+  it('stays a plain failure when the caller cannot fetch for us', async () => {
+    failWith('timeout of 5679ms exceeded');
+
+    const err = await runExtension({ code: CODE, method: 'getPopular', args: [1] })
+      .catch((caught) => caught);
+
+    expect(err).not.toBeInstanceOf(DeviceFetchRequired);
+    expect(err.diagnostics).toBeTruthy();
+  });
+
+  // The device's answer completes the run exactly as it does for a 403.
+  it('completes the run once the device answers', async () => {
+    failWith('timeout of 5679ms exceeded');
+
+    const outcome = await run({
+      fetched: {
+        [requestKey({ method: 'GET', url: 'https://site.test/api/list' })]: {
+          statusCode: 200, body: '["One Piece"]', headers: {}, url: ''
+        }
+      }
+    });
+
+    expect(outcome.result.list[0].name).toBe('One Piece');
   });
 });
