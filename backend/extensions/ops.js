@@ -12,7 +12,8 @@ const crypto = require('crypto');
 const { HtmlStore } = require('./html');
 const http = require('./http');
 const {
-  createHandoffStore, isRefusal, isConnectionRefusal, DeviceFetchRequired
+  createHandoffStore, isRefusal, isChallenge, isConnectionRefusal, DeviceFetchRequired,
+  CHALLENGE_REFUSAL
 } = require('./handoff');
 
 const MAX_LOG_ENTRIES = 200;
@@ -373,8 +374,18 @@ function createOps({ preferences = {}, timeoutMs, fetched, allowHandoff = false 
         // run stops here and the device is asked to make this one request.
         // Only when the caller can actually do that: on the web there is no
         // device to hand it to, and a refusal is just a refusal.
-        if (allowHandoff && isRefusal(response)) {
+        // A challenge is a refusal that spent a success code saying so, and
+        // it wants the identical answer: the device makes this one request,
+        // from an address the site is not judging, and the run replays with
+        // what came back. Reading it here rather than in each source means
+        // every source gets it, including ones not written yet - and means a
+        // challenge stops the rotation instead of being mistaken for a home
+        // that parsed to nothing and spending the budget on the next mirror.
+        const challenged = allowHandoff && isChallenge(response);
+
+        if (allowHandoff && (isRefusal(response) || challenged)) {
           entry.handedOff = true;
+          entry.challenge = challenged || undefined;
           // The URL the source asked for, not `entry.url` - which the
           // transport has by now rewritten to whichever hop finally
           // answered. The replay looks this request up by what the source
@@ -388,7 +399,7 @@ function createOps({ preferences = {}, timeoutMs, fetched, allowHandoff = false 
             url: String(options.url),
             headers: options.headers || {},
             body: options.body
-          }, response.statusCode);
+          }, challenged ? CHALLENGE_REFUSAL : response.statusCode);
 
           if (!pendingHandoff) pendingHandoff = required;
           throw required;

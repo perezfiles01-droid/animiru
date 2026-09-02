@@ -93,7 +93,7 @@ for Mangayomi runs here unmodified.
 | AniKoto | English | 0.4.16 | [anikototv.to](https://anikototv.to) | 14 |
 | AniLight | English | 0.5.1 | [anilight.live](https://anilight.live) | - |
 | AnimeHeaven | English | 0.0.7 | [animeheaven.me](https://animeheaven.me) | - |
-| AnimePahe | English | 2.3.1 | [animepahe.org](https://animepahe.org) | 2 |
+| AnimePahe | English | 2.3.2 | [animepahe.org](https://animepahe.org) | 2 |
 | AnimeParadise | English | 0.3.5 | [animeparadise.moe](https://animeparadise.moe) | - |
 | AniNeko | English | 0.1.1 | [anineko.to](https://anineko.to) | - |
 | AniWave | English | 0.2.4 | [aniwaves.ru](https://aniwaves.ru) | 3 |
@@ -104,4 +104,4 @@ for Mangayomi runs here unmodified.
 | Miruro | English | 6.1.12 | [www.miruro.to](https://www.miruro.to) | - |
 | MyroniX | English | 0.2.4 | [myronix.strangled.net](https://myronix.strangled.net) | - |
 | Playback Diagnostic | English | 0.0.2 | [example.invalid](https://example.invalid) | - |
-| Re:ANIME | English | 2.2.1 | [reanime.to](https://reanime.to) | 2 |
+| Re:ANIME | English | 2.2.2 | [reanime.to](https://reanime.to) | 2 |

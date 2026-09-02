@@ -70,6 +70,72 @@ function isRefusal(response) {
 }
 
 /**
+ * Markers of a bot-protection challenge served as a successful response.
+ *
+ * The polite refusal is a status code, and isRefusal above reads it. The
+ * common one is not: Cloudflare answers 200 and sends a browser check in
+ * place of the page. The request was still refused - the site is judging the
+ * datacenter address it came from, not the URL - but nothing in the status
+ * line says so, so it used to arrive at the source's parser, which found no
+ * anime in a challenge page and reported an empty result.
+ *
+ * Since a home is accepted on what it parses, that empty result reads as a
+ * dead home: the rotation moves to the next mirror, is challenged there too,
+ * and spends its entire budget learning the same thing once per domain. The
+ * user waits it out and is shown nothing, while the phone that asked could
+ * have loaded the page on the first attempt.
+ *
+ * Every marker here is machinery the challenge has to carry to run at all -
+ * the script it loads, the element it mounts on, the options object it
+ * reads. None of them occurs in prose.
+ *
+ * Deliberately NOT here: "just a moment", "checking your browser", and the
+ * rest of the visible wording. They are ordinary English and a plausible
+ * episode title, and matching them would hand real pages to the device for
+ * ever - slower and wronger than not checking at all, and the reason a check
+ * like this gets switched off a week after it lands.
+ */
+const CHALLENGE_MARKERS = [
+  /cf-browser-verification/i,
+  /\/cdn-cgi\/challenge-platform/i,
+  /\b_{0,2}cf_chl(?:_opt|_tk|_jschl)?\b/i,
+  /challenges\.cloudflare\.com\/turnstile/i,
+  /\/\.well-known\/ddos-guard\//i,
+  /<title>\s*DDoS-Guard\s*<\/title>/i
+];
+
+/**
+ * What is passed as the refusal when the body, not the status, is the answer.
+ */
+const CHALLENGE_REFUSAL = 'browser-check';
+
+/**
+ * True for a response whose body is a browser check rather than the page.
+ *
+ * Only HTML is examined. A JSON API answering 200 is answering; a challenge
+ * is always a document, because its whole purpose is to run a script in a
+ * browser.
+ */
+function isChallenge(response) {
+  if (!response) return false;
+
+  const headers = response.headers || {};
+  const contentType = String(
+    headers['content-type'] || headers['Content-Type'] || ''
+  ).toLowerCase();
+
+  // An absent content-type is not a reason to skip the check: the body is
+  // still there to be read, and a challenge without a declared type is
+  // still a challenge.
+  if (contentType && !contentType.includes('html')) return false;
+
+  const body = String(response.body || '');
+  if (!body) return false;
+
+  return CHALLENGE_MARKERS.some((marker) => marker.test(body));
+}
+
+/**
  * A refusal with no status code attached.
  *
  * Answering 403 is the polite way to turn a datacenter away. The cheaper way
@@ -121,14 +187,20 @@ class DeviceFetchRequired extends Error {
    */
   constructor(request, refusal) {
     const status = Number(refusal);
-    // Both are the site turning this server away; only one of them spent a
-    // response saying so, and the sentence has to read correctly either way.
-    super(Number.isFinite(status) && status > 0
-      ? `The site refused the server with ${status}. `
+    // Three ways to be turned away and one sentence each, because the one
+    // that ends up in front of the user has to describe what happened. A
+    // challenge answers 200, so reading its status back would say the site
+    // refused the server with a success code.
+    super(refusal === CHALLENGE_REFUSAL
+      ? 'The site served the server a browser check instead of the page. '
         + 'This request has to be made from the device.'
-      : `The site did not answer the server (${refusal}). `
-        + 'This request has to be made from the device.');
+      : Number.isFinite(status) && status > 0
+        ? `The site refused the server with ${status}. `
+          + 'This request has to be made from the device.'
+        : `The site did not answer the server (${refusal}). `
+          + 'This request has to be made from the device.');
     this.name = 'DeviceFetchRequired';
+    this.challenge = refusal === CHALLENGE_REFUSAL;
     this.request = request;
     this.statusCode = Number.isFinite(status) && status > 0 ? status : null;
     this.refusal = refusal;
@@ -178,9 +250,12 @@ module.exports = {
   requestKey,
   canonicalUrl,
   isRefusal,
+  isChallenge,
   isConnectionRefusal,
   CONNECTION_REFUSALS,
   DeviceFetchRequired,
   REFUSAL_STATUSES,
+  CHALLENGE_MARKERS,
+  CHALLENGE_REFUSAL,
   MAX_HANDOFFS
 };

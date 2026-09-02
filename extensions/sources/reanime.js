@@ -9,7 +9,7 @@ const mangayomiSources = [{
   ],
   apiUrl: "https://reanime.to",
   iconUrl: "https://reanime.to/favicon.ico",
-  version: "2.2.1",
+  version: "2.2.2",
   itemType: 1,
   isNsfw: false,
   hasCloudflare: true,
@@ -134,14 +134,6 @@ class DefaultExtension extends MProvider {
     }
 
     const body = String(res.body || "");
-
-    if (/just a moment|cf-browser-verification|challenge-platform/i.test(body)) {
-      throw new Error(
-        "Re:ANIME served a Cloudflare browser check instead of the page. " +
-        "The check is aimed at the Animiru server that made the request, " +
-        "not at your device."
-      );
-    }
 
     return { doc: new Document(body), body };
   }

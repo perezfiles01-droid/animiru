@@ -9,7 +9,7 @@ const mangayomiSources = [{
   ],
   apiUrl: "https://animepahe.org/api",
   iconUrl: "https://animepahe.org/apple-touch-icon.png",
-  version: "2.3.1",
+  version: "2.3.2",
   itemType: 1,
   isNsfw: false,
   hasCloudflare: true,
@@ -133,15 +133,6 @@ class DefaultExtension extends MProvider {
           "is no API there. That is what a parked or retired AnimePahe " +
           "domain does. Set a working address in this source's settings - " +
           "whichever one loads the real site in your browser."
-        );
-      }
-
-      if (/ddos-guard|checking your browser|just a moment|cf-browser/i.test(body)) {
-        throw new Error(
-          "AnimePahe returned a challenge page instead of JSON. Its " +
-          "DDoS-Guard bot protection is challenging the request, and the " +
-          "challenge is aimed at the Animiru server that made it, not at " +
-          "your device."
         );
       }
 

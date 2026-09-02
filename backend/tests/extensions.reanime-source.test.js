@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { runExtension, extractMetadata } = require('../extensions');
 const http = require('../extensions/http');
+const { DeviceFetchRequired } = require('../extensions/handoff');
 
 const CODE = fs.readFileSync(
   path.join(__dirname, '..', '..', 'extensions', 'sources', 'reanime.js'),
@@ -96,8 +97,8 @@ function stub(routes) {
   });
 }
 
-async function call(method, args) {
-  const { result } = await runExtension({ code: CODE, method, args, source: SOURCE });
+async function call(method, args, options = {}) {
+  const { result } = await runExtension({ code: CODE, method, args, source: SOURCE, ...options });
   return result;
 }
 
@@ -299,10 +300,18 @@ describe('Re:ANIME source', () => {
       await expect(failure).rejects.not.toThrow(/try again/);
     });
 
-    it('recognises the challenge even when it arrives as a 200', async () => {
-      stub({ '/popular': page('<h1>Just a moment...</h1>') });
+    // The source used to read this itself and end the run with a sentence
+    // explaining that the check was aimed at the server. It was right, and
+    // stopping there was the waste: the device that could pass the check was
+    // never asked. The transport reads it now and hands the request over.
+    it('hands a 200 that is really a challenge to the device', async () => {
+      stub({ '/popular': page(
+        '<div class="cf-browser-verification"></div>'
+        + '<script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"></script>'
+      ) });
 
-      await expect(call('getPopular', [1])).rejects.toThrow(/browser check/);
+      await expect(call('getPopular', [1], { allowHandoff: true }))
+        .rejects.toBeInstanceOf(DeviceFetchRequired);
     });
   });
 
