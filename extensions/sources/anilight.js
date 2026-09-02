@@ -8,7 +8,7 @@ const mangayomiSources = [
     "iconUrl": "https://www.google.com/s2/favicons?sz=128&domain=https://anilight.live",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.5.1",
+    "version": "0.6.0",
     "pkgPath": "anime/src/en/anilight.js",
     "isManga": false,
     "isNsfw": false,
@@ -161,9 +161,16 @@ var HOST_REWRITES = [
 // segments are misnamed (.jpg), which is the only reason libmpv rejects them,
 // so they need nothing more than a URL that ends in .ts — the proxy's redirect
 // mode, which passes no video bytes at all.
+// "misora" was removed: the site's own server menu now lists LIGHT, MISA, REM
+// and MEG, and asking /sources for a provider it no longer serves spends a
+// request on every episode for nothing. That cost is not abstract - each
+// request a bot check refuses is one the device has to make instead, and
+// those are rationed.
+//
+// REM and LIGHT are deliberately not guessed at here. Their ids and referers
+// are unknown, and a wrong guess costs the same request as a right one.
 var TS_PROVIDERS = [
   { id: "misa",   name: "MegaPlay", referer: "https://megaplay.buzz/" },
-  { id: "misora", name: "Misora",   referer: null },   // referer = its own origin
 ];
 
 class DefaultExtension extends MProvider {
@@ -800,14 +807,27 @@ class DefaultExtension extends MProvider {
     // higher quality than AnimeGG has) picks it from the list.
     var prefType = this.getPreference("anilight_pref_type") || "sub";
     var wantDub = prefType === "dub";
-    // Playable-on-Windows first: AnimeGG needs nothing, the ⟨fixed⟩ entries
-    // need only a redirect, ⟨unwrapped⟩ needs every byte proxied, and the bare
-    // entries are iOS-only.
+    // MegaPlay leads, because it is the server that plays here.
+    //
+    // AnimeGG used to lead, for a reason that belongs to a different host:
+    // it is the only backend Windows can play untouched by libmpv, which has
+    // no bearing on a browser. Animiru plays through hls.js or the WebView's
+    // own HLS, and MegaPlay's playlist is exactly what those want - it is
+    // also the site's own default, and the one confirmed to work. AnimeGG
+    // keeps its place in the list, just not at the front, where its partial
+    // coverage meant an episode it does not carry led with nothing playable.
+    //
+    // The proxied entry stays directly behind the direct one rather than
+    // ahead of it: it only exists when someone has configured a proxy, and
+    // routing every byte through one when the stream plays on its own is a
+    // cost, not a feature.
     var rank = function (v) {
-      if (v.quality.indexOf("AnimeGG") === 0) return 0;
-      if (v.quality.indexOf("⟨fixed⟩") >= 0) return 1;
-      if (v.quality.indexOf("⟨unwrapped⟩") >= 0) return 2;
-      return 3;
+      var megaplay = v.quality.indexOf("MegaPlay") === 0;
+      if (megaplay && v.quality.indexOf("⟨unwrapped⟩") < 0) return 0;
+      if (megaplay) return 1;
+      if (v.quality.indexOf("AnimeGG") === 0) return 2;
+      if (v.quality.indexOf("⟨fixed⟩") >= 0) return 3;
+      return 4;
     };
     videos.sort(function (a, b) {
       var aDub = a.quality.indexOf("[Dub]") >= 0;
