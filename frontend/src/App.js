@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 import Home from './pages/Home';
@@ -41,6 +41,24 @@ export default function App() {
             <Route path="/settings/extensions" element={<ExtensionSettings />} />
             <Route path="/settings/update" element={<UpdateSettings />} />
             <Route path="/settings/tracking" element={<TrackingSettings />} />
+
+            {/*
+              Anything else goes to the front page rather than nowhere.
+
+              <Routes> renders null when no path matches, and Navbar and
+              BottomNav are outside it - so an unmatched path drew the app's
+              frame around an empty middle, which reads as a crash and says
+              nothing about what went wrong. The Android shell opened the app
+              at /index.html, which is a file rather than a route, so that
+              blank screen was the first thing every launch showed until the
+              user tapped a tab.
+
+              The shell now opens "/" and that is the real fix. This is here
+              because a path that matches nothing must never again be a blank
+              screen - a route renamed later, a mistyped link, or a URL
+              restored from an older version all arrive here too.
+            */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
         <BottomNav />
