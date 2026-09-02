@@ -155,7 +155,8 @@ router.post('/run', async (req, res, next) => {
         needsDeviceFetch: {
           key: requestKey(err.request),
           request: err.request,
-          refusedWith: err.statusCode
+          refusedWith: err.statusCode,
+          challenge: Boolean(err.challenge)
         },
         /**
          * Every request this run wants made, not only the one the message
@@ -168,7 +169,11 @@ router.post('/run', async (req, res, next) => {
          */
         needsDeviceFetches: (err.alsoWanted || [err.request]).map((request) => ({
           key: requestKey(request),
-          request
+          request,
+          // A check has to be run, not fetched: fetching one retrieves the
+          // check itself. The app has a browser and a plain fetcher, and
+          // this is what tells it which to use.
+          challenge: Boolean(err.challenge)
         })),
         // The trace travels with it. A handoff is normally answered by the
         // app and never seen, but when the rounds run out it is the only

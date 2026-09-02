@@ -437,6 +437,43 @@ with `ryu` wrongly added.
 
 ---
 
+## The right address is not the same as the right capability
+
+The device handoff solved the address: requests go out from the user's own
+connection, which is not the one being refused. It did not solve the check.
+`DeviceFetch` used `HttpURLConnection` - it moves bytes and executes nothing
+- so when a site answered with a JavaScript browser check, the device
+faithfully fetched *the check* and handed it back, and the source parsed
+nothing out of an interstitial.
+
+Two capabilities are needed and they are separate:
+
+|                          | right IP | runs JS |
+|--------------------------|----------|---------|
+| server + stealth plugin  | no       | yes     |
+| device fetch (bytes)     | yes      | no      |
+| device fetch (WebView)   | yes      | yes     |
+
+A challenge now loads in a WebView the shell creates for it - never the app's
+own, which is showing the page that asked - and the settled HTML is read back
+with `evaluateJavascript`. The same-origin rule does not apply to the app
+hosting a WebView, which is exactly why this works where a `fetch()` from our
+own page cannot.
+
+The clearance cookie is the part that pays for itself: it lands in the
+WebView's `CookieManager`, and the plain fetcher now sends and stores cookies
+from the same jar. One solved check serves every later request to that site,
+instead of each one needing its own browser.
+
+**Pinned by** `backend/tests/mobile.shell.test.js` (read as text - there is no
+SDK here) and the frontend's `deviceFetch` tests.
+
+> Before reaching for a heavier tool, name the capability that is actually
+> missing. A whole scraping platform was considered for this; what was
+> missing was a browser we already had.
+
+---
+
 ## Verification
 
 The habit that caught most of the above, and is worth keeping:

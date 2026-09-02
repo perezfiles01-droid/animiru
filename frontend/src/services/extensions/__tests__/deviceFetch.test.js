@@ -133,3 +133,89 @@ describe('fetching one request', () => {
     jest.useRealTimers();
   });
 });
+
+
+/**
+ * Running a browser check instead of fetching it.
+ *
+ * The plain path moves bytes and executes nothing, so asking it for a check
+ * returns the check. The shell has a browser; this is how it is reached.
+ */
+describe('solving a browser check', () => {
+  function installSolver(handler) {
+    window.AnimiruDeviceFetch = {
+      isAvailable: () => true,
+      request: jest.fn(),
+      solve: jest.fn((id, json) => handler(id, JSON.parse(json)))
+    };
+    return window.AnimiruDeviceFetch;
+  }
+
+  const answer = (id, payload) =>
+    window.__animiruDeviceFetch.deliver(id, JSON.stringify(payload));
+
+  it('uses the browser for a challenge', async () => {
+    const bridge = installSolver((id) => answer(id, {
+      ok: true, statusCode: 200, body: '<html>the page</html>', solved: true
+    }));
+
+    const response = await fetchOnDevice({ url: 'https://kaa.to/x' }, { challenge: true });
+
+    expect(bridge.solve).toHaveBeenCalled();
+    expect(bridge.request).not.toHaveBeenCalled();
+    expect(response.body).toBe('<html>the page</html>');
+  });
+
+  it('uses the plain path for anything else', async () => {
+    const bridge = installSolver(() => {});
+    bridge.request = jest.fn((id) => answer(id, { ok: true, statusCode: 200, body: 'x' }));
+
+    await fetchOnDevice({ url: 'https://kaa.to/x' });
+
+    expect(bridge.request).toHaveBeenCalled();
+    expect(bridge.solve).not.toHaveBeenCalled();
+  });
+
+  // A shell too old to have a browser falls back to fetching, which returns
+  // the check and fails - exactly what it did before this existed.
+  it('falls back to fetching on a shell with no solver', async () => {
+    window.AnimiruDeviceFetch = {
+      isAvailable: () => true,
+      request: jest.fn((id) => answer(id, { ok: true, statusCode: 200, body: 'check' }))
+    };
+
+    const response = await fetchOnDevice({ url: 'https://kaa.to/x' }, { challenge: true });
+
+    expect(window.AnimiruDeviceFetch.request).toHaveBeenCalled();
+    expect(response.body).toBe('check');
+  });
+
+  it('says so when the check does not clear', async () => {
+    jest.useFakeTimers();
+    installSolver(() => {});
+
+    const pending = fetchOnDevice({ url: 'https://kaa.to/x' }, { challenge: true });
+    const settled = pending.catch((err) => err);
+    jest.advanceTimersByTime(36000);
+
+    expect((await settled).message).toMatch(/browser check/);
+    jest.useRealTimers();
+  });
+
+  // A check spins for several seconds by design; giving it a fetch's
+  // deadline would abandon it while the browser was still working.
+  it('waits longer for a check than for a fetch', async () => {
+    jest.useFakeTimers();
+    installSolver(() => {});
+
+    const pending = fetchOnDevice({ url: 'https://kaa.to/x' }, { challenge: true });
+    const settled = pending.catch((err) => err);
+
+    jest.advanceTimersByTime(31000);
+    await Promise.resolve();
+    jest.advanceTimersByTime(5000);
+
+    expect((await settled).message).toMatch(/browser check/);
+    jest.useRealTimers();
+  });
+});

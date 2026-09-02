@@ -19,6 +19,9 @@ const BRIDGE = '__animiruDeviceFetch';
 /** How long to wait for the device before giving up on the request. */
 const TIMEOUT_MS = 30000;
 
+/** A browser check spins by design; the shell gives up at 25 seconds. */
+const CHALLENGE_TIMEOUT_MS = 35000;
+
 let nextId = 1;
 const waiting = new Map();
 
@@ -70,9 +73,23 @@ function listen() {
  * an answer too, and means the site is refusing the user as well - and
  * rejects only when the request could not be made at all.
  */
-export async function fetchOnDevice(request) {
+export async function fetchOnDevice(request, { challenge = false } = {}) {
   const native = bridge();
   if (!native) throw new Error('This build cannot fetch from the device');
+
+  /**
+   * A browser check has to be run, not fetched.
+   *
+   * Fetching one retrieves the check itself: the plain path moves bytes and
+   * executes nothing, so the source is handed an interstitial and parses
+   * nothing out of it. The right address was never the problem - this
+   * device is not the one being refused - the missing piece is a browser to
+   * run what the site sent, which the shell has.
+   *
+   * A shell too old to have one falls back to fetching. That returns the
+   * check and fails, which is what it did before this existed.
+   */
+  const solving = challenge && typeof native.solve === 'function';
 
   listen();
 
@@ -82,8 +99,13 @@ export async function fetchOnDevice(request) {
   const answer = await new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       waiting.delete(id);
-      reject(new Error('The device took too long to fetch that request'));
-    }, TIMEOUT_MS);
+      reject(new Error(solving
+        ? 'The device took too long to clear that browser check'
+        : 'The device took too long to fetch that request'));
+      // A check spins for several seconds by design, so it is given longer
+      // than a fetch - and longer than the shell's own deadline for one, or
+      // this would give up while the browser was still working.
+    }, solving ? CHALLENGE_TIMEOUT_MS : TIMEOUT_MS);
 
     waiting.set(id, {
       resolve: (value) => {
@@ -93,7 +115,7 @@ export async function fetchOnDevice(request) {
     });
 
     try {
-      native.request(id, JSON.stringify({
+      (solving ? native.solve : native.request).call(native, id, JSON.stringify({
         url: request.url,
         method: request.method || 'GET',
         headers: request.headers || {},

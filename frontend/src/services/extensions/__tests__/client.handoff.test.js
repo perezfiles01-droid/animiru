@@ -47,7 +47,7 @@ describe('when the backend is refused', () => {
 
     const outcome = await runSource({ method: 'getPopular', args: [1] });
 
-    expect(fetchOnDevice).toHaveBeenCalledWith(REQUEST);
+    expect(fetchOnDevice).toHaveBeenCalledWith(REQUEST, { challenge: undefined });
     expect(outcome.result.list).toEqual([{ name: 'One Piece' }]);
   });
 
@@ -386,5 +386,47 @@ describe('when a round asks for several requests', () => {
     await runSource({ method: 'getVideoList', args: ['/e/1'] });
 
     expect(fetchOnDevice).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+/**
+ * A browser check is run, not fetched.
+ *
+ * Fetching one retrieves the check itself: the plain path moves bytes and
+ * executes nothing, so the source is handed an interstitial. The device was
+ * never the problem - it is not the address being refused - what was missing
+ * is a browser to run what the site sent.
+ */
+describe('when the refusal was a browser check', () => {
+  const challenged = (challenge) => {
+    const err = new Error('Request failed with status code 409');
+    err.response = {
+      status: 409,
+      data: {
+        error: 'The site served the server a browser check instead of the page.',
+        needsDeviceFetch: { key: KEY, request: REQUEST, challenge },
+        needsDeviceFetches: [{ key: KEY, request: REQUEST, challenge }]
+      }
+    };
+    return err;
+  };
+
+  it('asks the device to solve it rather than fetch it', async () => {
+    api.post.mockRejectedValueOnce(challenged(true)).mockResolvedValueOnce(ran);
+    fetchOnDevice.mockResolvedValue({ statusCode: 200, body: '[]', headers: {}, url: '' });
+
+    await runSource({ method: 'getPopular', args: [1] });
+
+    expect(fetchOnDevice).toHaveBeenCalledWith(REQUEST, { challenge: true });
+  });
+
+  it('leaves an ordinary refusal on the cheap path', async () => {
+    api.post.mockRejectedValueOnce(challenged(false)).mockResolvedValueOnce(ran);
+    fetchOnDevice.mockResolvedValue({ statusCode: 200, body: '[]', headers: {}, url: '' });
+
+    await runSource({ method: 'getPopular', args: [1] });
+
+    expect(fetchOnDevice).toHaveBeenCalledWith(REQUEST, { challenge: false });
   });
 });

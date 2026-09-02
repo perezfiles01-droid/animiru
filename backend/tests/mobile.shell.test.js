@@ -261,3 +261,77 @@ describe('where the shell starts the app', () => {
     expect(MAIN_ACTIVITY).toContain('INDEX_PATH = "index.html"');
   });
 });
+
+
+/**
+ * Running a browser check instead of fetching it.
+ *
+ * The device was never the address being refused - it is on an ordinary
+ * connection - but HttpURLConnection moves bytes and executes nothing, so
+ * asking it for a JavaScript check retrieved the check itself and the source
+ * parsed nothing out of it. The shell has a browser; this is it.
+ */
+describe('the browser check solver', () => {
+  const fs = require('fs');
+  const path = require('path');
+
+  const DEVICE_FETCH = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'mobile', 'android', 'app', 'src', 'main',
+      'java', 'com', 'animiru', 'app', 'DeviceFetch.java'),
+    'utf8'
+  );
+
+  it('is reachable from the page under the name it looks for', () => {
+    expect(DEVICE_FETCH).toMatch(/@JavascriptInterface\s+public void solve\(/);
+  });
+
+  // A WebView may only be touched from the main thread, and the app's own
+  // WebView is showing the page that asked - navigating it would take the
+  // user with it.
+  it('runs the check in a WebView of its own, on the main thread', () => {
+    const body = methodBody(DEVICE_FETCH, 'private void solveOnMainThread');
+
+    expect(body).toContain('new WebView(');
+    expect(body).toMatch(/Looper\.getMainLooper\(\)/);
+    expect(body).toMatch(/setJavaScriptEnabled\(true\)/);
+  });
+
+  // The whole point: read the finished page back out of the browser.
+  it('reads the settled page back', () => {
+    expect(methodBody(DEVICE_FETCH, 'private void solveOnMainThread'))
+      .toContain('document.documentElement.outerHTML');
+  });
+
+  /**
+   * One solved check has to serve the requests that follow it. Without the
+   * shared jar every later request is challenged again and each needs its
+   * own browser, which is the expensive thing this avoids.
+   */
+  it('shares the clearance cookie with the plain fetcher', () => {
+    expect(methodBody(DEVICE_FETCH, 'private JSONObject perform'))
+      .toMatch(/CookieManager\.getInstance\(\)\.getCookie/);
+    expect(methodBody(DEVICE_FETCH, 'private JSONObject perform'))
+      .toMatch(/setCookie/);
+  });
+
+  // A check that never clears must not leave the run waiting for ever.
+  it('gives up on a check that does not clear', () => {
+    expect(DEVICE_FETCH).toMatch(/CHALLENGE_TIMEOUT_MS\s*=\s*\d+/);
+    expect(methodBody(DEVICE_FETCH, 'private void solveOnMainThread'))
+      .toContain('postDelayed');
+  });
+
+  // Answered once, whichever comes first - the settled page or the
+  // deadline - or the page could be delivered after the giving up.
+  it('answers exactly once', () => {
+    expect(methodBody(DEVICE_FETCH, 'private void solveOnMainThread'))
+      .toMatch(/answered\.getAndSet\(true\)/);
+  });
+
+  // The same rule the plain path follows: moving a request to the device
+  // must not become the way an extension reaches the user's own network.
+  it('refuses a private address here too', () => {
+    expect(methodBody(DEVICE_FETCH, 'public void solve'))
+      .toMatch(/isPrivateAddress\(url\.getHost\(\)\)/);
+  });
+});

@@ -150,7 +150,12 @@ export async function runSource({
 
         const answers = await Promise.all(wanted.map(async (want) => {
           try {
-            return { key: want.key, response: await fetchOnDevice(want.request) };
+            return {
+              key: want.key,
+              // A challenge is run in the shell's browser rather than
+              // fetched; fetching one retrieves the check itself.
+              response: await fetchOnDevice(want.request, { challenge: want.challenge })
+            };
           } catch (siblingError) {
             // Rethrown below only if it was the request the run stopped on.
             return { key: want.key, error: siblingError };
