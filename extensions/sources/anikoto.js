@@ -23,7 +23,7 @@ const mangayomiSources = [
     "iconUrl": "https://www.google.com/s2/favicons?sz=256&domain=https://anikototv.to",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.4.16",
+    "version": "0.4.17",
     "pkgPath": "anime/src/en/anikoto.js",
     "isManga": false,
     "isNsfw": false,
@@ -126,9 +126,21 @@ class DefaultExtension extends MProvider {
   // Extract {slug} from watch page URLs:
   //   https://anikototv.to/watch/{slug}/ep-1  →  {slug}
   //   https://anikototv.to/watch/{slug}        →  {slug}
+  // A detail URL can arrive in either shape, because it comes from whichever
+  // home was being browsed. This site writes "/watch/<slug>"; anichi.to and
+  // other mirrors write "/anime/<slug>". Both name the same title, and the
+  // slug is the only part getDetail keeps - the watch URL it fetches is
+  // rebuilt from the current baseUrl below, so reading the slug is what
+  // makes the source work on any of its homes.
+  //
+  // A trailing episode ("/watch/<slug>/ep-1") is accepted too: it is still a
+  // URL about the series, and the series is what getDetail is asked for.
+  //
+  // hianime.js has done this since it was written, trying one shape and
+  // falling back to another. This is the same idea.
   extractSlug(url) {
     var path = url.replace(/^https?:\/\/[^\/]+/, "");
-    var m = path.match(/\/watch\/([^\/\?#]+)/);
+    var m = path.match(/\/(?:watch|anime)\/([^\/\?#]+)/);
     return m ? m[1] : "";
   }
 
