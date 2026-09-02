@@ -52,3 +52,53 @@ describe('the controls that were invisible', () => {
     expect(css).toMatch(/\.recommendation-percent\s*\{[^}]*color:\s*#fff/s);
   });
 });
+
+/**
+ * Rules whose failure is only visible on a phone.
+ *
+ * jsdom does not lay anything out, so a component test cannot see that a row
+ * wrapped onto four lines. These read the stylesheet instead, which is the
+ * only check available short of a device.
+ */
+describe('the source row', () => {
+  const fs = require('fs');
+  const path = require('path');
+
+  const CSS = fs.readFileSync(
+    path.join(__dirname, '..', 'Extensions.css'), 'utf8'
+  );
+
+  /** The body of one rule, by selector. */
+  function rule(selector) {
+    const match = CSS.match(
+      new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{([^}]*)\\}`)
+    );
+    if (!match) throw new Error(`No rule for ${selector}`);
+    return match[1];
+  }
+
+  // Eight sources wrapped onto four lines and pushed the search box and the
+  // catalogue off the top of the screen.
+  it('is one row that scrolls, not a block that grows', () => {
+    const body = rule('.ext-source-tabs');
+
+    expect(body).toMatch(/flex-wrap:\s*nowrap/);
+    expect(body).toMatch(/overflow-x:\s*auto/);
+  });
+
+  // A flex item shrinks to fit by default, so without this the tabs squeeze
+  // into the row and truncate instead of scrolling.
+  it('keeps each tab at its natural width', () => {
+    const body = rule('.ext-source-tabs .ext-source-tab');
+
+    expect(body).toMatch(/flex:\s*0\s+0\s+auto/);
+    expect(body).toMatch(/white-space:\s*nowrap/);
+  });
+
+  // A horizontal strip that captures a vertical swipe makes the page feel
+  // stuck, and a visible scrollbar over eight tabs is noise.
+  it('does not steal the page scroll, and hides its own bar', () => {
+    expect(rule('.ext-source-tabs')).toMatch(/overscroll-behavior-x:\s*contain/);
+    expect(CSS).toMatch(/\.ext-source-tabs::-webkit-scrollbar\s*\{[^}]*display:\s*none/);
+  });
+});

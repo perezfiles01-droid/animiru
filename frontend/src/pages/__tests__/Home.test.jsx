@@ -262,7 +262,7 @@ describe('Home', () => {
       getProviders.mockReturnValue([first, second]);
 
       await renderHome();
-      await userEvent.click(screen.getByRole('button', { name: 'Second' }));
+      await userEvent.click(screen.getByRole('tab', { name: 'Second' }));
 
       await waitFor(() => expect(second.getLibrary).toHaveBeenCalled());
       expect(storage.getSelectedSourceKey()).toBe('b');
