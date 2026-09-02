@@ -169,6 +169,9 @@ function buildEmptyResultDiagnostics({
 function withTrace(handoff, ops) {
   handoff.requests = ops.requests;
   handoff.logs = ops.logs;
+  // Everything else the run asked the device for, so one more round can
+  // answer all of it rather than one request at a time.
+  handoff.alsoWanted = ops.handoffsWanted;
   return handoff;
 }
 

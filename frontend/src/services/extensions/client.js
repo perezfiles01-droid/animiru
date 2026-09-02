@@ -128,7 +128,41 @@ export async function runSource({
       if (!needed || round === MAX_DEVICE_FETCHES) return describe(err, 'The source failed to run');
 
       try {
-        fetched[needed.key] = await fetchOnDevice(needed.request);
+        /**
+         * Everything this round asked for, together.
+         *
+         * One at a time was the whole reason a refusal reached the user: a
+         * source that asks several backends for one episode has all of them
+         * refused at once, so a run needing a dozen answers needed a dozen
+         * rounds against a budget of four. Fetching them together turns that
+         * into one round.
+         *
+         * The named request leads and is answered even if the rest fail,
+         * because it is the one the run stopped on and the one the message
+         * describes. A sibling that cannot be fetched is left out rather
+         * than failing the round: the next round asks for whatever is still
+         * missing, which is exactly what the rounds are for.
+         */
+        const wanted = Array.isArray(err.response.data.needsDeviceFetches)
+          && err.response.data.needsDeviceFetches.length
+          ? err.response.data.needsDeviceFetches
+          : [needed];
+
+        const answers = await Promise.all(wanted.map(async (want) => {
+          try {
+            return { key: want.key, response: await fetchOnDevice(want.request) };
+          } catch (siblingError) {
+            // Rethrown below only if it was the request the run stopped on.
+            return { key: want.key, error: siblingError };
+          }
+        }));
+
+        const named = answers.find((answer) => answer.key === needed.key);
+        if (named && named.error) throw named.error;
+
+        answers.forEach((answer) => {
+          if (answer.response) fetched[answer.key] = answer.response;
+        });
       } catch (deviceError) {
         /*
          * Both roads are shut, and that is the finding.

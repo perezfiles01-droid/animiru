@@ -282,3 +282,109 @@ describe('homes already found wanting', () => {
     expect(api.post.mock.calls[0][1].excludeBaseUrls).toBeUndefined();
   });
 });
+
+
+/**
+ * Fetching everything a round asked for, together.
+ *
+ * One at a time was the whole reason a refusal reached the user: a source
+ * that asks several backends for one episode has all of them refused at
+ * once, so a run needing a dozen answers needed a dozen rounds against a
+ * budget of four.
+ */
+describe('when a round asks for several requests', () => {
+  const SIBLINGS = [
+    { key: 'GET https://site.test/a', request: { method: 'GET', url: 'https://site.test/a' } },
+    { key: 'GET https://site.test/b', request: { method: 'GET', url: 'https://site.test/b' } },
+    { key: 'GET https://site.test/c', request: { method: 'GET', url: 'https://site.test/c' } }
+  ];
+
+  const fanout = () => {
+    const err = new Error('Request failed with status code 409');
+    err.response = {
+      status: 409,
+      data: {
+        error: 'The site refused the server with 403.',
+        needsDeviceFetch: { ...SIBLINGS[0], refusedWith: 403 },
+        needsDeviceFetches: SIBLINGS
+      }
+    };
+    return err;
+  };
+
+  const answer = (url) => ({ statusCode: 200, body: url, headers: {}, url });
+
+  it('fetches all of them on the device', async () => {
+    api.post.mockRejectedValueOnce(fanout()).mockResolvedValueOnce(ran);
+    fetchOnDevice.mockImplementation(async (request) => answer(request.url));
+
+    await runSource({ method: 'getVideoList', args: ['/e/1'] });
+
+    expect(fetchOnDevice).toHaveBeenCalledTimes(3);
+  });
+
+  it('sends every answer back in the next round', async () => {
+    api.post.mockRejectedValueOnce(fanout()).mockResolvedValueOnce(ran);
+    fetchOnDevice.mockImplementation(async (request) => answer(request.url));
+
+    await runSource({ method: 'getVideoList', args: ['/e/1'] });
+
+    expect(Object.keys(api.post.mock.calls[1][1].fetched)).toEqual(SIBLINGS.map((s) => s.key));
+  });
+
+  // What made a dozen refusals need a dozen rounds.
+  it('finishes in one more round rather than one per request', async () => {
+    api.post.mockRejectedValueOnce(fanout()).mockResolvedValueOnce(ran);
+    fetchOnDevice.mockImplementation(async (request) => answer(request.url));
+
+    await runSource({ method: 'getVideoList', args: ['/e/1'] });
+
+    expect(api.post).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * A sibling that cannot be fetched is left out rather than failing the
+   * round. The next round asks for whatever is still missing, which is what
+   * the rounds are for.
+   */
+  it('keeps the answers it did get when a sibling fails', async () => {
+    api.post.mockRejectedValueOnce(fanout()).mockResolvedValueOnce(ran);
+    fetchOnDevice.mockImplementation(async (request) => (
+      request.url.endsWith('/b')
+        ? Promise.reject(new Error('Unable to resolve host'))
+        : answer(request.url)
+    ));
+
+    await runSource({ method: 'getVideoList', args: ['/e/1'] });
+
+    expect(Object.keys(api.post.mock.calls[1][1].fetched))
+      .toEqual(['GET https://site.test/a', 'GET https://site.test/c']);
+  });
+
+  // The one the run stopped on is the one the message describes; without it
+  // the next round would stop in exactly the same place.
+  it('reports a failure of the request the run stopped on', async () => {
+    api.post.mockRejectedValue(fanout());
+    fetchOnDevice.mockImplementation(async (request) => (
+      request.url.endsWith('/a')
+        ? Promise.reject(new Error('Unable to resolve host'))
+        : answer(request.url)
+    ));
+
+    await expect(runSource({ method: 'getVideoList', args: ['/e/1'] }))
+      .rejects.toThrow(/not answering|Unable to resolve host/);
+  });
+
+  // An older backend sends only the single request.
+  it('falls back to the one request when no list is sent', async () => {
+    const single = fanout();
+    delete single.response.data.needsDeviceFetches;
+
+    api.post.mockRejectedValueOnce(single).mockResolvedValueOnce(ran);
+    fetchOnDevice.mockImplementation(async (request) => answer(request.url));
+
+    await runSource({ method: 'getVideoList', args: ['/e/1'] });
+
+    expect(fetchOnDevice).toHaveBeenCalledTimes(1);
+  });
+});

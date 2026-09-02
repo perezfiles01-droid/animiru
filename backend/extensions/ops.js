@@ -12,8 +12,8 @@ const crypto = require('crypto');
 const { HtmlStore } = require('./html');
 const http = require('./http');
 const {
-  createHandoffStore, isRefusal, isChallenge, isConnectionRefusal, DeviceFetchRequired,
-  CHALLENGE_REFUSAL
+  createHandoffStore, requestKey, isRefusal, isChallenge, isConnectionRefusal,
+  DeviceFetchRequired, CHALLENGE_REFUSAL
 } = require('./handoff');
 
 const MAX_LOG_ENTRIES = 200;
@@ -165,6 +165,22 @@ function createOps({ preferences = {}, timeoutMs, fetched, allowHandoff = false 
    * asking for the one thing that would have completed it.
    */
   let pendingHandoff = null;
+
+  /**
+   * Every request this run wants the device to make, by key.
+   *
+   * One used to be enough, because a run was assumed to hit one refusal.
+   * Sources fan out: AniLight asks several backends for one episode, in
+   * parallel, and a site that refuses the server refuses all of them. Each
+   * replay could only carry one answer forward, so a run needing a dozen
+   * needed a dozen rounds - and the app allows four, then shows the refusal
+   * to the user. The fix was not a bigger budget but spending it properly:
+   * a round now collects everything the run asked for, and two rounds
+   * finish what twelve could not.
+   *
+   * Keyed, because the same request refused in several jobs is one request.
+   */
+  const handoffsWanted = new Map();
 
   const syncOps = {
     'html.parse': (html) => htmlStore.parse(html),
@@ -402,6 +418,7 @@ function createOps({ preferences = {}, timeoutMs, fetched, allowHandoff = false 
           }, challenged ? CHALLENGE_REFUSAL : response.statusCode);
 
           if (!pendingHandoff) pendingHandoff = required;
+          handoffsWanted.set(requestKey(required.request), required.request);
           throw required;
         }
 
@@ -431,6 +448,7 @@ function createOps({ preferences = {}, timeoutMs, fetched, allowHandoff = false 
           }, err.message);
 
           if (!pendingHandoff) pendingHandoff = required;
+          handoffsWanted.set(requestKey(required.request), required.request);
           throw required;
         }
 
@@ -464,6 +482,14 @@ function createOps({ preferences = {}, timeoutMs, fetched, allowHandoff = false 
     /** Set once a request has been refused; read by the sandbox after the run. */
     get pendingHandoff() {
       return pendingHandoff;
+    },
+    /**
+     * Everything the device is being asked for, deduplicated and in the
+     * order the run asked. The first is what the message describes; the
+     * rest are what makes one more round enough.
+     */
+    get handoffsWanted() {
+      return [...handoffsWanted.values()];
     },
     dispose() {
       htmlStore.dispose();

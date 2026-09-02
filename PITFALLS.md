@@ -379,6 +379,34 @@ The calls are written out one per row instead.
 
 ---
 
+## A budget spent one item at a time is not a budget
+
+Handing a refused request to the device worked exactly as built, and users
+still read "this request has to be made from the device". The run recorded
+only the *first* refusal, so each replay carried one answer forward - while
+sources fan out. AniLight asks several backends for one episode in parallel,
+and a site refusing the server refuses all of them, so a run needing a dozen
+answers needed a dozen rounds against an app that allows four.
+
+Nothing was broken. The mechanism was correct and the arithmetic was not.
+
+A round now collects every request the run wants, deduplicated, and the app
+fetches them together. Two rounds finish what twelve could not. The named
+request still leads and still fails the round if it cannot be fetched - it is
+the one the run stopped on, and without it the next round stops in the same
+place - while a sibling that fails is simply left for the next round.
+
+**Pinned by** `backend/tests/extensions.handoff.test.js` and
+`frontend/src/services/extensions/__tests__/client.handoff.test.js`. The
+dedupe test first used three different URLs, which can never collide: it
+passed whether or not anything deduplicated. It asks for the same URL twice
+now.
+
+> When a mechanism is right and the symptom persists, count what it does per
+> round against what the work actually needs.
+
+---
+
 ## Verification
 
 The habit that caught most of the above, and is worth keeping:

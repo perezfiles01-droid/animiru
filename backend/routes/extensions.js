@@ -157,6 +157,19 @@ router.post('/run', async (req, res, next) => {
           request: err.request,
           refusedWith: err.statusCode
         },
+        /**
+         * Every request this run wants made, not only the one the message
+         * describes. A source that asks several backends for one episode
+         * has all of them refused at once, and answering one per round
+         * meant a dozen rounds against a budget of four - which is the
+         * refusal the user ends up reading. Named separately from
+         * needsDeviceFetch so an older app ignores it and still works, one
+         * request at a time.
+         */
+        needsDeviceFetches: (err.alsoWanted || [err.request]).map((request) => ({
+          key: requestKey(request),
+          request
+        })),
         // The trace travels with it. A handoff is normally answered by the
         // app and never seen, but when the rounds run out it is the only
         // thing in front of the user - and it used to arrive with nothing

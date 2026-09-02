@@ -349,3 +349,108 @@ describe('when the site refuses without answering', () => {
     expect(outcome.result.list[0].name).toBe('One Piece');
   });
 });
+
+
+/**
+ * Answering every refused request in one round.
+ *
+ * A run was assumed to hit one refusal. Sources fan out - AniLight asks
+ * several backends for one episode, in parallel - and a site that refuses
+ * the server refuses all of them. Carrying one answer per replay meant a run
+ * needing a dozen needed a dozen rounds, against an app that allows four:
+ * the refusal reached the user with the fix working exactly as built.
+ */
+describe('everything a run wants the device to make', () => {
+  const FANOUT = `
+    const mangayomiSources = [{ name: 'Fanout', id: 3, version: '1.0.0', baseUrl: 'https://site.test' }];
+    class DefaultExtension extends MProvider {
+      async getVideoList(id) {
+        const urls = ['/a', '/b', '/c'];
+        const bodies = await Promise.all(urls.map((path) =>
+          new Client().get('https://site.test' + path).then((r) => r.body).catch(() => '')
+        ));
+        return bodies.filter(Boolean).map((body) => ({ url: body, quality: '1080p' }));
+      }
+      getSourcePreferences() { return []; }
+    }
+  `;
+
+  afterEach(() => jest.restoreAllMocks());
+
+  const refuseAll = () => jest.spyOn(http, 'request').mockImplementation(async ({ url }) => ({
+    statusCode: 403, headers: {}, url, body: ''
+  }));
+
+  const run = (fetched) => runExtension({
+    code: FANOUT, method: 'getVideoList', args: ['/e/1'], allowHandoff: true, fetched
+  });
+
+  it('names every request that was refused, not only the first', async () => {
+    refuseAll();
+
+    const err = await run().catch((caught) => caught);
+    expect(err.alsoWanted.map((request) => request.url)).toEqual([
+      'https://site.test/a', 'https://site.test/b', 'https://site.test/c'
+    ]);
+  });
+
+  it('leads with the one the message describes', async () => {
+    refuseAll();
+
+    const err = await run().catch((caught) => caught);
+    expect(err.alsoWanted[0].url).toBe(err.request.url);
+  });
+
+  /**
+   * The same address refused in two jobs is one request, not two.
+   *
+   * Written against a source that really does ask twice: three different
+   * URLs can never collide, so a fixture using those would pass whether or
+   * not anything deduplicated.
+   */
+  it('does not ask twice for the same request', async () => {
+    const REPEATS = FANOUT.replace(
+      "const urls = ['/a', '/b', '/c'];",
+      "const urls = ['/a', '/a', '/b'];"
+    );
+
+    refuseAll();
+
+    const err = await runExtension({
+      code: REPEATS, method: 'getVideoList', args: ['/e/1'], allowHandoff: true
+    }).catch((caught) => caught);
+
+    expect(err.alsoWanted.map((request) => request.url))
+      .toEqual(['https://site.test/a', 'https://site.test/b']);
+  });
+
+  it('finishes in one more round once they are all answered', async () => {
+    refuseAll();
+
+    const err = await run().catch((caught) => caught);
+    const answers = {};
+    err.alsoWanted.forEach((request, index) => {
+      answers[requestKey(request)] = {
+        statusCode: 200, body: `https://cdn.test/${index}.m3u8`, headers: {}, url: ''
+      };
+    });
+
+    const outcome = await run(answers);
+    expect(outcome.result.map((video) => video.url)).toEqual([
+      'https://cdn.test/0.m3u8', 'https://cdn.test/1.m3u8', 'https://cdn.test/2.m3u8'
+    ]);
+  });
+
+  // A run with one refusal must behave exactly as it did before.
+  it('names just the one when only one was refused', async () => {
+    jest.spyOn(http, 'request').mockImplementation(async ({ url }) => (
+      url.endsWith('/b')
+        ? { statusCode: 403, headers: {}, url, body: '' }
+        : { statusCode: 200, headers: {}, url, body: 'https://cdn.test/ok.m3u8' }
+    ));
+
+    const err = await run().catch((caught) => caught);
+    expect(err.alsoWanted).toHaveLength(1);
+    expect(err.alsoWanted[0].url).toBe('https://site.test/b');
+  });
+});
