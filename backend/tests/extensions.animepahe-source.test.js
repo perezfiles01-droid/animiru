@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { runExtension, extractMetadata } = require('../extensions');
 const http = require('../extensions/http');
+const { DeviceFetchRequired } = require('../extensions/handoff');
 
 const CODE = fs.readFileSync(
   path.join(__dirname, '..', '..', 'extensions', 'sources', 'animepahe.js'),
@@ -130,8 +131,8 @@ function stub(overrides = {}) {
   });
 }
 
-async function call(method, args) {
-  const { result } = await runExtension({ code: CODE, method, args, source: SOURCE });
+async function call(method, args, options = {}) {
+  const { result } = await runExtension({ code: CODE, method, args, source: SOURCE, ...options });
   return result;
 }
 
@@ -310,17 +311,20 @@ describe('AnimePahe source', () => {
       });
     });
 
-    it('names the browser check when the page is actually a challenge', async () => {
+    // The source used to name the challenge itself and stop. Naming it was
+    // correct and stopping was the waste - the device the check would have
+    // let through was never asked. The transport hands it over now.
+    it('hands a 200 that is really a challenge to the device', async () => {
       jest.restoreAllMocks();
       jest.spyOn(http, 'request').mockResolvedValue({
-        statusCode: 200, headers: {}, body: '<html>DDoS-Guard checking your browser</html>',
+        statusCode: 200,
+        headers: { 'content-type': 'text/html' },
+        body: '<html><script src="/.well-known/ddos-guard/check"></script></html>',
         url: 'https://animepahe.org/api?m=airing&page=1'
       });
 
-      const failure = call('getPopular', [1]);
-      await expect(failure).rejects.toThrow(/DDoS-Guard bot protection/);
-      // Not the reader's device: the request came from the server.
-      await expect(failure).rejects.toThrow(/not at your device/);
+      await expect(call('getPopular', [1], { allowHandoff: true }))
+        .rejects.toBeInstanceOf(DeviceFetchRequired);
     });
   });
 
