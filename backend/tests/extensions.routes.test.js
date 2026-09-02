@@ -208,6 +208,65 @@ describe('POST /api/extensions/run, when the site refuses the server', () => {
       .toBe('GET https://site.test/find?q=bleach');
   });
 
+  /**
+   * A handoff is normally answered by the app and never seen. When the
+   * rounds run out it is the only thing in front of the user, and it used
+   * to arrive carrying nothing - a sentence, no "Show details", no address.
+   * The one question worth asking could not be answered from a screenshot.
+   */
+  describe('the trace it carries, for when the app gives up', () => {
+    beforeEach(() => {
+      jest.spyOn(http, 'request').mockResolvedValue({
+        statusCode: 403, headers: {}, url: 'https://site.test/find?q=bleach', body: ''
+      });
+    });
+
+    it('carries the requests the run made', async () => {
+      const { body } = await send({ allowHandoff: true });
+
+      expect(body.requests).toEqual([
+        expect.objectContaining({ url: 'https://site.test/find?q=bleach', status: 403 })
+      ]);
+    });
+
+    it('names the refused address in the advice', async () => {
+      const { body } = await send({ allowHandoff: true });
+
+      expect(body.diagnostics.fix).toContain('https://site.test/find?q=bleach');
+    });
+
+    // Without diagnostics the report renders a bare sentence with no way in.
+    it('carries diagnostics, so the report can be opened', async () => {
+      const { body } = await send({ allowHandoff: true });
+
+      expect(body.diagnostics).toMatchObject({
+        cause: expect.any(String),
+        method: 'search',
+        requests: expect.any(Array)
+      });
+    });
+
+    it('marks the handed-off request as one that failed', async () => {
+      const { body } = await send({ allowHandoff: true });
+      expect(body.diagnostics.failedRequests).toHaveLength(1);
+    });
+
+    // The local `source` is declared inside the try; reading it from the
+    // catch threw a ReferenceError and turned a handoff into a 500.
+    it('names the source without reaching for an out-of-scope local', async () => {
+      const res = await request(app).post('/api/extensions/run').send({
+        code: BLOCKED,
+        method: 'search',
+        args: ['bleach'],
+        allowHandoff: true,
+        source: { name: 'Blocked', version: '1.2.0' }
+      });
+
+      expect(res.status).toBe(409);
+      expect(res.body.diagnostics.source).toMatchObject({ name: 'Blocked', version: '1.2.0' });
+    });
+  });
+
   it('is an ordinary failure for a caller that cannot fetch', async () => {
     jest.spyOn(http, 'request').mockResolvedValue({
       statusCode: 403, headers: {}, url: 'https://site.test/find?q=bleach', body: ''

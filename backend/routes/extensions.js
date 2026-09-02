@@ -156,6 +156,38 @@ router.post('/run', async (req, res, next) => {
           key: requestKey(err.request),
           request: err.request,
           refusedWith: err.statusCode
+        },
+        // The trace travels with it. A handoff is normally answered by the
+        // app and never seen, but when the rounds run out it is the only
+        // thing in front of the user - and it used to arrive with nothing
+        // to show, so the one question worth asking (which address was
+        // refused) could not be answered from a screenshot.
+        requests: err.requests || [],
+        logs: err.logs || [],
+        diagnostics: {
+          message: err.message,
+          method: body.method,
+          // body.source, not the local: that one is declared inside the
+          // try and is out of scope here, which threw a ReferenceError and
+          // turned a handoff into a 500.
+          source: {
+            name: (body.source && body.source.name) || null,
+            version: (body.source && body.source.version) || null,
+            codeUrl: codeUrl || null
+          },
+          cause: err.message,
+          fix: `The address that was refused is ${err.request.url}. Open it in `
+            + 'a browser on this device: a page means the site is only '
+            + 'refusing the server, and anything else means it is refusing '
+            + 'this connection too.',
+          location: null,
+          excerpt: null,
+          requests: err.requests || [],
+          failedRequests: (err.requests || []).filter((request) => (
+            request.error || request.handedOff
+            || (request.status && (request.status < 200 || request.status >= 300))
+          )),
+          logs: err.logs || []
         }
       });
     }

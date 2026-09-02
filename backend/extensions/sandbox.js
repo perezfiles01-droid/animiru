@@ -154,6 +154,25 @@ function buildEmptyResultDiagnostics({
 }
 
 /**
+ * Puts the run's trace onto a handoff before it leaves the sandbox.
+ *
+ * A handoff is answered by the app and usually never seen. When it is seen -
+ * because the rounds ran out - it is the only thing in front of the user,
+ * and it arrived carrying nothing: no requests, no source, no address. The
+ * report had a sentence and no "Show details", so the one question worth
+ * asking, which address was refused, could not be answered from a
+ * screenshot.
+ *
+ * The trace is attached here rather than built in the route, because this is
+ * where the run actually happened.
+ */
+function withTrace(handoff, ops) {
+  handoff.requests = ops.requests;
+  handoff.logs = ops.logs;
+  return handoff;
+}
+
+/**
  * Runs one extension method.
  *
  * @param {Object} options
@@ -414,7 +433,7 @@ async function runExtension(options = {}) {
       ]);
     } catch (err) {
       if (ops.pendingHandoff) {
-        throw ops.pendingHandoff;
+        throw withTrace(ops.pendingHandoff, ops);
       }
 
       if (err instanceof ExtensionError) {
@@ -445,7 +464,7 @@ async function runExtension(options = {}) {
      * A refused request must take precedence over a partial result.
      */
     if (ops.pendingHandoff) {
-      throw ops.pendingHandoff;
+      throw withTrace(ops.pendingHandoff, ops);
     }
 
     /*
