@@ -13,7 +13,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/anidap.js",
-    "pkgPath": "sources/anidap.js"
+    "pkgPath": "sources/anidap.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   },
   {
     "name": "AniKoto",
@@ -45,7 +52,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/anikoto.js",
-    "pkgPath": "sources/anikoto.js"
+    "pkgPath": "sources/anikoto.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   },
   {
     "name": "AniLight",
@@ -61,7 +75,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/anilight.js",
-    "pkgPath": "sources/anilight.js"
+    "pkgPath": "sources/anilight.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   },
   {
     "name": "AnimeHeaven",
@@ -77,7 +98,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/animeheaven.js",
-    "pkgPath": "sources/animeheaven.js"
+    "pkgPath": "sources/animeheaven.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   },
   {
     "name": "AnimePahe",
@@ -97,7 +125,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/animepahe.js",
-    "pkgPath": "sources/animepahe.js"
+    "pkgPath": "sources/animepahe.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   },
   {
     "name": "AnimeParadise",
@@ -113,7 +148,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/animeparadise.js",
-    "pkgPath": "sources/animeparadise.js"
+    "pkgPath": "sources/animeparadise.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   },
   {
     "name": "AniNeko",
@@ -129,7 +171,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/anineko.js",
-    "pkgPath": "sources/anineko.js"
+    "pkgPath": "sources/anineko.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   },
   {
     "name": "AniWave",
@@ -150,7 +199,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/aniwave.js",
-    "pkgPath": "sources/aniwave.js"
+    "pkgPath": "sources/aniwave.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   },
   {
     "name": "HiAnime",
@@ -169,7 +225,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/hianime.js",
-    "pkgPath": "sources/hianime.js"
+    "pkgPath": "sources/hianime.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   },
   {
     "name": "Just4Anime",
@@ -185,7 +248,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/just4anime.js",
-    "pkgPath": "sources/just4anime.js"
+    "pkgPath": "sources/just4anime.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   },
   {
     "name": "JustAnime",
@@ -201,7 +271,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/justanime.js",
-    "pkgPath": "sources/justanime.js"
+    "pkgPath": "sources/justanime.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   },
   {
     "name": "KickAssAnime",
@@ -217,7 +294,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/kaa.js",
-    "pkgPath": "sources/kaa.js"
+    "pkgPath": "sources/kaa.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": "Reads KAA's JSON API. The site is a single-page app: its HTML carries no titles."
   },
   {
     "name": "Miruro",
@@ -233,7 +317,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/miruro.js",
-    "pkgPath": "sources/miruro.js"
+    "pkgPath": "sources/miruro.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   },
   {
     "name": "MyroniX",
@@ -249,7 +340,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/myronix.js",
-    "pkgPath": "sources/myronix.js"
+    "pkgPath": "sources/myronix.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   },
   {
     "name": "Playback Diagnostic",
@@ -265,7 +363,14 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/playbackdiag.js",
-    "pkgPath": "sources/playbackdiag.js"
+    "pkgPath": "sources/playbackdiag.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": "Diagnostic only — plays reference streams from Apple/Blender to isolate player bugs from provider breakage. Not a real anime source."
   },
   {
     "name": "Re:ANIME",
@@ -285,6 +390,13 @@
     "isManga": false,
     "typeSource": "single",
     "sourceCodeUrl": "https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources/reanime.js",
-    "pkgPath": "sources/reanime.js"
+    "pkgPath": "sources/reanime.js",
+    "dateFormat": "",
+    "dateFormatLocale": "",
+    "isFullData": false,
+    "appMinVerReq": "0.5.0",
+    "additionalParams": "",
+    "sourceCodeLanguage": 1,
+    "notes": ""
   }
 ]

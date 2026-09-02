@@ -44,7 +44,6 @@ const INDEX_PATH = path.join(ROOT, 'extensions', 'index.json');
 const RAW_BASE = process.env.EXTENSION_RAW_BASE
   || 'https://raw.githubusercontent.com/perezfiles01-droid/animiru/main/extensions/sources';
 
-/** Fields carried into the index, with the defaults Mangayomi expects. */
 /**
  * The other addresses a source says it runs on.
  *
@@ -59,6 +58,52 @@ function mirrorsOf(declared) {
   return kept.length ? { mirrors: kept.map((value) => value.trim()) } : {};
 }
 
+/**
+ * Which language the source code is written in, as Mangayomi's enum orders
+ * them: dart, javascript, mihon, lnreader.
+ *
+ * This is the field whose absence broke Mangayomi. It reads
+ * `SourceCodeLanguage.values[json['sourceCodeLanguage'] ?? 0]`, and index 0
+ * is dart - so an entry that simply omits it does not fail loudly, it
+ * quietly declares our JavaScript to be Dart and loads it as the wrong
+ * language.
+ *
+ * Derived from the file rather than from the declaration, so it is true by
+ * construction: this generator only ever reads .js files, and a source that
+ * declared otherwise would be describing itself wrongly.
+ */
+function sourceCodeLanguageOf(fileName) {
+  return fileName.endsWith('.js') ? 1 : 0;
+}
+
+/**
+ * The fields Mangayomi reads that Animiru does not.
+ *
+ * Animiru picks the fields it knows and ignores the rest, so carrying these
+ * costs it nothing - which is what lets one builder serve both apps instead
+ * of two indexes drifting apart.
+ *
+ * Every one is optional in Mangayomi's parser, but optional is not the same
+ * as harmless: the two with an `?? 0` fallback land on a real enum value
+ * rather than on null, so leaving them out chooses a wrong answer instead of
+ * no answer.
+ */
+function mangayomiFields(declared, fileName) {
+  return {
+    dateFormat: String(declared.dateFormat || ''),
+    dateFormatLocale: String(declared.dateFormatLocale || ''),
+    isFullData: declared.isFullData === true,
+    // Mirrors the value used by indexes known to install; no consumer of it
+    // was found in Mangayomi, so this follows the working example rather
+    // than a read of the code.
+    appMinVerReq: String(declared.appMinVerReq || '0.5.0'),
+    additionalParams: String(declared.additionalParams || ''),
+    sourceCodeLanguage: sourceCodeLanguageOf(fileName),
+    notes: String(declared.notes || '')
+  };
+}
+
+/** Fields carried into the index, with the defaults Mangayomi expects. */
 function toEntry(declared, fileName) {
   return {
     name: String(declared.name),
@@ -78,7 +123,8 @@ function toEntry(declared, fileName) {
     sourceCodeUrl: `${RAW_BASE}/${fileName}`,
     // Kept alongside sourceCodeUrl: Animiru accepts either, and an installed
     // source that predates the absolute URL still resolves.
-    pkgPath: `sources/${fileName}`
+    pkgPath: `sources/${fileName}`,
+    ...mangayomiFields(declared, fileName)
   };
 }
 
@@ -202,4 +248,6 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { build, serialise, toEntry, problemsWith, RAW_BASE };
+module.exports = {
+  build, serialise, toEntry, problemsWith, RAW_BASE, sourceCodeLanguageOf
+};

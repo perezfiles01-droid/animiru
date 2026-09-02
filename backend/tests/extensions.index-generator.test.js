@@ -151,3 +151,70 @@ describe('a source uploaded without the .js suffix', () => {
     expect(() => build()).toThrow(/Rename it to StraySource\.js/);
   });
 });
+
+/**
+ * The fields Mangayomi reads, which Animiru does not.
+ *
+ * The repository is published for both apps, and the two read the same file
+ * differently. Animiru picks the fields it knows and ignores the rest, so a
+ * missing field there is invisible. Mangayomi assigns from every key it
+ * expects - and two of them fall back to an enum's first value rather than
+ * to null, which is what makes an omission silently wrong instead of
+ * absent.
+ *
+ * Enumerated from the build rather than from a list, so a source added
+ * later is covered by the same checks without anyone remembering to add it.
+ */
+describe('the fields the other app reads', () => {
+  // Exactly what Mangayomi's Source.fromJson assigns from the index.
+  const READ_BY_MANGAYOMI = [
+    'name', 'id', 'baseUrl', 'lang', 'typeSource', 'iconUrl',
+    'dateFormat', 'dateFormatLocale', 'isNsfw', 'hasCloudflare',
+    'sourceCodeUrl', 'apiUrl', 'version', 'isManga', 'itemType',
+    'isFullData', 'appMinVerReq', 'additionalParams',
+    'sourceCodeLanguage', 'notes'
+  ];
+
+  it('carries every one of them, on every source', () => {
+    const missing = [];
+
+    for (const entry of build()) {
+      for (const field of READ_BY_MANGAYOMI) {
+        if (!(field in entry)) missing.push(`${entry.name}: ${field}`);
+      }
+    }
+
+    expect(missing).toEqual([]);
+  });
+
+  /*
+   * The one that made the repository fail there.
+   *
+   * Mangayomi reads SourceCodeLanguage.values[json['sourceCodeLanguage'] ?? 0]
+   * against enum { dart, javascript, mihon, lnreader }, so an absent field
+   * declares our JavaScript to be Dart. Absent and zero are both wrong here,
+   * and neither announces itself.
+   */
+  it('says every source is JavaScript, since every source is', () => {
+    for (const entry of build()) {
+      expect(entry.sourceCodeLanguage).toBe(1);
+    }
+  });
+
+  // itemType has the same `?? 0` fallback, where 0 is manga - which would
+  // file every one of these anime sources under the wrong media type.
+  it('gives every source a media type rather than letting it default', () => {
+    for (const entry of build()) {
+      expect(Number.isInteger(entry.itemType)).toBe(true);
+      expect(entry.itemType).toBe(1);
+    }
+  });
+
+  // Mangayomi keeps the id only when it is already a number:
+  // `id = json['id'] is int ? json['id'] : null`.
+  it('gives every source an id that survives being read as an int', () => {
+    for (const entry of build()) {
+      expect(Number.isInteger(entry.id)).toBe(true);
+    }
+  });
+});
