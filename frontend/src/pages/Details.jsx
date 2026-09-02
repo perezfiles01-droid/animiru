@@ -33,6 +33,7 @@ export default function Details() {
   const [episodes, setEpisodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [synopsisOpen, setSynopsisOpen] = useState(false);
 
   useEffect(() => {
     if (!provider || !itemId) {
@@ -166,22 +167,30 @@ export default function Details() {
             </div>
           )}
 
+          {/* Collapsed by default: a synopsis is several screens of text
+              between the title and the button that plays it, and anyone
+              opening a show they already watch does not need it. */}
           {item.overview && (
             <div className="details-description">
-              <h3>Synopsis</h3>
-              <p>{item.overview.replace(/<[^>]*>/g, '')}</p>
+              <button
+                type="button"
+                className="details-disclosure"
+                aria-expanded={synopsisOpen}
+                onClick={() => setSynopsisOpen(!synopsisOpen)}
+              >
+                <span className="details-disclosure-marker" aria-hidden="true">
+                  {synopsisOpen ? '▾' : '▸'}
+                </span>
+                Synopsis
+              </button>
+
+              {synopsisOpen && <p>{item.overview.replace(/<[^>]*>/g, '')}</p>}
             </div>
           )}
 
-          <div className="details-metadata-links">
-            <Link to={metadataHref('/recommendations')} className="metadata-link">
-              → Recommendations
-            </Link>
-            <Link to={metadataHref('/watch-order')} className="metadata-link">
-              → Watch order
-            </Link>
-          </div>
-
+          {/* Playing the thing is why the page was opened, so it leads.
+              Recommendations and Watch order are somewhere to go next, and
+              sat above it purely because they were written first. */}
           {episodes.length > 0 && watched ? (
             <ContinueWatching entry={watched} episodes={episodes} watchHref={watchHref} />
           ) : null}
@@ -193,6 +202,18 @@ export default function Details() {
               </Link>
             </div>
           ) : null}
+
+          {/* Two halves of one row, outlined rather than filled: they are
+              secondary to Watch, and three solid buttons in the same colour
+              said everything was equally important. */}
+          <div className="details-metadata-links">
+            <Link to={metadataHref('/recommendations')} className="metadata-link">
+              Recommendations
+            </Link>
+            <Link to={metadataHref('/watch-order')} className="metadata-link">
+              Watch order
+            </Link>
+          </div>
 
           {episodes.length === 0 ? (
             <p className="extensions-empty">

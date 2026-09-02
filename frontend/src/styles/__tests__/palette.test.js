@@ -40,10 +40,22 @@ describe('the theme tokens', () => {
 });
 
 describe('the controls that were invisible', () => {
-  it('fills the Recommendations and Watch order buttons', () => {
+  /**
+   * These were once filled with --highlight to fix exactly this: outlined,
+   * they had been navy text on navy and were invisible. They are outlined
+   * again now, deliberately - but on --surface with --highlight text, so the
+   * legibility that filling them bought is kept while they stop competing
+   * with the Watch button. The rule being pinned is that they are readable,
+   * not which of the two treatments achieves it.
+   */
+  it('keeps the Recommendations and Watch order buttons legible', () => {
     const css = read('Metadata.css');
-    expect(css).toMatch(/\.metadata-link\s*\{[^}]*background:\s*var\(--highlight\)/s);
-    expect(css).toMatch(/\.metadata-link\s*\{[^}]*color:\s*#fff/s);
+    const link = css.match(/\.metadata-link\s*\{([^}]*)\}/s)[1];
+
+    expect(link).toMatch(/background:\s*var\(--surface\)/);
+    expect(link).toMatch(/color:\s*var\(--highlight\)/);
+    // The failure this whole block exists for: navy on navy.
+    expect(link).not.toMatch(/color:\s*var\(--accent\)/);
   });
 
   it('fills the percentage badge rather than washing it', () => {
@@ -100,5 +112,53 @@ describe('the source row', () => {
   it('does not steal the page scroll, and hides its own bar', () => {
     expect(rule('.ext-source-tabs')).toMatch(/overscroll-behavior-x:\s*contain/);
     expect(CSS).toMatch(/\.ext-source-tabs::-webkit-scrollbar\s*\{[^}]*display:\s*none/);
+  });
+});
+
+
+/**
+ * The two links under Watch.
+ *
+ * They were filled with --highlight, identical to the Watch button, so all
+ * three read as equally important - and they were stacked, making two
+ * full-width pink slabs the loudest thing on the page.
+ */
+describe('the secondary actions on a detail page', () => {
+  const fs = require('fs');
+  const path = require('path');
+
+  const CSS = fs.readFileSync(path.join(__dirname, '..', 'Metadata.css'), 'utf8');
+
+  function rule(selector) {
+    const match = CSS.match(
+      new RegExp(`\\${selector}\\s*\\{([^}]*)\\}`)
+    );
+    if (!match) throw new Error(`No rule for ${selector}`);
+    return match[1];
+  }
+
+  it('sits them side by side in one row', () => {
+    const body = rule('.details-metadata-links');
+
+    expect(body).toMatch(/flex-direction:\s*row/);
+    expect(rule('.metadata-link')).toMatch(/flex:\s*1\s+1\s+0/);
+  });
+
+  it('does not fill them with the primary colour', () => {
+    const body = rule('.metadata-link');
+
+    expect(body).not.toMatch(/background:\s*var\(--highlight\)/);
+    expect(body).toMatch(/background:\s*var\(--surface\)/);
+  });
+
+  // --accent is a background navy; as text on this page it is invisible.
+  it('gives them a text colour that reads on the page', () => {
+    expect(rule('.metadata-link')).toMatch(/color:\s*var\(--highlight\)/);
+  });
+
+  // Half-width buttons hold two words; without this a long label overflows
+  // its pill rather than wrapping inside it.
+  it('lets a label wrap rather than overflow', () => {
+    expect(rule('.metadata-link')).toMatch(/min-width:\s*0/);
   });
 });

@@ -1056,3 +1056,30 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/**
+ * The synopsis, behind a disclosure.
+ *
+ * Several screens of text used to sit between the title and the button that
+ * plays it. Someone opening a show they already watch does not need it, and
+ * someone deciding can ask.
+ */
+.details-disclosure {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 0;
+  background: none;
+  border: 0;
+  color: var(--highlight);
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.details-disclosure-marker {
+  display: inline-block;
+  font-size: 14px;
+}

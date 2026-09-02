@@ -38,25 +38,43 @@
 
 .metadata-error { color: var(--muted); line-height: 1.5; }
 
-/* The two buttons on the detail page, as outlined pills. */
-.details-metadata-links { display: flex; flex-direction: column; gap: 0.75rem; margin: 1.25rem 0; }
+/**
+ * Where to go next, under the button that plays the thing.
+ *
+ * Side by side in one row: they are a pair, and stacking them made two
+ * full-width pink slabs that read as the most important thing on the page.
+ */
+.details-metadata-links {
+  display: flex;
+  flex-direction: row;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+}
 
-/* Filled rather than outlined. An outlined button in a dark theme leans
-   entirely on its text colour for legibility, which is what failed here. */
+/**
+ * Secondary, and visibly so.
+ *
+ * These used to be filled with --highlight, identical to Watch, which said
+ * all three were equally important. They are now the surface colour with a
+ * pink edge and pink text - legible against the page (which --accent is not
+ * when used as text) while clearly not the primary action.
+ */
 .metadata-link {
   display: block;
-  padding: 0.95rem;
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0.85rem 0.5rem;
   border: 1px solid var(--highlight);
   border-radius: 999px;
-  background: var(--highlight);
-  color: #fff;
+  background: var(--surface);
+  color: var(--highlight);
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 0.95rem;
   text-align: center;
   text-decoration: none;
 }
 
-.metadata-link:active { opacity: 0.85; }
+.metadata-link:active { background: var(--accent); }
 
 /* Watch order ---------------------------------------------------------- */
 

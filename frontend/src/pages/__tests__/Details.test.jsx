@@ -7,7 +7,8 @@
  */
 
 import React from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import Details from '../Details';
 import { getProvider } from '../../services/providers/registry';
@@ -52,10 +53,70 @@ describe('Details', () => {
     await renderDetails();
 
     expect(screen.getByRole('heading', { name: 'Bleach' })).toBeInTheDocument();
-    expect(screen.getByText('A boy who can see ghosts.')).toBeInTheDocument();
     expect(screen.getByText('Action')).toBeInTheDocument();
     expect(screen.getByText('Example Source')).toBeInTheDocument();
   });
+
+/**
+ * The page is opened to watch something. Several screens of synopsis used to
+ * sit between the title and the button that plays it, and the two places to
+ * go next sat above that button purely because they were written first.
+ */
+describe('the order and weight of what is on the page', () => {
+  it('keeps the synopsis closed until it is asked for', async () => {
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails();
+
+    expect(screen.getByRole('button', { name: /Synopsis/ }))
+      .toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('A boy who can see ghosts.')).not.toBeInTheDocument();
+  });
+
+  it('shows it when the disclosure is tapped, and hides it again', async () => {
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails();
+
+    const toggle = screen.getByRole('button', { name: /Synopsis/ });
+    await userEvent.click(toggle);
+
+    expect(screen.getByText('A boy who can see ghosts.')).toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    await userEvent.click(toggle);
+    expect(screen.queryByText('A boy who can see ghosts.')).not.toBeInTheDocument();
+  });
+
+  it('offers no disclosure when the source gave no synopsis', async () => {
+    getProvider.mockReturnValue(makeProvider({
+      getItem: jest.fn().mockResolvedValue({ id: ITEM, title: 'Bleach', genres: [] })
+    }));
+    await renderDetails();
+
+    expect(screen.queryByRole('button', { name: /Synopsis/ })).not.toBeInTheDocument();
+  });
+
+  // Playing the thing is why the page was opened.
+  it('puts Watch above Recommendations and Watch order', async () => {
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails();
+
+    const links = screen.getAllByRole('link');
+    const order = (text) => links.findIndex((link) => link.textContent.includes(text));
+
+    expect(order('Watch Episode 1')).toBeLessThan(order('Recommendations'));
+    expect(order('Watch Episode 1')).toBeLessThan(order('Watch order'));
+  });
+
+  it('puts the two of them in one row', async () => {
+    getProvider.mockReturnValue(makeProvider());
+    await renderDetails();
+
+    const row = screen.getByRole('link', { name: 'Recommendations' }).parentElement;
+
+    expect(row).toHaveClass('details-metadata-links');
+    expect(within(row).getAllByRole('link')).toHaveLength(2);
+  });
+});
 
   it('lists the episodes and links each to the player', async () => {
     getProvider.mockReturnValue(makeProvider());
