@@ -474,6 +474,41 @@ SDK here) and the frontend's `deviceFetch` tests.
 
 ---
 
+## A fix that changes what is sent has to check what accepts it
+
+Batching the handoff was right, and it broke a working source. A round used
+to post one fetched page; it now posts all of them, and `express.json()`
+defaults to **100kb**. AniWave's pages alone are past that, so the app got
+"request entity too large" and the run it was about to finish never ran.
+
+Both ends are needed. The server takes 16MB, and the app keeps a round under
+12MB - a limit on one side only either refuses work the other will send, or
+sends work the other will refuse. The request the run stopped on is always
+carried, however large: without it the next round stops in the same place.
+
+## A browser renders JSON; it does not return it
+
+The challenge solver read `document.documentElement.outerHTML`. Most of what
+a source asks for is JSON, and a browser showing JSON *renders* it - the
+document becomes `<html><body><pre>{...}</pre></body></html>`. The source got
+a picture of its data instead of its data: `JSON.parse` failed, the read
+returned null, and a working site reported no titles.
+
+A document whose body is nothing but one `<pre>` is now unwrapped to that
+text. Only that shape: a real page that happens to contain a `<pre>` comes
+back whole.
+
+**Pinned by** `client.handoff.test.js` and `mobile.shell.test.js`. The size
+tests first used 5MB bodies - three of those is 15MB, under the 16MB
+assertion, so they passed whether or not a budget existed. They use 8MB now,
+and the never-drop test uses a body bigger than the budget on its own.
+
+> Both of these were caused by a fix, not found alongside one. When a change
+> alters the shape or size of what crosses a boundary, go and read the other
+> side of that boundary.
+
+---
+
 ## Verification
 
 The habit that caught most of the above, and is worth keeping:

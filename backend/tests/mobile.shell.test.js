@@ -298,8 +298,30 @@ describe('the browser check solver', () => {
 
   // The whole point: read the finished page back out of the browser.
   it('reads the settled page back', () => {
-    expect(methodBody(DEVICE_FETCH, 'private void solveOnMainThread'))
-      .toContain('document.documentElement.outerHTML');
+    expect(DEVICE_FETCH).toMatch(/READ_SETTLED_PAGE[\s\S]*outerHTML/);
+  });
+
+  /**
+   * Most of what a source asks for is JSON, and a browser showing JSON
+   * renders it: the document becomes <html><body><pre>{...}</pre></body>.
+   * Handing that back gave the source a picture of its data rather than the
+   * data - JSON.parse failed, the read returned null, and a working site
+   * reported no titles.
+   */
+  it('unwraps a page that is only the browser rendering plain text', () => {
+    const script = DEVICE_FETCH.match(/READ_SETTLED_PAGE\s*=([\s\S]*?);\n/)[1];
+
+    expect(script).toContain("'PRE'");
+    expect(script).toContain('innerText');
+  });
+
+  // A real page whose first element happens to be a <pre> must come back
+  // whole; only a document that is nothing but the one <pre> is unwrapped.
+  it('only unwraps when the pre is the whole document', () => {
+    const script = DEVICE_FETCH.match(/READ_SETTLED_PAGE\s*=([\s\S]*?);\n/)[1];
+
+    expect(script).toContain('children.length === 1');
+    expect(script).toMatch(/body\.innerText/);
   });
 
   /**

@@ -51,6 +51,24 @@ export async function fetchSource(codeUrl, { version, refresh } = {}) {
 /** How many refused requests one run may hand to the device before we stop. */
 const MAX_DEVICE_FETCHES = 4;
 
+/**
+ * How much fetched page text one round may carry back to the server.
+ *
+ * The server accepts 16MB; this stays under it with room for the rest of the
+ * request. Without a budget here, a round that answered several large pages
+ * posted more than the server would take and came back "request entity too
+ * large" - which reads as a fault in the app, when the run had in fact
+ * gathered everything it needed.
+ *
+ * Answers that do not fit are simply not sent this round. They are not
+ * discarded: the next round asks for whatever is still missing, which is
+ * exactly what the rounds are for.
+ */
+const MAX_FETCHED_BYTES = 12 * 1024 * 1024;
+
+/** Roughly what a body will weigh once it is JSON in a request. */
+const weigh = (response) => String((response && response.body) || '').length;
+
 /** The instruction the backend sends instead of an error, when it is refused. */
 function deviceFetchNeeded(err) {
   const data = err && err.response && err.response.data;
@@ -165,8 +183,30 @@ export async function runSource({
         const named = answers.find((answer) => answer.key === needed.key);
         if (named && named.error) throw named.error;
 
-        answers.forEach((answer) => {
-          if (answer.response) fetched[answer.key] = answer.response;
+        /**
+         * Kept within what the server will accept.
+         *
+         * The named request goes first and always: it is the one the run
+         * stopped on, so a round that left it out would stop in the same
+         * place. The rest are added while there is room.
+         */
+        const ordered = [
+          ...answers.filter((answer) => answer.key === needed.key),
+          ...answers.filter((answer) => answer.key !== needed.key)
+        ];
+
+        let carried = Object.values(fetched).reduce((total, r) => total + weigh(r), 0);
+
+        ordered.forEach((answer, index) => {
+          if (!answer.response) return;
+
+          const size = weigh(answer.response);
+          // The first is the named one and is never dropped, however big:
+          // without it the round achieves nothing at all.
+          if (index > 0 && carried + size > MAX_FETCHED_BYTES) return;
+
+          carried += size;
+          fetched[answer.key] = answer.response;
         });
       } catch (deviceError) {
         /*

@@ -5,6 +5,9 @@ const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 
+/** The largest request body the app may post. See express.json below. */
+const MAX_REQUEST_BODY = '16mb';
+
 const app = express();
 
 // Middleware
@@ -40,7 +43,20 @@ app.use(cors({
   },
   credentials: true
 }));
-app.use(express.json());
+/**
+ * Big enough for what the app actually sends back.
+ *
+ * The default is 100kb, which was survivable while a run handed the device
+ * one refused request at a time - one page, usually just under. A round now
+ * carries every refused request's answer at once, and several pages of
+ * scraped HTML together are megabytes: the app got "request entity too
+ * large" and the run it was trying to finish never ran.
+ *
+ * The ceiling matches what a single response may be (5MB, in
+ * extensions/http.js) times a handful, and the app is held to the same
+ * number so it cannot send something this will refuse.
+ */
+app.use(express.json({ limit: MAX_REQUEST_BODY }));
 
 // Rate limiting
 const limiter = rateLimit({

@@ -169,7 +169,7 @@ public final class DeviceFetch {
                         // is read and, if it is still a challenge, left to
                         // load again - the deadline is what ends it.
                         view.evaluateJavascript(
-                            "document.documentElement.outerHTML",
+                            READ_SETTLED_PAGE,
                             new ValueCallback<String>() {
                                 @Override
                                 public void onReceiveValue(String quoted) {
@@ -191,6 +191,30 @@ public final class DeviceFetch {
             }
         });
     }
+
+    /**
+     * What to read back out of the browser once the check has cleared.
+     *
+     * Not simply outerHTML. Most of what a source asks for is JSON, and a
+     * browser showing JSON renders it - the document becomes
+     * `<html><body><pre>{...}</pre></body></html>`. Handing that back gave
+     * the source a picture of its data instead of its data: JSON.parse
+     * failed, the read returned null, and a working site reported no titles.
+     *
+     * So a body whose only content is one <pre> is unwrapped to that text,
+     * which is exactly the plain-text case and never a real HTML page. Any
+     * other document is returned whole.
+     */
+    private static final String READ_SETTLED_PAGE =
+        "(function () {"
+        + "  var body = document.body;"
+        + "  if (body && body.children.length === 1"
+        + "      && body.children[0].tagName === 'PRE'"
+        + "      && body.children[0].innerText.trim() === body.innerText.trim()) {"
+        + "    return body.children[0].innerText;"
+        + "  }"
+        + "  return document.documentElement.outerHTML;"
+        + "})()";
 
     /** The page, in the shape every other answer takes. */
     private static JSONObject solved(String url, String html) {

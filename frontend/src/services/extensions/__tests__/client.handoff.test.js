@@ -430,3 +430,84 @@ describe('when the refusal was a browser check', () => {
     expect(fetchOnDevice).toHaveBeenCalledWith(REQUEST, { challenge: false });
   });
 });
+
+
+/**
+ * Staying inside what the server will accept.
+ *
+ * A round used to hand back one page; it now hands back all of them, and
+ * several pages of scraped HTML together are megabytes. The server answered
+ * "request entity too large" and the run it was trying to finish never ran -
+ * which reads as a broken app, when the round had gathered exactly what it
+ * needed.
+ */
+describe('the size of what a round posts back', () => {
+  const big = (mb) => 'x'.repeat(mb * 1024 * 1024);
+
+  const three = [
+    { key: 'GET https://site.test/a', request: { method: 'GET', url: 'https://site.test/a' } },
+    { key: 'GET https://site.test/b', request: { method: 'GET', url: 'https://site.test/b' } },
+    { key: 'GET https://site.test/c', request: { method: 'GET', url: 'https://site.test/c' } }
+  ];
+
+  const refusedAll = () => {
+    const err = new Error('Request failed with status code 409');
+    err.response = {
+      status: 409,
+      data: {
+        error: 'refused',
+        needsDeviceFetch: { ...three[0] },
+        needsDeviceFetches: three
+      }
+    };
+    return err;
+  };
+
+  /**
+   * Sized so the answers only fit if something is dropping them: three at
+   * 8MB is 24MB, well past what the server takes. An earlier version of this
+   * used 5MB each - 15MB, which fits either way, so it passed whether or not
+   * a budget existed.
+   */
+  it('does not post more than the server accepts', async () => {
+    api.post.mockRejectedValueOnce(refusedAll()).mockResolvedValueOnce(ran);
+    fetchOnDevice.mockImplementation(async () => ({
+      statusCode: 200, body: big(8), headers: {}, url: ''
+    }));
+
+    await runSource({ method: 'getVideoList', args: ['/e/1'] });
+
+    const posted = JSON.stringify(api.post.mock.calls[1][1].fetched).length;
+    expect(posted).toBeLessThan(16 * 1024 * 1024);
+  });
+
+  /**
+   * Without it the round achieves nothing: the run stops in the same place.
+   * The body is larger than the budget on its own, so a rule that applied
+   * the budget to every answer equally would drop it - which is exactly the
+   * mistake being guarded against.
+   */
+  it('always carries the request the run stopped on, however big', async () => {
+    api.post.mockRejectedValueOnce(refusedAll()).mockResolvedValueOnce(ran);
+    fetchOnDevice.mockImplementation(async () => ({
+      statusCode: 200, body: big(20), headers: {}, url: ''
+    }));
+
+    await runSource({ method: 'getVideoList', args: ['/e/1'] });
+
+    expect(Object.keys(api.post.mock.calls[1][1].fetched)).toContain(three[0].key);
+  });
+
+  // Small answers are the normal case and must all travel together, or the
+  // batching this exists to protect is undone.
+  it('carries every answer when they are small', async () => {
+    api.post.mockRejectedValueOnce(refusedAll()).mockResolvedValueOnce(ran);
+    fetchOnDevice.mockImplementation(async (request) => ({
+      statusCode: 200, body: request.url, headers: {}, url: ''
+    }));
+
+    await runSource({ method: 'getVideoList', args: ['/e/1'] });
+
+    expect(Object.keys(api.post.mock.calls[1][1].fetched)).toHaveLength(3);
+  });
+});
