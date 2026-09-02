@@ -84,6 +84,56 @@ export function describeMediaError(error, url) {
   return `This server could not be played${where}.`;
 }
 
+/**
+ * Tells the Android shell which streams need which headers.
+ *
+ * A CDN that refuses a request without a Referer cannot be satisfied from
+ * here: Referer and Origin are forbidden header names, which script is not
+ * allowed to set. The shell is native code and is not bound by that rule,
+ * so it makes the request instead - but only for streams it was told about.
+ *
+ * Absent outside the app, where there is no shell and nothing to tell. The
+ * browser then behaves exactly as it did before, which for a
+ * hotlink-protected host means the stream still will not play. That is a
+ * limit of the browser, not of this call.
+ */
+export function registerStreamHeaders(options) {
+  const bridge = typeof window !== 'undefined' && window.AnimiruMediaHeaders;
+  if (!bridge || typeof bridge.register !== 'function') return false;
+
+  const needing = (options || [])
+    .filter((option) => option && option.url && option.headers
+      && Object.keys(option.headers).length > 0)
+    .map((option) => ({ url: option.url, headers: option.headers }));
+
+  try {
+    bridge.register(JSON.stringify(needing));
+    return needing.length > 0;
+  } catch (err) {
+    // The shell not accepting a registration is not a reason to refuse to
+    // play: without it the stream is attempted exactly as it was before.
+    return false;
+  }
+}
+
+/**
+ * Whether this stream has to go through hls.js rather than the platform.
+ *
+ * Native HLS is otherwise the better choice - it keeps hardware decoding -
+ * but the platform's media stack makes its own requests, which the shell
+ * cannot add headers to. hls.js fetches the playlist and every segment by
+ * XHR from the page, and those the shell does see. So a stream that needs
+ * headers is worth the loss of hardware decoding: the alternative is a
+ * stream that does not play at all.
+ */
+export function needsManagedHls(option) {
+  return Boolean(
+    option && option.type === 'hls'
+    && option.headers && Object.keys(option.headers).length > 0
+    && typeof window !== 'undefined' && window.AnimiruMediaHeaders
+  );
+}
+
 export default function VideoPlayer({
   streams, title, poster, onServerFailed, onExhausted,
   startAt = 0, mediaKey, onProgress
@@ -345,7 +395,14 @@ export default function VideoPlayer({
     // hardware decoding. Only fall back to MSE when the browser cannot.
     const nativeHls = video.canPlayType('application/vnd.apple.mpegurl');
 
-    if (current.type === 'hls' && !nativeHls && Hls.isSupported()) {
+    // The shell can only add headers to requests the page makes, so a
+    // stream whose host demands them is driven by hls.js even where the
+    // platform would have played it natively.
+    const managed = needsManagedHls(current);
+
+    registerStreamHeaders([current]);
+
+    if (current.type === 'hls' && (managed || !nativeHls) && Hls.isSupported()) {
       const hls = new Hls({ enableWorker: true });
       hlsRef.current = hls;
 

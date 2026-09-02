@@ -103,10 +103,24 @@ public class MainActivity extends AppCompatActivity {
                 .addPathHandler("/", new SpaAssetsHandler(this))
                 .build();
 
+        // Streams whose CDN refuses a request without the Referer the source
+        // used. The page registers them before it plays; every other request
+        // passes through untouched.
+        final MediaHeaders mediaHeaders = new MediaHeaders();
+
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                return assetLoader.shouldInterceptRequest(request.getUrl());
+                // The app's own files first: they are the common case, and a
+                // stream is never served from the asset loader.
+                WebResourceResponse asset = assetLoader.shouldInterceptRequest(request.getUrl());
+                if (asset != null) return asset;
+
+                // Then a registered stream, fetched with the headers a
+                // browser will not let the page set for itself. Null when
+                // this is not one, which leaves the request exactly as it
+                // was.
+                return mediaHeaders.intercept(request);
             }
 
             /**
@@ -156,6 +170,7 @@ public class MainActivity extends AppCompatActivity {
         // is refused by a site. See DeviceFetch for why a plain fetch()
         // cannot do it.
         webView.addJavascriptInterface(new DeviceFetch(webView), "AnimiruDeviceFetch");
+        webView.addJavascriptInterface(mediaHeaders, "AnimiruMediaHeaders");
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);

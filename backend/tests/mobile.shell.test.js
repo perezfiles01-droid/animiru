@@ -97,3 +97,81 @@ describe('the device fetch bridge', () => {
     expect(DEVICE_FETCH).toContain('MAX_BODY_BYTES = 5 * 1024 * 1024');
   });
 });
+
+/**
+ * Getting a stream's headers as far as the CDN.
+ *
+ * A source knows the Referer its stream host insists on and has always sent
+ * it; nothing used it for the video. The page cannot: Referer and Origin are
+ * forbidden header names, so script may not set them. The shell is native
+ * code and may, which is the only reason this class exists.
+ *
+ * None of it can be executed here, so these pin the properties whose absence
+ * would be invisible until someone is holding a phone.
+ */
+describe('the media header bridge', () => {
+  const MEDIA_HEADERS = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'mobile', 'android', 'app', 'src', 'main',
+      'java', 'com', 'animiru', 'app', 'MediaHeaders.java'),
+    'utf8'
+  );
+
+  it('is attached to the WebView under the name the page looks for', () => {
+    expect(MAIN_ACTIVITY).toContain('addJavascriptInterface(mediaHeaders, "AnimiruMediaHeaders")');
+  });
+
+  /*
+   * The asset loader serves the app's own files and must keep answering
+   * first. A stream is never one of them, so asking it first costs nothing
+   * and getting the order wrong would put every page load through a lookup
+   * that cannot match.
+   */
+  it('answers only after the app\'s own files have been offered', () => {
+    const body = methodBody(MAIN_ACTIVITY, 'public WebResourceResponse shouldInterceptRequest');
+
+    expect(body.indexOf('assetLoader.shouldInterceptRequest'))
+      .toBeLessThan(body.indexOf('mediaHeaders.intercept'));
+  });
+
+  /*
+   * Everything not registered has to come back null, or this class stops
+   * being a header proxy and becomes the WebView's entire network stack.
+   */
+  it('hands back anything it was not told about', () => {
+    expect(methodBody(MEDIA_HEADERS, 'WebResourceResponse intercept'))
+      .toMatch(/headers\s*==\s*null\)\s*return null/);
+  });
+
+  /*
+   * Range is what makes seeking work. Forwarding the source's headers but
+   * dropping the player's Range would refetch the file from the start on
+   * every seek, which looks like a stall rather than a bug.
+   */
+  it('forwards the request\'s own headers, so seeking still works', () => {
+    const body = methodBody(MEDIA_HEADERS, 'WebResourceResponse intercept');
+
+    expect(body).toContain('request.getRequestHeaders()');
+    expect(body).toMatch(/content-range|accept-ranges/i);
+  });
+
+  // Hop-by-hop headers belong to the connection this class makes, not to
+  // the request being described, and a page setting them corrupts the
+  // transfer.
+  it('refuses to forward hop-by-hop headers', () => {
+    expect(MEDIA_HEADERS).toMatch(/BLOCKED\s*=\s*\{[^}]*"transfer-encoding"/);
+    expect(methodBody(MEDIA_HEADERS, 'public void register')).toContain('isBlocked');
+  });
+
+  /*
+   * One episode's hosts must not receive the previous episode's Referer, so
+   * a registration replaces rather than accumulates.
+   */
+  it('forgets the previous episode when a new one registers', () => {
+    expect(methodBody(MEDIA_HEADERS, 'public void register')).toContain('byUrl.clear()');
+  });
+
+  it('caps what a page can make it remember', () => {
+    expect(MEDIA_HEADERS).toMatch(/MAX_ENTRIES\s*=\s*\d+/);
+    expect(methodBody(MEDIA_HEADERS, 'public void register')).toContain('MAX_ENTRIES');
+  });
+});
