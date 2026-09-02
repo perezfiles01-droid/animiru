@@ -107,10 +107,33 @@ describe('the providers asked for', () => {
     expect(providers()).toContain('misa');
   });
 
-  // Their ids and referers are unknown, and a wrong guess costs the same
-  // request as a right one. They go in with evidence or not at all.
-  it('does not guess at rem or light', () => {
-    expect(providers()).not.toContain('rem');
-    expect(providers()).not.toContain('light');
+  /**
+   * Read off the site rather than guessed at: its watch URLs carry
+   * ?server=<id> and its /sources call takes providerId=<id>, and the two
+   * are the same namespace - "misa" appears in the menu and in this list
+   * already, which is what makes the rest readable from a URL.
+   */
+  it('asks for the servers the site offers', () => {
+    expect(providers()).toEqual(
+      expect.arrayContaining(['misa', 'mello', 'rem', 'light'])
+    );
+  });
+
+  // MEG is the embed path, resolved from the episode's embed_url rather
+  // than through /sources - listing it here would ask the wrong endpoint.
+  it('does not ask /sources for the embed server', () => {
+    expect(providers()).not.toContain('meg');
+  });
+
+  /**
+   * MegaPlay's CDN insists on its own Referer; every other provider wants
+   * the stream's own origin, which is what a null means here. Getting this
+   * backwards is a 403 from the CDN on a stream that resolved fine.
+   */
+  it('keeps MegaPlay the only one with a Referer of its own', () => {
+    const block = SOURCE.match(/var TS_PROVIDERS = \[([\s\S]*?)\];/)[1];
+    const withReferer = [...block.matchAll(/id:\s*"([^"]+)"[^\n]*referer:\s*"([^"]+)"/g)];
+
+    expect(withReferer.map(([, id]) => id)).toEqual(['misa']);
   });
 });

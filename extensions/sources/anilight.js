@@ -8,7 +8,7 @@ const mangayomiSources = [
     "iconUrl": "https://www.google.com/s2/favicons?sz=128&domain=https://anilight.live",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.6.0",
+    "version": "0.7.0",
     "pkgPath": "anime/src/en/anilight.js",
     "isManga": false,
     "isNsfw": false,
@@ -161,16 +161,27 @@ var HOST_REWRITES = [
 // segments are misnamed (.jpg), which is the only reason libmpv rejects them,
 // so they need nothing more than a URL that ends in .ts — the proxy's redirect
 // mode, which passes no video bytes at all.
-// "misora" was removed: the site's own server menu now lists LIGHT, MISA, REM
-// and MEG, and asking /sources for a provider it no longer serves spends a
-// request on every episode for nothing. That cost is not abstract - each
-// request a bot check refuses is one the device has to make instead, and
-// those are rationed.
+// The servers the site itself offers, by the id it uses for them.
 //
-// REM and LIGHT are deliberately not guessed at here. Their ids and referers
-// are unknown, and a wrong guess costs the same request as a right one.
+// These are not guesses. The site's own watch URLs carry ?server=<id> and
+// its /sources call takes providerId=<id>, and the two are the same
+// namespace - "misa" in the menu is providerId "misa" here, which is what
+// makes the rest readable off a URL.
+//
+// "misora" is gone: the site no longer lists it, and asking for a provider
+// that cannot answer spends a request on every episode. That cost is not
+// abstract - each request a bot check refuses is one the device has to make
+// instead.
+//
+// A referer of null means the stream's own origin, which is the right
+// default for every one of these except MegaPlay, whose CDN insists on its
+// own. A provider that does not answer returns nothing and is skipped, so a
+// wrong entry costs one request rather than the episode.
 var TS_PROVIDERS = [
   { id: "misa",   name: "MegaPlay", referer: "https://megaplay.buzz/" },
+  { id: "mello",  name: "Mello",    referer: null },
+  { id: "rem",    name: "Rem",      referer: null },
+  { id: "light",  name: "Light",    referer: null },
 ];
 
 class DefaultExtension extends MProvider {

@@ -91,7 +91,7 @@ for Mangayomi runs here unmodified.
 | --- | --- | --- | --- | --- |
 | Anidap | English | 1.6.0 | [anidap.lol](https://anidap.lol) | - |
 | AniKoto | English | 0.4.17 | [anikototv.to](https://anikototv.to) | 14 |
-| AniLight | English | 0.6.0 | [anilight.live](https://anilight.live) | - |
+| AniLight | English | 0.7.0 | [anilight.live](https://anilight.live) | - |
 | AnimeHeaven | English | 0.0.7 | [animeheaven.me](https://animeheaven.me) | - |
 | AnimePahe | English | 2.3.2 | [animepahe.org](https://animepahe.org) | 2 |
 | AnimeParadise | English | 0.3.5 | [animeparadise.moe](https://animeparadise.moe) | - |
