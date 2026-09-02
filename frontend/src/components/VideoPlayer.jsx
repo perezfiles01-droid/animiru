@@ -35,6 +35,55 @@ const REPORT_EVERY_MS = 5000;
  * playback would stop. A blob is same-origin and sidesteps the whole
  * question.
  */
+/**
+ * What a <video> element's failure actually was.
+ *
+ * The native path had one handler and one sentence, so a CDN refusing the
+ * request without a Referer, a host that no longer exists, and a codec the
+ * device cannot decode all read as "This server could not be played". Three
+ * different problems - one wanting a header, one wanting the source retired,
+ * one wanting nothing - were indistinguishable on screen and in a
+ * screenshot of it.
+ *
+ * MediaError.code has said which all along. The hls.js branch below already
+ * separates a network failure from the rest; this is the native path, the
+ * one Android takes, catching up.
+ *
+ * The host is named because it is the part worth acting on: the stream
+ * rarely comes from the site the source is named after, and knowing which
+ * CDN refused is the difference between a header problem and a dead source.
+ */
+export function describeMediaError(error, url) {
+  let host = '';
+  try {
+    host = new URL(url).host;
+  } catch (err) {
+    // Not a URL worth quoting back; the reason still is.
+  }
+
+  const where = host ? ` from ${host}` : '';
+  const code = error && typeof error.code === 'number' ? error.code : null;
+
+  // 2, 3 and 4 are MEDIA_ERR_NETWORK, _DECODE and _SRC_NOT_SUPPORTED. The
+  // numbers are used directly: the MediaError constants are not defined in
+  // every environment this runs in, jsdom among them.
+  if (code === 2) {
+    return `This server did not respond${where}.`
+      + ' The host refused the request or is unreachable.';
+  }
+
+  if (code === 3) {
+    return `This server sent something the device could not decode${where}.`;
+  }
+
+  if (code === 4) {
+    return `This server offered nothing playable${where}.`
+      + ' The address answered, but not with a video this device can play.';
+  }
+
+  return `This server could not be played${where}.`;
+}
+
 export default function VideoPlayer({
   streams, title, poster, onServerFailed, onExhausted,
   startAt = 0, mediaKey, onProgress
@@ -314,7 +363,11 @@ export default function VideoPlayer({
     } else {
       video.src = current.url;
       video.addEventListener('loadedmetadata', resume, { once: true });
-      video.addEventListener('error', () => failed('This server could not be played.'), { once: true });
+      video.addEventListener(
+        'error',
+        () => failed(describeMediaError(video.error, current.url)),
+        { once: true }
+      );
     }
 
     /**
