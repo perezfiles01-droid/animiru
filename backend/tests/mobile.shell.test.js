@@ -175,3 +175,57 @@ describe('the media header bridge', () => {
     expect(methodBody(MEDIA_HEADERS, 'public void register')).toContain('MAX_ENTRIES');
   });
 });
+
+/**
+ * The path the shell opens the app at.
+ *
+ * React Router matches on the pathname, so what the shell navigates to has
+ * to be a route the app declares. It was "/index.html" - the file, which is
+ * the natural thing to load and the wrong thing to navigate to. No route
+ * matched, <Routes> rendered null, and because Navbar and BottomNav are
+ * outside it the app drew its own frame around an empty middle on every
+ * single launch.
+ *
+ * The Java and the JavaScript drifting apart is exactly what caused it, so
+ * this reads the start URL here and the routes there rather than trusting
+ * either on its own.
+ */
+describe('where the shell starts the app', () => {
+  const APP_JS = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'frontend', 'src', 'App.js'),
+    'utf8'
+  );
+
+  const startUrl = () => {
+    const match = MAIN_ACTIVITY.match(/START_URL\s*=\s*APP_ORIGIN\s*\+\s*"([^"]*)"/);
+    if (!match) throw new Error('START_URL is not built from APP_ORIGIN any more');
+    return match[1];
+  };
+
+  it('opens a path, not a file', () => {
+    expect(startUrl()).toBe('/');
+  });
+
+  /*
+   * The asset handler serves index.html for any extensionless path, so
+   * loading "/" still returns the file. What changes is the pathname the
+   * router then reads, which is the whole point.
+   */
+  it('still resolves to index.html through the asset handler', () => {
+    expect(methodBody(MAIN_ACTIVITY, 'public WebResourceResponse handle'))
+      .toContain('INDEX_PATH');
+    expect(MAIN_ACTIVITY).toContain('INDEX_PATH = "index.html"');
+  });
+
+  it('starts at a path the app actually declares', () => {
+    const declared = [...APP_JS.matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1]);
+
+    expect(declared).toContain(startUrl());
+  });
+
+  // Belt and braces for the class, asserted where the shell is described
+  // because that is where someone changing the start URL will be looking.
+  it('has a catch-all, so a future start path cannot be blank either', () => {
+    expect(APP_JS).toMatch(/<Route\s+path="\*"/);
+  });
+});
