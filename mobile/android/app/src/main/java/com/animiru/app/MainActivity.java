@@ -58,19 +58,22 @@ public class MainActivity extends AppCompatActivity {
     /** Must stay in sync with WebViewAssetLoader's default authority. */
     private static final String APP_ORIGIN = "https://appassets.androidplatform.net";
     /**
-     * The app is opened at a route, not at a file.
+     * The app is opened at index.html, the file.
      *
-     * React Router matches on the pathname, so "/index.html" put the app on
-     * a path it declares no route for: <Routes> rendered null, and since the
-     * navigation bars are outside it the app drew its own frame around an
-     * empty middle on every launch. Tapping a tab pushed a path that matched,
-     * which is why switching away and back appeared to fix it.
+     * This was changed to "/" to put React Router on a path it declares a
+     * route for, and that shipped an app which would not open at all:
+     * WebViewAssetLoader strips the leading slash, so "/" reaches the handler
+     * below as an empty string, and AssetsPathHandler does not return null
+     * for it - it returns a response the WebView cannot read, which is the
+     * ERR_INVALID_RESPONSE users saw instead of the app.
      *
-     * SpaAssetsHandler below serves index.html for any path without a file
-     * extension, so this still loads the same file. What changes is the
-     * pathname the router reads afterwards.
+     * Loading the file is what worked for months, and the blank first screen
+     * it used to cause is now handled where it belongs: App.js declares a
+     * catch-all route, so /index.html renders the front page instead of
+     * matching nothing. The handler below also answers the root properly
+     * now, but this does not rely on that.
      */
-    private static final String START_URL = APP_ORIGIN + "/";
+    private static final String START_URL = APP_ORIGIN + "/index.html";
 
     private WebView webView;
 
@@ -537,6 +540,20 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public WebResourceResponse handle(String path) {
+            // The root is the app, and it has to be answered before the
+            // delegate is asked.
+            //
+            // WebViewAssetLoader strips the leading slash, so a request for
+            // "/" arrives here as an empty string. AssetsPathHandler does not
+            // return null for that - it answers with a response the WebView
+            // cannot read - so the fallback at the end of this method never
+            // ran, and pointing the shell at "/" produced ERR_INVALID_RESPONSE
+            // and an app that would not open. Checking after the delegate is
+            // too late; the order here is the whole fix.
+            if (path == null || path.isEmpty() || "/".equals(path)) {
+                return delegate.handle(INDEX_PATH);
+            }
+
             WebResourceResponse response = delegate.handle(path);
             if (response != null) {
                 return response;

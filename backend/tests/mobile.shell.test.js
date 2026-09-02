@@ -202,30 +202,62 @@ describe('where the shell starts the app', () => {
     return match[1];
   };
 
-  it('opens a path, not a file', () => {
-    expect(startUrl()).toBe('/');
+  const handleBody = () => methodBody(MAIN_ACTIVITY, 'public WebResourceResponse handle');
+
+  /**
+   * Whether the root path is answered before the delegate is consulted.
+   *
+   * This is the distinction that matters, and the one an earlier version of
+   * this file missed. WebViewAssetLoader strips the leading slash, so "/"
+   * arrives at the handler as an empty string - and AssetsPathHandler does
+   * not return null for it. It returns a response the WebView cannot read,
+   * so a fallback written after the delegate call never runs.
+   */
+  const answersRootFirst = () => {
+    const body = handleBody();
+    const rootCheck = body.search(/path\s*==\s*null|isEmpty\(\)|"\/"\.equals/);
+    const firstDelegate = body.indexOf('delegate.handle');
+
+    return rootCheck !== -1 && firstDelegate !== -1 && rootCheck < firstDelegate;
+  };
+
+  /*
+   * THE INVARIANT, in one sentence: the app must actually load from the URL
+   * the shell opens.
+   *
+   * Asserting that the start URL was "/" is what let a dead app through a
+   * green build. "/" is a perfectly good route and a perfectly good pathname
+   * for the router - and the asset handler could not serve it, which no
+   * check here was looking at. The two halves have to be asserted together.
+   */
+  it('opens a URL the asset handler can actually serve', () => {
+    const path_ = startUrl();
+    const namesAFile = /\.[a-z0-9]+$/i.test(path_);
+
+    expect(namesAFile || answersRootFirst()).toBe(true);
+  });
+
+  it('opens a URL the app renders something at', () => {
+    const declared = [...APP_JS.matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1]);
+    const hasCatchAll = declared.includes('*');
+
+    expect(declared.includes(startUrl()) || hasCatchAll).toBe(true);
+  });
+
+  // Without this, a start URL that is not a declared route renders the app's
+  // frame around nothing - which is the bug the start URL was changed for in
+  // the first place.
+  it('has a catch-all, so an unmatched start path is not a blank screen', () => {
+    expect(APP_JS).toMatch(/<Route\s+path="\*"/);
   });
 
   /*
-   * The asset handler serves index.html for any extensionless path, so
-   * loading "/" still returns the file. What changes is the pathname the
-   * router then reads, which is the whole point.
+   * Independent of the start URL, because someone will point the shell at
+   * the root again. The root must be answered with index.html rather than
+   * handed to a delegate that cannot serve it.
    */
-  it('still resolves to index.html through the asset handler', () => {
-    expect(methodBody(MAIN_ACTIVITY, 'public WebResourceResponse handle'))
-      .toContain('INDEX_PATH');
+  it('serves index.html for the root rather than an unusable response', () => {
+    expect(answersRootFirst()).toBe(true);
     expect(MAIN_ACTIVITY).toContain('INDEX_PATH = "index.html"');
-  });
-
-  it('starts at a path the app actually declares', () => {
-    const declared = [...APP_JS.matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1]);
-
-    expect(declared).toContain(startUrl());
-  });
-
-  // Belt and braces for the class, asserted where the shell is described
-  // because that is where someone changing the start URL will be looking.
-  it('has a catch-all, so a future start path cannot be blank either', () => {
-    expect(APP_JS).toMatch(/<Route\s+path="\*"/);
   });
 });
