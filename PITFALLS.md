@@ -509,6 +509,37 @@ and the never-drop test uses a body bigger than the budget on its own.
 
 ---
 
+## A source that swallows its own errors cannot be fixed from outside
+
+"AniLight returned no titles" survived three rounds of fixes - headers, TLS,
+the device handoff, batching, a challenge solver - and the screen never
+changed. It could not have. The reason was being destroyed inside the source,
+one line after it arrived:
+
+    async getJson(path) {
+      var res = await this.client.get(...);
+      try { return JSON.parse(res.body); } catch (e) { return null; }
+    }
+
+Every caller read null as "nothing found". A 403 body, an HTML error page, a
+bot check and a renamed field all became an empty list, which the app printed
+as a sentence with no error behind it - and therefore no diagnostics, no
+request trace, and no way to tell the four apart. Every fix upstream was
+aimed at a symptom whose cause had already been thrown away.
+
+`getJson` now throws, naming the address, the status and the first 200 bytes.
+`filterPage` says which keys it actually got rather than returning empty. And
+`getLibrary` in the app treats an empty *first* page as a failure carrying its
+trace - the same treatment `getStreams` already gave an episode with no video,
+never extended to browsing.
+
+> A `catch` that returns a falsy value is where diagnosis goes to die. When a
+> symptom will not move however far upstream you fix, look for the place the
+> evidence is being discarded - it is usually inside the thing reporting the
+> symptom.
+
+---
+
 ## Verification
 
 The habit that caught most of the above, and is worth keeping:

@@ -8,7 +8,7 @@ const mangayomiSources = [
     "iconUrl": "https://www.google.com/s2/favicons?sz=128&domain=https://anilight.live",
     "typeSource": "single",
     "itemType": 1,
-    "version": "0.8.0",
+    "version": "0.9.0",
     "pkgPath": "anime/src/en/anilight.js",
     "isManga": false,
     "isNsfw": false,
@@ -240,12 +240,39 @@ class DefaultExtension extends MProvider {
     return raw.replace(/\/+$/, "");
   }
 
+  // Reads one API call, and fails loudly when it cannot.
+  //
+  // This used to answer null for anything it could not parse, and every
+  // caller treated null as "nothing found" - so a 403 body, an HTML error
+  // page, a bot check and a renamed field all arrived at the screen as
+  // "returned no titles", with nothing thrown, no diagnostics, and no way to
+  // tell which had happened. The reason was destroyed one line after it was
+  // received.
+  //
+  // A parse failure is a failure. Valid JSON that happens to be null is
+  // still data, and still returns null, because a caller asking for a title
+  // that does not exist is not an error.
   async getJson(path) {
-    var res = await this.client.get(this.apiUrl + path, this.apiHeaders);
+    var url = this.apiUrl + path;
+    var res = await this.client.get(url, this.apiHeaders);
+    var body = (res && res.body) || "";
+
+    if (res && (res.statusCode < 200 || res.statusCode >= 300)) {
+      throw new Error(
+        "AniLight answered " + res.statusCode + " for " + url + ": " +
+        body.slice(0, 200)
+      );
+    }
+
     try {
-      return JSON.parse((res && res.body) || "");
+      return JSON.parse(body);
     } catch (e) {
-      return null;
+      // The first bytes say which of the failures it was - an HTML page, a
+      // challenge, an empty body - without needing the whole thing.
+      throw new Error(
+        "AniLight did not return JSON for " + url + ". It sent " +
+        (body ? body.length + " bytes beginning: " + body.slice(0, 200) : "an empty body")
+      );
     }
   }
 
@@ -278,8 +305,15 @@ class DefaultExtension extends MProvider {
     var qs = ["page=" + (page || 1)];
     for (var i = 0; i < params.length; i++) qs.push(params[i]);
     var data = await this.getJson("/filter?" + qs.join("&"));
+
+    // A shape that is not the one expected is worth saying out loud. An
+    // empty list here is indistinguishable on screen from a site with
+    // nothing to show, and the two need different fixing.
     if (!data || !Array.isArray(data.media)) {
-      return { list: [], hasNextPage: false };
+      throw new Error(
+        "AniLight's /filter did not return a media list. It returned " +
+        (data === null ? "null" : "keys: " + Object.keys(data || {}).join(", "))
+      );
     }
     var self = this;
     return {

@@ -291,10 +291,37 @@ export function createExtensionProvider(source) {
   /**
    * The source's own front page. Only meaningful for a metadata-capable
    * source; the others have nothing to browse.
+   *
+   * An empty first page fails rather than returning nothing.
+   *
+   * A catalogue with no titles on page one is not a catalogue - every source
+   * here has a front page, so an empty one means something went wrong that
+   * did not throw: a body that would not parse, a renamed field, a check
+   * served as a page. Returning [] put "returned no titles" on the screen
+   * with no error behind it and therefore no diagnostics, which is a
+   * sentence nobody can act on. This is the same treatment getStreams
+   * already gives an episode with no video.
+   *
+   * Only the first page. A later page running out is how paging ends.
    */
   async function getLibrary(page = 1) {
     if (!source.isMetadataCapable) return [];
-    return toCatalogList(await call('getPopular', [page]));
+
+    const outcome = await run('getPopular', [page]);
+    const items = toCatalogList(outcome.result);
+
+    if (items.length === 0 && page === 1) {
+      throw emptyResultError(`${source.name || 'This source'} returned no titles.`, {
+        method: 'getPopular',
+        outcome,
+        cause: 'The source ran without failing and returned an empty catalogue.',
+        fix: 'Check the requests below. A blocked or redirected request is the '
+          + 'usual cause; if they all succeeded, the site changed shape and the '
+          + 'source needs updating.'
+      });
+    }
+
+    return items;
   }
 
   async function getDetail(id) {

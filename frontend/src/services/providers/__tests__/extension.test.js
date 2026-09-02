@@ -498,3 +498,69 @@ describe('the home a set of streams came from', () => {
     );
   });
 });
+
+
+/**
+ * A front page with nothing on it.
+ *
+ * Every source here has a catalogue, so an empty first page means something
+ * went wrong that did not throw - a body that would not parse, a renamed
+ * field, a check served as a page. Returning [] put "returned no titles" on
+ * screen with no error behind it and therefore no diagnostics: a sentence
+ * nobody can act on, and the reason the same report came back three times.
+ */
+describe('when a source browses to nothing', () => {
+  const browse = (result, extras = {}) => {
+    runSource.mockResolvedValueOnce({
+      result,
+      logs: [],
+      requests: [{ method: 'GET', url: 'https://site.test/filter', status: 200, durationMs: 30 }],
+      durationMs: 5,
+      ...extras
+    });
+
+    return createExtensionProvider(source).getLibrary(1);
+  };
+
+  it('fails rather than returning an empty catalogue', async () => {
+    await expect(browse({ list: [] })).rejects.toThrow(/returned no titles/);
+  });
+
+  it('carries the requests the run made', async () => {
+    const err = await browse({ list: [] }).catch((caught) => caught);
+
+    expect(err.diagnostics.requests).toEqual([
+      expect.objectContaining({ url: 'https://site.test/filter' })
+    ]);
+  });
+
+  it('names the source and the method', async () => {
+    const err = await browse({ list: [] }).catch((caught) => caught);
+
+    expect(err.diagnostics.method).toBe('getPopular');
+    expect(err.diagnostics.source).toMatchObject({ name: 'Example' });
+  });
+
+  it('treats a null result the same way', async () => {
+    await expect(browse(null)).rejects.toThrow(/returned no titles/);
+  });
+
+  // A later page running out is how paging ends, not a fault.
+  it('lets a later page be empty', async () => {
+    runSource.mockResolvedValueOnce({ result: { list: [] }, logs: [], requests: [] });
+
+    await expect(createExtensionProvider(source).getLibrary(3)).resolves.toEqual([]);
+  });
+
+  it('says nothing when the source did return titles', async () => {
+    await expect(browse({ list: [{ name: 'One Piece', link: '/one-piece' }] }))
+      .resolves.toHaveLength(1);
+  });
+
+  // A source with no catalogue of its own has nothing to browse and is not
+  // failing by saying so.
+  it('leaves a source without a catalogue alone', async () => {
+    const plain = createExtensionProvider({ ...source, isMetadataCapable: false });
+    await expect(plain.getLibrary(1)).resolves.toEqual([]);
+  });
+});
