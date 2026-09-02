@@ -6,6 +6,7 @@ import SearchResults from '../components/SearchResults';
 import SourceFilter from '../components/SourceFilter';
 import Discover from '../components/Discover';
 import FilterPanel from '../components/FilterPanel';
+import FrontRows from '../components/FrontRows';
 import ExtensionErrorReport from '../components/ExtensionError';
 import { getProviders } from '../services/providers/registry';
 import {
@@ -208,6 +209,11 @@ export default function Home() {
       </form>
 
       {!query && <Discover season={filter.season} year={filter.year} />}
+
+      {/* Above the source's own catalogue, not instead of it: these rows
+          are somewhere to start, and the catalogue is what actually
+          plays. */}
+      {!query && !filter.season && <FrontRows />}
 
       {query ? (
         <section className="catalogue">

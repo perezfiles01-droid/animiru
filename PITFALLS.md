@@ -364,6 +364,21 @@ substitute for it, and a build failure is invisible from a passing suite.
 
 ---
 
+## A hook in a loop, in a project whose lint cannot see it
+
+`FrontRows` first called `useChart` inside `CHARTS.map(...)`. It worked, and
+the build passed - the list is a module constant, so the hook order never
+varied. Both facts are traps: it breaks the moment that list is filtered or
+built from state, and `react-hooks/rules-of-hooks` is not registered in this
+project's build, so nothing would have said so.
+
+The calls are written out one per row instead.
+
+> The build passing is not evidence a rule was checked. Know which rules this
+> project actually runs before relying on one to catch you.
+
+---
+
 ## Verification
 
 The habit that caught most of the above, and is worth keeping:

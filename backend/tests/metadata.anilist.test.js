@@ -304,3 +304,102 @@ describe('what aired in a season', () => {
     expect(http.request).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * The rows a front page opens with.
+ *
+ * All one shape because they differ only in how AniList is asked to sort;
+ * three near-identical functions would be three places to fix when the media
+ * fields change.
+ */
+describe('the front page charts', () => {
+  beforeEach(() => anilist.clearCache());
+  afterEach(() => jest.restoreAllMocks());
+
+  const chartStub = () => stub(() => ({ data: { Page: { media: [MEDIA[1], MEDIA[3]] } } }));
+
+  const sentVariables = () => JSON.parse(http.request.mock.calls[0][0].body).variables;
+
+  it('sorts trending by what is being watched now', async () => {
+    chartStub();
+    await anilist.getChart('trending');
+
+    expect(sentVariables().sort).toEqual(['TRENDING_DESC', 'POPULARITY_DESC']);
+  });
+
+  it('asks for the season AniList is actually in', async () => {
+    chartStub();
+    await anilist.getChart('season', { now: new Date('2026-11-15T00:00:00Z') });
+
+    expect(sentVariables()).toMatchObject({ season: 'FALL', seasonYear: 2026 });
+  });
+
+  // The screen names the row, so it needs to be told which season it got.
+  it('says which season it answered for', async () => {
+    chartStub();
+    const chart = await anilist.getChart('season', { now: new Date('2026-02-01T00:00:00Z') });
+
+    expect(chart).toMatchObject({ season: 'WINTER', year: 2026 });
+  });
+
+  it.each([
+    ['2026-01-15', 'WINTER'],
+    ['2026-04-15', 'SPRING'],
+    ['2026-07-15', 'SUMMER'],
+    ['2026-10-15', 'FALL'],
+    ['2026-12-31', 'FALL']
+  ])('places %s in %s', (date, season) => {
+    expect(anilist.currentSeason(new Date(`${date}T00:00:00`)).season).toBe(season);
+  });
+
+  /**
+   * Without a floor this fills with titles a handful of people rated 10,
+   * which is not what anybody means by "top rated" - and the ones they do
+   * mean are all far above it.
+   */
+  it('keeps the all-time list to titles people have actually watched', async () => {
+    chartStub();
+    await anilist.getChart('top');
+
+    expect(sentVariables()).toMatchObject({
+      sort: ['SCORE_DESC'], minPopularity: expect.any(Number)
+    });
+    expect(sentVariables().minPopularity).toBeGreaterThan(0);
+  });
+
+  it('does not constrain trending or the season by popularity', async () => {
+    chartStub();
+    await anilist.getChart('trending');
+    expect(sentVariables().minPopularity).toBeNull();
+  });
+
+  it('returns the titles in the shape every other screen uses', async () => {
+    chartStub();
+    const { results } = await anilist.getChart('trending');
+
+    expect(results).toHaveLength(2);
+    expect(results[0]).toMatchObject({ title: expect.any(String), id: expect.any(Number) });
+  });
+
+  it('asks once for a chart it has already fetched', async () => {
+    chartStub();
+    await anilist.getChart('trending');
+    await anilist.getChart('trending');
+
+    expect(http.request).toHaveBeenCalledTimes(1);
+  });
+
+  // Cached per season, or the row would keep answering for the season it
+  // was first asked in.
+  it('caches the season chart per season', async () => {
+    chartStub();
+    await anilist.getChart('season', { now: new Date('2026-02-01T00:00:00Z') });
+    await anilist.getChart('season', { now: new Date('2026-05-01T00:00:00Z') });
+
+    expect(http.request).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses a chart it does not know', async () => {
+    await expect(anilist.getChart('whatever')).rejects.toThrow(/Unknown chart/);
+  });
+});

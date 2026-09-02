@@ -28,7 +28,9 @@ const handle = (fn) => async (req, res) => {
   try {
     res.json(await fn(req));
   } catch (err) {
-    res.status(502).json({
+    // A bad request from the app is the app's fault, not AniList's, and
+    // reporting it as 502 would send someone looking at the wrong thing.
+    res.status(err && err.status ? err.status : 502).json({
       error: err && err.message ? err.message : 'AniList could not be reached',
       // The detail screen keeps working without this, so the app needs to
       // know the failure is confined to metadata.
@@ -46,6 +48,23 @@ router.get('/season', handle(async (req) => anilist.getSeason({
   year: req.query.year,
   page: req.query.page
 })));
+
+/**
+ * One of the front page's rows. The name is checked against the known
+ * charts rather than passed through, so this cannot be used to run an
+ * arbitrary sort against AniList on our rate limit.
+ */
+router.get('/chart/:name', handle(async (req) => {
+  const { name } = req.params;
+  if (!Object.prototype.hasOwnProperty.call(anilist.CHARTS, name)) {
+    const known = Object.keys(anilist.CHARTS).join(', ');
+    throw Object.assign(new Error(`Unknown chart: ${name}. Try one of: ${known}`), {
+      status: 400
+    });
+  }
+
+  return anilist.getChart(name, { perPage: Number(req.query.perPage) || 20 });
+}));
 
 router.get('/watch-order', handle(async (req) => ({
   entries: await anilist.getWatchOrder(req.query.id)

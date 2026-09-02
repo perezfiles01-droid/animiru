@@ -78,6 +78,26 @@ export async function getSeason({ season, year, page }) {
   }
 }
 
+/**
+ * One of the front page's rows.
+ *
+ * Same failure shape as everything else here: a chart that cannot be
+ * fetched is an empty row with a reason, never a broken page. AniList being
+ * unreachable must not stop the source catalogue below it from rendering.
+ */
+export async function getChart(name, { perPage } = {}) {
+  try {
+    const { data } = await api.get(`/metadata/chart/${name}`, { params: { perPage } });
+    return {
+      results: data.results || [],
+      season: data.season || null,
+      year: data.year || null
+    };
+  } catch (err) {
+    return { results: [], error: reason(err) };
+  }
+}
+
 export async function getWatchOrder(anilistId) {
   try {
     const { data } = await api.get('/metadata/watch-order', { params: { id: anilistId } });

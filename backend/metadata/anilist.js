@@ -194,6 +194,75 @@ async function getSeason({ season, year, page = 1, perPage = 30 } = {}) {
   });
 }
 
+/** The season AniList is in right now, which is what "this season" means. */
+function currentSeason(now = new Date()) {
+  const month = now.getMonth();
+  const season = month <= 2 ? 'WINTER'
+    : month <= 5 ? 'SPRING'
+      : month <= 8 ? 'SUMMER'
+        : 'FALL';
+
+  return { season, year: now.getFullYear() };
+}
+
+/**
+ * The three rows a front page opens with.
+ *
+ * All one shape, because they differ only in how AniList is asked to sort -
+ * writing three near-identical functions would mean three places to fix the
+ * next time the media fields change.
+ *
+ *   trending  what is being watched now, which moves daily
+ *   season    this season's line-up, by popularity
+ *   top       the highest scored of all time
+ *
+ * The score sort carries a popularity floor. Without one the list fills with
+ * titles a handful of people rated 10, which is not what anybody means by
+ * "top rated" - and the ones they do mean are all far above the floor.
+ */
+const CHARTS = {
+  trending: { sort: ['TRENDING_DESC', 'POPULARITY_DESC'] },
+  season: { sort: ['POPULARITY_DESC'], seasonal: true },
+  top: { sort: ['SCORE_DESC'], minPopularity: 5000 }
+};
+
+async function getChart(name, { perPage = 20, now = new Date() } = {}) {
+  const chart = CHARTS[name];
+  if (!chart) throw new Error(`Unknown chart: ${name}`);
+
+  const { season, year } = currentSeason(now);
+  const key = `chart:${name}:${chart.seasonal ? `${season}:${year}:` : ''}${perPage}`;
+  const hit = cached(key);
+  if (hit) return hit;
+
+  const data = await query(`
+    query ($sort: [MediaSort], $perPage: Int, $season: MediaSeason,
+           $seasonYear: Int, $minPopularity: Int) {
+      Page(page: 1, perPage: $perPage) {
+        media(
+          type: ANIME,
+          sort: $sort,
+          season: $season,
+          seasonYear: $seasonYear,
+          popularity_greater: $minPopularity
+        ) { ${MEDIA_FIELDS} }
+      }
+    }
+  `, {
+    sort: chart.sort,
+    perPage: Number(perPage),
+    season: chart.seasonal ? season : null,
+    seasonYear: chart.seasonal ? year : null,
+    minPopularity: chart.minPopularity || null
+  });
+
+  const results = ((data.Page && data.Page.media) || []).map(toMedia).filter(Boolean);
+
+  // The season travels with the answer so the screen can name it: "Top this
+  // Fall" rather than a heading that has to guess what month it is.
+  return remember(key, chart.seasonal ? { results, season, year } : { results });
+}
+
 async function getMedia(id) {
   const key = `media:${id}`;
   const hit = cached(key);
@@ -334,6 +403,9 @@ function clearCache() {
 module.exports = {
   search,
   getSeason,
+  getChart,
+  currentSeason,
+  CHARTS,
   getMedia,
   getWatchOrder,
   getRecommendations,

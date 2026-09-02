@@ -1,0 +1,72 @@
+/**
+ * Rows of titles, as a front page shows them.
+ *
+ * A grid puts four titles on a phone and pushes the next row off the screen.
+ * A row shows the same four and says there are more by running past the
+ * edge, which is what makes several lists fit on one page at all.
+ */
+.title-row {
+  margin: 20px 0;
+}
+
+.title-row-heading {
+  font-size: 1.1rem;
+  margin: 0 0 10px;
+}
+
+.title-row-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+  overflow-x: auto;
+  /* Momentum on iOS, and a sideways swipe that does not capture the page. */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+}
+
+.title-row-strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* A flex item shrinks to fit by default: without this the cards squeeze
+   thinner as the row grows instead of scrolling. */
+.title-row-card {
+  flex: 0 0 auto;
+  width: 116px;
+  color: inherit;
+  text-decoration: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.title-row-poster {
+  width: 116px;
+  height: 164px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--surface);
+  display: block;
+}
+
+.title-row-blank {
+  background: var(--surface);
+}
+
+/* Two lines, then an ellipsis: a long title would otherwise push the row's
+   cards to different heights. */
+.title-row-title {
+  font-size: 0.85rem;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.title-row-subtitle {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
