@@ -5,6 +5,7 @@ import SourceTabs from '../components/SourceTabs';
 import SearchResults from '../components/SearchResults';
 import SourceFilter from '../components/SourceFilter';
 import Discover from '../components/Discover';
+import FilterPanel from '../components/FilterPanel';
 import ExtensionErrorReport from '../components/ExtensionError';
 import { getProviders } from '../services/providers/registry';
 import {
@@ -48,6 +49,10 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [draft, setDraft] = useState(query);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  // The applied filter, not the one being edited: the panel keeps its own
+  // draft so closing it without applying changes nothing.
+  const [filter, setFilter] = useState({ season: '', year: new Date().getFullYear() });
 
   const provider = providers.find((candidate) => candidate.id === selectedId) || null;
 
@@ -160,7 +165,21 @@ export default function Home() {
   return (
     <div className="home-page">
       {!query && (
-        <SourceTabs providers={providers} selectedId={selectedId} onSelect={handleSource} />
+        <div className="home-toolbar">
+          <SourceTabs providers={providers} selectedId={selectedId} onSelect={handleSource} />
+
+          {/* Only here. Filtering by season means nothing on Library, on
+              History or in Settings, and a control that does nothing on the
+              screen you are looking at is worse than no control. */}
+          <FilterPanel
+            open={filtersOpen}
+            season={filter.season}
+            year={filter.year}
+            onOpen={() => setFiltersOpen(true)}
+            onClose={() => setFiltersOpen(false)}
+            onApply={setFilter}
+          />
+        </div>
       )}
 
       <form className="home-search" onSubmit={handleSearch}>
@@ -188,7 +207,7 @@ export default function Home() {
         )}
       </form>
 
-      {!query && <Discover />}
+      {!query && <Discover season={filter.season} year={filter.year} />}
 
       {query ? (
         <section className="catalogue">

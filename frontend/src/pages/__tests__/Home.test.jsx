@@ -393,3 +393,46 @@ describe('narrowing a search to some sources', () => {
     expect(storage.getSearchSourceKeys()).toEqual(['b']);
   });
 });
+
+
+/**
+ * The filters live behind a button on Home, and only on Home: filtering by
+ * season means nothing on Library or History, and a control that does
+ * nothing on the screen you are looking at is worse than no control.
+ */
+describe('the filter panel', () => {
+  it('offers a filter button beside the sources', async () => {
+    getProviders.mockReturnValue([makeProvider()]);
+    await renderHome();
+
+    expect(screen.getByRole('button', { name: 'Filters' })).toBeInTheDocument();
+  });
+
+  // The bar it replaces used to sit on the page whether or not it was used.
+  it('shows no season browser until a season is applied', async () => {
+    getProviders.mockReturnValue([makeProvider()]);
+    await renderHome();
+
+    expect(screen.queryByText(/Discover by season/)).not.toBeInTheDocument();
+  });
+
+  it('shows the chosen season after applying', async () => {
+    getProviders.mockReturnValue([makeProvider()]);
+    await renderHome();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Filters' }));
+    await userEvent.click(screen.getByRole('radio', { name: /Winter/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(await screen.findByRole('heading', { name: /Winter \d{4}/ })).toBeInTheDocument();
+  });
+
+  // Searching replaces the page; a season filter over search results would
+  // be filtering something that is not there.
+  it('hides the filter button while showing search results', async () => {
+    getProviders.mockReturnValue([makeProvider()]);
+    await renderHome('/?q=bleach');
+
+    expect(screen.queryByRole('button', { name: 'Filters' })).not.toBeInTheDocument();
+  });
+});

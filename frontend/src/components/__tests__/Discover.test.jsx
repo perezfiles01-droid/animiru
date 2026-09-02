@@ -19,11 +19,15 @@ const RESULTS = [
   { id: 2, title: 'Another Show', poster: '', format: 'MOVIE', year: 2026 }
 ];
 
-const show = async () => {
-  await act(async () => { render(<MemoryRouter><Discover /></MemoryRouter>); });
+/**
+ * The filter is applied by the panel now, so a season is a prop rather than
+ * something chosen in here. With none applied this renders nothing at all.
+ */
+const show = async (props = {}) => {
+  await act(async () => {
+    render(<MemoryRouter><Discover {...props} /></MemoryRouter>);
+  });
 };
-
-const open = async () => userEvent.click(screen.getByRole('button', { name: /Discover by season/ }));
 
 describe('discovering by season', () => {
   beforeEach(() => {
@@ -50,33 +54,46 @@ describe('discovering by season', () => {
   });
 
   // Home must still open straight onto the source's catalogue.
-  it('fetches nothing until it is opened', async () => {
-    await show();
+  it('renders nothing, and fetches nothing, with no season applied', async () => {
+    const { container } = await act(async () => render(
+      <MemoryRouter><Discover /></MemoryRouter>
+    ));
+
     expect(api.get).not.toHaveBeenCalled();
+    expect(container).toBeEmptyDOMElement();
   });
 
-  it('fetches nothing until Show is tapped', async () => {
-    await show();
-    await open();
-    expect(api.get).not.toHaveBeenCalled();
-  });
-
-  it('asks AniList for the chosen season and year', async () => {
-    await show();
-    await open();
-
-    await userEvent.selectOptions(screen.getByLabelText('Season'), 'SUMMER');
-    await userEvent.selectOptions(screen.getByLabelText('Year'), '2024');
-    await userEvent.click(screen.getByRole('button', { name: 'Show' }));
+  it('asks AniList for the season and year it was given', async () => {
+    await show({ season: 'SUMMER', year: 2024 });
 
     await waitFor(() => expect(api.get).toHaveBeenCalled());
     expect(api.get.mock.calls[0][1].params).toMatchObject({ season: 'SUMMER', year: 2024 });
   });
 
+  // A page showing one season, with no heading, looks like a page that has
+  // lost its catalogue.
+  it('says which season is being shown', async () => {
+    await show({ season: 'FALL', year: 2026 });
+    expect(await screen.findByRole('heading', { name: /Fall \/ Autumn 2026/ }))
+      .toBeInTheDocument();
+  });
+
+  it('asks again when the applied filter changes', async () => {
+    const { rerender } = await act(async () => render(
+      <MemoryRouter><Discover season="SUMMER" year={2024} /></MemoryRouter>
+    ));
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      rerender(<MemoryRouter><Discover season="WINTER" year={2024} /></MemoryRouter>);
+    });
+
+    await waitFor(() => expect(api.get).toHaveBeenCalledTimes(2));
+    expect(api.get.mock.calls[1][1].params).toMatchObject({ season: 'WINTER' });
+  });
+
   it('lists what it found', async () => {
-    await show();
-    await open();
-    await userEvent.click(screen.getByRole('button', { name: 'Show' }));
+    await show({ season: 'SUMMER', year: 2024 });
 
     expect(await screen.findByText('Mayonaka Heart Tune')).toBeInTheDocument();
     expect(screen.getByText('Another Show')).toBeInTheDocument();
@@ -84,9 +101,7 @@ describe('discovering by season', () => {
 
   // AniList has no source id, so a result is a search on your own sources.
   it('links each result to a search across your sources', async () => {
-    await show();
-    await open();
-    await userEvent.click(screen.getByRole('button', { name: 'Show' }));
+    await show({ season: 'SUMMER', year: 2024 });
 
     expect(await screen.findByRole('link', { name: /Mayonaka Heart Tune/ }))
       .toHaveAttribute('href', '/?q=Mayonaka%20Heart%20Tune');
@@ -95,9 +110,7 @@ describe('discovering by season', () => {
   it('says an empty season is empty', async () => {
     api.get.mockResolvedValue({ data: { results: [], hasNextPage: false } });
 
-    await show();
-    await open();
-    await userEvent.click(screen.getByRole('button', { name: 'Show' }));
+    await show({ season: 'SUMMER', year: 2024 });
 
     expect(await screen.findByText(/lists nothing for that season/i)).toBeInTheDocument();
   });
@@ -109,9 +122,7 @@ describe('discovering by season', () => {
       response: { data: { error: 'AniList is rate limiting requests.' } }
     }));
 
-    await show();
-    await open();
-    await userEvent.click(screen.getByRole('button', { name: 'Show' }));
+    await show({ season: 'SUMMER', year: 2024 });
 
     expect(await screen.findByText(/rate limiting/)).toBeInTheDocument();
     expect(screen.getByText(/browsing and\s+playback are unaffected/)).toBeInTheDocument();

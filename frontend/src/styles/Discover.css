@@ -49,3 +49,144 @@
 .discover-blank { background: var(--surface); }
 .discover-title { display: block; margin-top: 0.35rem; font-size: 0.9rem; line-height: 1.25; }
 .discover-meta { display: block; color: var(--muted); font-size: 0.78rem; }
+
+/**
+ * The filter drawer.
+ *
+ * "Discover by season" used to be a bar between the search box and the
+ * catalogue, taking a row of the screen from everyone whether or not they
+ * ever opened it. Filters belong behind a filter button.
+ */
+.home-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* The row of sources takes the space; the button keeps its own. */
+.home-toolbar .ext-source-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.filter-button {
+  flex: 0 0 auto;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  padding: 8px 4px;
+  cursor: pointer;
+}
+
+/* Says a filter is in force. Without it, a page showing one season looks
+   like a page that has lost its catalogue. */
+.filter-button--on {
+  color: var(--highlight);
+}
+
+.filter-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 40;
+}
+
+/**
+ * Capped as well as proportional: 85% of a tablet is a panel with a season
+ * name marooned in the middle of it, and a fixed width clips on a small
+ * phone. min() takes whichever is smaller.
+ */
+.filter-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(85%, 340px);
+  z-index: 41;
+  background: var(--surface);
+  border-left: 1px solid var(--accent);
+  padding: 16px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.filter-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.filter-panel-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.filter-close {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 8px;
+}
+
+.filter-group {
+  border: 0;
+  padding: 0;
+  margin: 20px 0 0;
+}
+
+.filter-group legend {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+/* A whole row is the target, not just the dot: a radio on a phone is
+   otherwise about four millimetres of tappable area. */
+.filter-radio {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  cursor: pointer;
+}
+
+.filter-field {
+  display: block;
+  margin: 20px 0 0;
+}
+
+.filter-field span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.filter-field select {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--text);
+  border: 1px solid var(--accent);
+}
+
+.filter-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.filter-actions .btn {
+  flex: 1 1 0;
+}
+
+.discover-heading {
+  font-size: 1.15rem;
+  margin: 16px 0 8px;
+}

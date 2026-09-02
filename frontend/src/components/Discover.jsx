@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getSeason, findOnSourcesHref } from '../services/metadata';
 import '../styles/Discover.css';
@@ -12,9 +12,10 @@ import '../styles/Discover.css';
  * fifteen times over and getting nothing back from most of them. AniList
  * takes a season and a year as arguments and this is one request.
  *
- * Collapsed by default, and nothing is fetched until it is opened: Home
- * still opens straight onto the source's own catalogue, and this costs
- * nothing at all when it is not used.
+ * Driven by the filter panel rather than by a toggle of its own. It used to
+ * be a collapsed bar between the search box and the catalogue, costing a row
+ * of a phone screen whether or not anyone opened it; now it renders nothing
+ * at all until a season is chosen, and still fetches nothing until then.
  */
 
 export const SEASONS = [
@@ -33,61 +34,47 @@ export function years(now = new Date().getFullYear()) {
   return out;
 }
 
-export default function Discover() {
-  const [open, setOpen] = useState(false);
-  const [season, setSeason] = useState('');
-  const [year, setYear] = useState(new Date().getFullYear());
+export default function Discover({ season = '', year = new Date().getFullYear() }) {
   const [state, setState] = useState({ status: 'idle', results: [] });
 
-  const load = async () => {
-    setState({ status: 'loading', results: [] });
-    const { results, error } = await getSeason({ season, year });
+  /**
+   * Fetched when the applied filter changes, not on a click.
+   *
+   * The choice is made in the panel and this screen shows the answer, so
+   * there is no button here to press - and no request at all while no
+   * season is chosen.
+   */
+  useEffect(() => {
+    if (!season) {
+      setState({ status: 'idle', results: [] });
+      return undefined;
+    }
 
-    setState(error
-      ? { status: 'error', results: [], error }
-      : { status: 'ready', results });
-  };
+    let cancelled = false;
+    setState({ status: 'loading', results: [] });
+
+    getSeason({ season, year }).then(({ results, error }) => {
+      if (cancelled) return;
+
+      setState(error
+        ? { status: 'error', results: [], error }
+        : { status: 'ready', results });
+    });
+
+    return () => { cancelled = true; };
+  }, [season, year]);
+
+  if (!season) return null;
+
+  const label = (SEASONS.find((option) => option.value === season) || {}).label || season;
 
   return (
     <section className="discover">
-      <button
-        type="button"
-        className="discover-toggle"
-        aria-expanded={open}
-        onClick={() => setOpen((was) => !was)}
-      >
-        Discover by season
-        <span aria-hidden="true">{open ? ' ▲' : ' ▼'}</span>
-      </button>
+      <h2 className="discover-heading">
+        {label.replace(/\s*\(.*\)$/, '')} {year}
+      </h2>
 
-      {open && (
-        <div className="discover-body">
-          <div className="discover-filters">
-            <label className="discover-field">
-              <span>Season</span>
-              <select value={season} onChange={(e) => setSeason(e.target.value)}>
-                {SEASONS.map((option) => (
-                  <option key={option.value || 'any'} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="discover-field">
-              <span>Year</span>
-              <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
-                {years().map((option) => (
-                  <option key={option} value={option}>{option}</option>
-                ))}
-              </select>
-            </label>
-
-            <button type="button" className="btn btn-primary" onClick={load}>
-              Show
-            </button>
-          </div>
-
+      <div className="discover-body">
           {state.status === 'loading' && <p className="loading">Loading...</p>}
 
           {/* This comes from AniList, not from a source, so a failure here
@@ -127,8 +114,7 @@ export default function Discover() {
               </div>
             </>
           )}
-        </div>
-      )}
+      </div>
     </section>
   );
 }
