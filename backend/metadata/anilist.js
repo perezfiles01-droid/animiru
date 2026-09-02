@@ -48,6 +48,27 @@ function remember(key, value) {
   return value;
 }
 
+/**
+ * AniList's own words for a refusal, if it gave any.
+ *
+ * The body is not guaranteed to be JSON - a gateway between here and
+ * AniList can answer with HTML, and that is a different failure than a
+ * rejected query. Anything unreadable is left out rather than pasted onto
+ * the message as noise, so the status stands alone when that is genuinely
+ * all that is known.
+ */
+function explain(body) {
+  try {
+    const payload = JSON.parse(String(body || ''));
+    const message = payload.errors && payload.errors.length
+      && payload.errors[0] && payload.errors[0].message;
+
+    return message ? `: ${message}` : '';
+  } catch (err) {
+    return '';
+  }
+}
+
 async function query(document, variables) {
   const response = await http.request({
     url: ENDPOINT,
@@ -61,7 +82,14 @@ async function query(document, variables) {
   }
 
   if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new Error(`AniList responded ${response.statusCode}`);
+    // A GraphQL refusal carries its reason in the body - the field it did
+    // not recognise, the argument it rejected. Throwing on the status alone
+    // discarded exactly the sentence needed to fix the query, so the screen
+    // could only ever report the number, and every diagnosis had to start
+    // by guessing which part of the document AniList disliked.
+    throw new Error(
+      `AniList responded ${response.statusCode}${explain(response.body)}`
+    );
   }
 
   let payload;
@@ -226,6 +254,20 @@ const CHARTS = {
   top: { sort: ['SCORE_DESC'], minPopularity: 5000 }
 };
 
+/**
+ * What each variable is called on media(), where that differs from the
+ * variable's own name.
+ */
+const MEDIA_ARGUMENTS = {
+  sort: 'sort',
+  season: 'season',
+  seasonYear: 'seasonYear',
+  minPopularity: 'popularity_greater'
+};
+
+/** Every chart there is, read by the guard so a new one is covered too. */
+const CHART_NAMES = Object.keys(CHARTS);
+
 async function getChart(name, { perPage = 20, now = new Date() } = {}) {
   const chart = CHARTS[name];
   if (!chart) throw new Error(`Unknown chart: ${name}`);
@@ -235,26 +277,52 @@ async function getChart(name, { perPage = 20, now = new Date() } = {}) {
   const hit = cached(key);
   if (hit) return hit;
 
+  // Only the arguments this chart actually uses are declared and sent.
+  //
+  // One document for all three meant the two that do not filter by season
+  // still sent `season: null`, `seasonYear: null` and
+  // `popularity_greater: null`. An argument explicitly set to null is not
+  // the same as an argument that was never sent - the first asks the field
+  // to match null, the second leaves the field unfiltered - and it was the
+  // only thing separating these calls from AniList's documented usage.
+  const args = {
+    sort: { type: '[MediaSort]', value: chart.sort },
+    perPage: { type: 'Int', value: Number(perPage) }
+  };
+
+  if (chart.seasonal) {
+    args.season = { type: 'MediaSeason', value: season };
+    args.seasonYear = { type: 'Int', value: year };
+  }
+
+  if (chart.minPopularity) {
+    args.minPopularity = { type: 'Int', value: chart.minPopularity };
+  }
+
+  const declarations = Object.entries(args)
+    .map(([name, { type }]) => `$${name}: ${type}`)
+    .join(', ');
+
+  // perPage belongs to Page, every other argument to media.
+  const filters = Object.keys(args)
+    .filter((name) => name !== 'perPage')
+    .map((name) => `${MEDIA_ARGUMENTS[name]}: $${name}`)
+    .join(',\n          ');
+
+  const variables = Object.fromEntries(
+    Object.entries(args).map(([name, { value }]) => [name, value])
+  );
+
   const data = await query(`
-    query ($sort: [MediaSort], $perPage: Int, $season: MediaSeason,
-           $seasonYear: Int, $minPopularity: Int) {
+    query (${declarations}) {
       Page(page: 1, perPage: $perPage) {
         media(
           type: ANIME,
-          sort: $sort,
-          season: $season,
-          seasonYear: $seasonYear,
-          popularity_greater: $minPopularity
+          ${filters}
         ) { ${MEDIA_FIELDS} }
       }
     }
-  `, {
-    sort: chart.sort,
-    perPage: Number(perPage),
-    season: chart.seasonal ? season : null,
-    seasonYear: chart.seasonal ? year : null,
-    minPopularity: chart.minPopularity || null
-  });
+  `, variables);
 
   const results = ((data.Page && data.Page.media) || []).map(toMedia).filter(Boolean);
 
@@ -401,6 +469,7 @@ function clearCache() {
 }
 
 module.exports = {
+  CHART_NAMES,
   search,
   getSeason,
   getChart,

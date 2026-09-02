@@ -367,10 +367,15 @@ describe('the front page charts', () => {
     expect(sentVariables().minPopularity).toBeGreaterThan(0);
   });
 
+  // Unchanged in intent: trending is not filtered by popularity. What
+  // changed is how that is said. It used to send the argument set to null,
+  // which asks the field to match null rather than leaving it unfiltered;
+  // now the argument is simply not sent.
   it('does not constrain trending or the season by popularity', async () => {
     chartStub();
     await anilist.getChart('trending');
-    expect(sentVariables().minPopularity).toBeNull();
+
+    expect(sentVariables()).not.toHaveProperty('minPopularity');
   });
 
   it('returns the titles in the shape every other screen uses', async () => {
