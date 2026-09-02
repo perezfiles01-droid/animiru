@@ -55,6 +55,20 @@
   background: var(--surface);
 }
 
+/*
+ * A poster the browser could not load.
+ *
+ * Distinct from .title-row-blank on purpose. They used to render
+ * identically, so "no poster was stored" and "the poster was refused" were
+ * the same picture, and a screenshot of the row could not tell anyone which
+ * bug they had. The dashed edge says the app had a URL and the image did
+ * not arrive.
+ */
+.title-row-poster--failed {
+  border: 1px dashed var(--border);
+  background: var(--surface);
+}
+
 /* Two lines, then an ellipsis: a long title would otherwise push the row's
    cards to different heights. */
 .title-row-title {

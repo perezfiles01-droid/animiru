@@ -38,7 +38,23 @@ export default function TitleRow({ title, entries, hrefFor, subtitleFor, error }
         {entries.map((entry) => (
           <Link key={entry.key} to={hrefFor(entry)} className="title-row-card">
             {entry.poster
-              ? <img src={entry.poster} alt="" className="title-row-poster" loading="lazy" />
+              ? (
+                <img
+                  src={entry.poster}
+                  alt=""
+                  className="title-row-poster"
+                  loading="lazy"
+                  /* A poster that fails to load used to be indistinguishable
+                     from one that was never stored: both drew a rectangle in
+                     the surface colour. That made a bug report unanswerable -
+                     the screenshot could not say whether the URL was missing
+                     or refused. Marking the failure makes the two different
+                     things look different. */
+                  onError={(event) => {
+                    event.currentTarget.classList.add('title-row-poster--failed');
+                  }}
+                />
+              )
               : <div className="title-row-poster title-row-blank" aria-hidden="true" />}
 
             <span className="title-row-title">{entry.title}</span>

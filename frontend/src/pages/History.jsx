@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  getHistory, removeFromHistory, clearHistory, resumePosition
+  getHistory, removeFromHistory, clearHistory, resumePosition, backfillPosters
 } from '../services/history';
+import { getProvider } from '../services/providers/registry';
 import { formatPosition } from '../components/ContinueWatching';
 import '../styles/Pages.css';
 
@@ -50,6 +51,21 @@ export function groupByDay(entries, now = Date.now()) {
 
 export default function History() {
   const [entries, setEntries] = useState(() => getHistory());
+
+  /**
+   * Entries recorded before the player carried posters have none, and
+   * nothing in the normal flow will ever give them one. Asked for once,
+   * on open, and only for the rows that are missing it.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    backfillPosters({ getProvider }).then((repaired) => {
+      if (!cancelled) setEntries(repaired);
+    });
+
+    return () => { cancelled = true; };
+  }, []);
   const [query, setQuery] = useState('');
 
   const matching = useMemo(() => {
@@ -83,6 +99,10 @@ export default function History() {
     + `&id=${encodeURIComponent(entry.itemId)}`
     + `&ep=${encodeURIComponent(entry.episodeId)}`
     + `&title=${encodeURIComponent(entry.title || '')}`
+    // The poster travels too. Without it, resuming from this screen
+    // re-records the entry with no image and the row stays blank for good -
+    // the details page was the only thing that could ever fill it in.
+    + (entry.poster ? `&poster=${encodeURIComponent(entry.poster)}` : '')
     + `&t=${Math.floor(resumePosition(entry, entry.episodeId))}`;
 
   if (entries.length === 0) {

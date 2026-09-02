@@ -307,7 +307,10 @@ export function createExtensionProvider(source) {
       id,
       providerId,
       title: detail.name || 'Untitled',
-      poster: detail.imageUrl || undefined,
+      // The same fallbacks the catalogue path uses. A source that names the
+      // image `cover` in its detail answer was giving up its poster here
+      // while the list read it perfectly well two functions above.
+      poster: detail.imageUrl || detail.cover || undefined,
       kind: 'series',
       overview: detail.description || '',
       genres: detail.genre || detail.genres || [],
