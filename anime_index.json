@@ -310,7 +310,7 @@
     "baseUrl": "https://loklok.tv",
     "apiUrl": "",
     "iconUrl": "https://www.google.com/s2/favicons?sz=256&domain=loklok.tv",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "itemType": 1,
     "isNsfw": false,
     "hasCloudflare": false,
