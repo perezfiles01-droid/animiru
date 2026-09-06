@@ -85,7 +85,7 @@ for Mangayomi runs here unmodified.
 
 ## Extensions in this folder
 
-16 extensions.
+17 extensions.
 
 | Extension | Language | Version | Site | Other homes |
 | --- | --- | --- | --- | --- |
@@ -101,6 +101,7 @@ for Mangayomi runs here unmodified.
 | Just4Anime | English | 0.1.1 | [just4anime.online](https://just4anime.online) | - |
 | JustAnime | English | 0.2.8 | [justanime.to](https://justanime.to) | - |
 | KickAssAnime | English | 1.1.0 | [kaa.to](https://kaa.to) | - |
+| Loklok | English | 1.0.0 | [loklok.tv](https://loklok.tv) | - |
 | Miruro | English | 6.1.12 | [www.miruro.to](https://www.miruro.to) | - |
 | MyroniX | English | 0.2.4 | [myronix.strangled.net](https://myronix.strangled.net) | - |
 | Playback Diagnostic | English | 0.0.2 | [example.invalid](https://example.invalid) | - |
