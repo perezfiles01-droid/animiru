@@ -634,3 +634,159 @@ describe('recognising a bad mirror list', () => {
     expect(/this\.source\.baseUrl/.test(executable(hardcoded))).toBe(false);
   });
 });
+
+/**
+ * Classes the sandbox does not define.
+ *
+ * Loklok shipped calling `new Mangas(...)`, `new Episodes(...)` and
+ * `new VideoList(...)`. None of the three exists - not in the app, not in
+ * backend/extensions/runtime.js - so every browse and playback path threw
+ * "Mangas is not defined" the moment it was opened. The file parsed, loaded,
+ * declared itself correctly, and passed every check in this suite.
+ *
+ * These are the wrapper types other Mangayomi-family apps provide. An author
+ * porting a source from one of those reaches for them out of habit, which is
+ * exactly how that file arrived here. The runtime returns plain objects
+ * instead, so the wrappers are always a mistake, never a style.
+ */
+const ABSENT_CLASSES = ['Mangas', 'Episodes', 'VideoList', 'MManga', 'MPages', 'MChapter'];
+
+describe('constructing something the sandbox does not define', () => {
+  it.each(sources.map((s) => [s.file]))('%s constructs only what exists', (file) => {
+    const { code } = sources.find((s) => s.file === file);
+    const body = executable(code);
+
+    const reached = ABSENT_CLASSES.filter(
+      (name) => new RegExp(`new\\s+${name}\\s*\\(`).test(body)
+    );
+
+    expect(reached).toEqual([]);
+  });
+});
+
+/**
+ * The check above is only worth having if it can fail.
+ *
+ * A pattern matching nothing passes every source for ever and reads exactly
+ * like protection. So the mistake it exists to catch is planted here, along
+ * with the shapes it must not mistake for it.
+ */
+describe('finding a class the sandbox does not define', () => {
+  const constructs = (code, name) =>
+    new RegExp(`new\\s+${name}\\s*\\(`).test(executable(code));
+
+  it.each([
+    ['the shape Loklok shipped', 'return new Mangas(items);', 'Mangas'],
+    ['a wrapped episode list', 'return new Episodes(eps);', 'Episodes'],
+    ['a wrapped video list', 'return new VideoList([{ url: u }]);', 'VideoList'],
+    ['a line break before the argument', 'return new VideoList(\n  list\n);', 'VideoList']
+  ])('catches %s', (_, code, name) => {
+    expect(constructs(code, name)).toBe(true);
+  });
+
+  it.each([
+    ['a comment recalling the old shape', '// we used to return new Mangas(items)', 'Mangas'],
+    ['the name inside a string', 'const note = "new VideoList is gone";', 'VideoList'],
+    ['a plain object of the same idea', 'return { list: items, hasNextPage: false };', 'Mangas'],
+    ['a property with a colliding name', 'this.Episodes = data.episodeVo;', 'Episodes']
+  ])('does not mistake %s for one', (_, code, name) => {
+    expect(constructs(code, name)).toBe(false);
+  });
+});
+
+/**
+ * A source either does Latest or says it does not.
+ *
+ * The app reads `supportsLatest` with a default of true, so a source that
+ * declares nothing gets a Latest tab whether or not it can serve one. If it
+ * also does not define getLatestUpdates, opening that tab reaches the base
+ * class, which throws "getLatestUpdates not implemented" at the user - the
+ * whole of what Loklok did on a device.
+ *
+ * The two halves are only wrong together, so that is what is checked: define
+ * the method, or decline the tab. Six sources decline to declare
+ * supportsLatest and are correct because they implement the method.
+ *
+ * This asks the language rather than the text. A regex cannot tell a method
+ * from a mention of one, and the point of the check is that the app will look
+ * the source up on the prototype.
+ */
+function loadPrototype(code) {
+  const vm = require('vm');
+  const context = {
+    console,
+    Client: function Client() {},
+    Document: function Document() {},
+    SharedPreferences: function SharedPreferences() {},
+    MProvider: class {
+      get supportsLatest() { throw new Error('supportsLatest not implemented'); }
+      async getLatestUpdates() { throw new Error('getLatestUpdates not implemented'); }
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext(`${code}\nglobalThis.__proto__ref = DefaultExtension.prototype;`, context);
+  return context.__proto__ref;
+}
+
+/** What the source itself says, ignoring anything inherited from MProvider. */
+function declaredLatest(prototype) {
+  const own = Object.getOwnPropertyDescriptor(prototype, 'supportsLatest');
+  if (!own || typeof own.get !== 'function') return null;
+  return own.get.call(Object.create(prototype));
+}
+
+describe('offering a Latest tab it can serve', () => {
+  it.each(sources.map((s) => [s.file]))('%s implements Latest or declines it', (file) => {
+    const { code } = sources.find((s) => s.file === file);
+    const prototype = loadPrototype(code);
+
+    const implemented = typeof prototype.getLatestUpdates === 'function'
+      && Object.getOwnPropertyNames(prototype).includes('getLatestUpdates');
+
+    // Declaring nothing is fine, but only alongside the method: the app's
+    // default is true, so silence means "yes" whether or not it is.
+    //
+    // Declining the tab is always allowed, method or no method. Playback
+    // Diagnostic implements getLatestUpdates and still returns false, and an
+    // earlier version of this check called that a fault - a source is free
+    // to hide a tab it could serve, and only the reverse hurts anyone.
+    if (!implemented) {
+      expect(declaredLatest(prototype)).toBe(false);
+    }
+  });
+});
+
+/**
+ * And the same again: planted, so the check is known to be able to fail.
+ */
+describe('finding a Latest tab that cannot be served', () => {
+  const wrap = (body) => `class DefaultExtension extends MProvider { ${body} }`;
+  const verdict = (body) => {
+    const prototype = loadPrototype(wrap(body));
+    const implemented = Object.getOwnPropertyNames(prototype).includes('getLatestUpdates');
+    return implemented ? 'implements' : (declaredLatest(prototype) === false ? 'declines' : 'broken');
+  };
+
+  it('catches the shape Loklok shipped: neither method nor declaration', () => {
+    expect(verdict('async getPopular(p) { return { list: [], hasNextPage: false }; }'))
+      .toBe('broken');
+  });
+
+  it('catches declaring Latest supported without implementing it', () => {
+    expect(verdict('get supportsLatest() { return true; }')).toBe('broken');
+  });
+
+  it('accepts declining the tab', () => {
+    expect(verdict('get supportsLatest() { return false; }')).toBe('declines');
+  });
+
+  it('accepts the method with no declaration, which is what six sources do', () => {
+    expect(verdict('async getLatestUpdates(p) { return { list: [], hasNextPage: false }; }'))
+      .toBe('implements');
+  });
+
+  it('is not fooled by a comment mentioning the method', () => {
+    expect(verdict('/* getLatestUpdates is not available */ async getPopular(p) { return 1; }'))
+      .toBe('broken');
+  });
+});
